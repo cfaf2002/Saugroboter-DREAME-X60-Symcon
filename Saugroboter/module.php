@@ -758,9 +758,12 @@ class X60Ultra extends IPSModule
 
     private function Json($v)
     {
-        if (is_array($v)) return $v;
-        $d = json_decode(strval($v), true);
-        return is_array($d) ? $d : null;
+        if (is_array($v)) $d = $v;
+        else $d = json_decode(strval($v), true);
+        if (!is_array($d)) return null;
+        // Die Kartenliste (6/8) heißt je nach Firmware "object_name" (X50) oder "obj_name" (X60)
+        if (!isset($d['object_name']) && isset($d['obj_name'])) $d['object_name'] = $d['obj_name'];
+        return $d;
     }
 
     // Zellformat: Einstellung oder automatisch (mit den bekannten Räumen der Etage als Hilfe)
@@ -771,7 +774,9 @@ class X60Ultra extends IPSModule
         // Für Modelle mit Kartenformat 2 (X60 u. a.) steht das Format fest, außer der Block ist ein Rahmenbild (fsm)
         $dev = json_decode($this->ReadAttributeString('Device'), true);
         $model = is_array($dev) && isset($dev['model']) ? substr($dev['model'], strrpos($dev['model'], '.') + 1) : '';
-        if (empty($b['info']['fsm']) && in_array($model, SaugroboterKarte::MAP_V2_MODELS, true)) return 'low5';
+        // Kartenformat 2 hat Vorrang vor dem Rahmenbild-Kennzeichen "fsm" (so auch in der Referenz):
+        // der X60 setzt fsm = 1, liest sich aber nur als 'low5' richtig.
+        if (in_array($model, SaugroboterKarte::MAP_V2_MODELS, true)) return 'low5';
         $maps = $this->Maps();
         $known = isset($maps[$b['mapId']]) ? array_keys($maps[$b['mapId']]['rooms']) : [];
         return SaugroboterKarte::Detect($b, $known);

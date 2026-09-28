@@ -121,8 +121,10 @@ class SaugroboterKarte
      */
     public static function Detect($b, $extra = [])
     {
-        if (!empty($b['info']['fsm'])) return 'shift';
         $s = self::FormatScores($b, $extra);
+        // "fsm" deutet auf das Schiebeformat – aber nur, wenn die Zahlen nicht klar dagegen sprechen
+        // (Kartenformat-2-Geräte setzen fsm ebenfalls).
+        if (!empty($b['info']['fsm']) && $s['shift'] >= max($s['low6'], $s['low5']) * 0.5) return 'shift';
         arsort($s);
         reset($s);
         return key($s);
