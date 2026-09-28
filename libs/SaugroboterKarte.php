@@ -89,7 +89,7 @@ class SaugroboterKarte
     // 'shift': Raum in Bit 2..7 (61 unbekannt, 62 Boden, 63 Wand)
     // 'low6' : Raum in Bit 0..5, Bit 7 = Wand/Rand
     // 'low5' : Raum in Bit 0..4 (31 = Sonderwert), Bit 5..6 = Wand
-    public static function Cell($byte, $format)
+    public static function Cell($byte, $format, $area = false)
     {
         if ($byte == 0) return 0;
         if ($format == 'shift') {
@@ -100,12 +100,15 @@ class SaugroboterKarte
             return $s;
         }
         if ($format == 'low5') {
-            // Bit 7 = Teppich, Bit 5..6 = Rand/Wand. Raumnummern 1..30 bleiben auch mit
-            // Randbits Teil des Raums (Raumkante); 31 = Wand bzw. Boden ohne Raum.
+            // Bit 7 = Teppich, Bit 5..6 = Art: 0 = Raumfläche, 1/2 = Wand am Raum, 3 = Fläche, die
+            // die App nicht zeichnet (unerkundet/verdeckt, gehört aber zum Raum). 31 = kein Raum.
+            // $area = true: Zugehörigkeit zum Raum (für "aktueller Raum"), nicht die Darstellung.
             $s = $byte & 0x1F;
-            $wall = ($byte >> 5) & 0x03;
+            $kind = ($byte >> 5) & 0x03;
             if ($s == 0) return 0;
-            if ($s == 31) return $wall > 0 ? self::WALL : self::FLOOR;
+            if ($s == 31) return $kind == 3 ? 0 : ($kind > 0 ? self::WALL : self::FLOOR);
+            if ($kind == 3) return $area ? $s : 0;
+            if ($kind > 0) return $area ? $s : self::WALL;
             return $s;
         }
         // low6
@@ -145,7 +148,7 @@ class SaugroboterKarte
             $hist = [];
             $room = 0;
             for ($i = 0; $i < $n; $i += $step) {
-                $c = self::Cell(ord($b['cells'][$i]), $f);
+                $c = self::Cell(ord($b['cells'][$i]), $f, true);
                 if ($c > 0 && $c < 250) { $room++; $hist[$c] = (isset($hist[$c]) ? $hist[$c] : 0) + 1; }
             }
             if (count($known)) {
@@ -210,7 +213,7 @@ class SaugroboterKarte
             for ($dx = -2; $dx <= 2; $dx++) {
                 $x = $c[0] + $dx; $y = $c[1] + $dy;
                 if ($x < 0 || $y < 0 || $x >= $b['w'] || $y >= $b['h']) continue;
-                $v = self::Cell(ord($b['cells'][$y * $b['w'] + $x]), $format);
+                $v = self::Cell(ord($b['cells'][$y * $b['w'] + $x]), $format, true);
                 if ($v > 0 && $v < 250) $votes[$v] = (isset($votes[$v]) ? $votes[$v] : 0) + (($dx == 0 && $dy == 0) ? 3 : 1);
             }
         }
