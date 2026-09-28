@@ -167,6 +167,47 @@ class SaugroboterKarte
         return $scores;
     }
 
+    /**
+     * Differenzbild ('P') auf das letzte Vollbild legen. Das P-Bild enthält nur den geänderten
+     * Ausschnitt; Roboter, Station und neue Strecke kommen aus dem P-Bild.
+     * $v2: Kartenformat 2 (X60) – geänderte Zellen werden direkt ersetzt, sonst aufaddiert.
+     */
+    public static function Merge($base, $p, $v2)
+    {
+        $g = $base['grid'];
+        $left = min($base['left'], $p['left']);
+        $top = min($base['top'], $p['top']);
+        $right = max($base['left'] + $base['w'] * $g, $p['left'] + $p['w'] * $g);
+        $bottom = max($base['top'] + $base['h'] * $g, $p['top'] + $p['h'] * $g);
+        $w = intval(($right - $left) / $g);
+        $h = intval(($bottom - $top) / $g);
+        $cells = str_repeat("\0", $w * $h);
+        $ox = intval(($base['left'] - $left) / $g); $oy = intval(($base['top'] - $top) / $g);
+        for ($y = 0; $y < $base['h']; $y++) {
+            $cells = substr_replace($cells, substr($base['cells'], $y * $base['w'], $base['w']), ($oy + $y) * $w + $ox, $base['w']);
+        }
+        $ox = intval(($p['left'] - $left) / $g); $oy = intval(($p['top'] - $top) / $g);
+        for ($y = 0; $y < $p['h']; $y++) {
+            for ($x = 0; $x < $p['w']; $x++) {
+                $n = ord($p['cells'][$y * $p['w'] + $x]);
+                if ($n == 0) continue;
+                $i = ($oy + $y) * $w + $ox + $x;
+                $cells[$i] = chr($v2 ? $n : ((ord($cells[$i]) + $n) & 0xFF));
+            }
+        }
+        $info = $base['info'];
+        foreach ($p['info'] as $k => $v) {
+            if ($k == 'tr') continue;
+            $info[$k] = $v;
+        }
+        // Strecke fortschreiben
+        if (!empty($p['info']['tr'])) $info['tr'] = (isset($base['info']['tr']) ? $base['info']['tr'] : '') . $p['info']['tr'];
+        return array_merge($base, [
+            'frameId' => $p['frameId'], 'robot' => $p['robot'], 'dock' => $p['dock'],
+            'w' => $w, 'h' => $h, 'left' => $left, 'top' => $top, 'cells' => $cells, 'info' => $info, 'type' => 'I'
+        ]);
+    }
+
     // Räume aus dem Anhang: [seg => ['name' => ..., 'type' => ..., 'hidden' => bool]]
     public static function Rooms($b, $roomTypes)
     {

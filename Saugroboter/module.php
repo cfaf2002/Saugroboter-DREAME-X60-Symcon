@@ -992,27 +992,48 @@ class X60Ultra extends IPSModule
     }
 
     // Live-Karte laden und Bild aktualisieren. Rückgabe Block oder null.
+    // Live-Karte laden und Bild aktualisieren. Rückgabe Block oder null.
+    // Der Roboter meldet abwechselnd Vollbilder ('I') und Differenzbilder ('P'). Differenzbilder
+    // werden auf das letzte Vollbild gelegt – sonst stünde die Karte während der Fahrt still.
     private function FetchLiveMap($force)
     {
         $last = intval($this->GetBuffer('LiveAt'));
-        if (!$force && time() - $last < 30) {
-            $cached = $this->GetBuffer('Live');
-            return $cached !== '' ? SaugroboterKarte::Decode($cached, self::MAP_IV) : null;
-        }
+        if (!$force && time() - $last < 20) return $this->LiveBlock();
         $this->SetBuffer('LiveAt', strval(time()));
 
-        $text = null;
+        $base = $this->LiveBlock();
+        $got = null;
         foreach ($this->LiveMapObjects() as $obj) {
             $text = $this->CloudFile($obj);
-            if ($text !== null && SaugroboterKarte::Decode($text, self::MAP_IV) !== null) break;
-            $text = null;
+            $b = $text === null ? null : SaugroboterKarte::Decode($text, self::MAP_IV);
+            if ($b === null) continue;
+            if ($b['type'] === 'I') { $got = $b; break; }
+            if ($b['type'] === 'P' && $base !== null && $b['mapId'] == $base['mapId']) {
+                if (strval($b['frameId']) === $this->GetBuffer('LiveFrame')) { $got = $base; break; }   // schon angewendet
+                $got = SaugroboterKarte::Merge($base, $b, $this->IsV2());
+                break;
+            }
         }
-        if ($text === null) return null;
-        $b = SaugroboterKarte::Decode($text, self::MAP_IV);
-        if ($b['type'] !== 'I') return null;        // Differenzbild: nichts zu zeichnen
-        $this->SetBuffer('Live', $text);
-        if ($this->ReadPropertyBoolean('MapImage')) $this->StoreMapImage($b, $b['mapId'], 'Map');
-        return $b;
+        if ($got === null) return $base;
+        $this->SetBuffer('LiveFrame', strval($got['frameId']));
+        $this->SetBuffer('LiveBlock', base64_encode(gzcompress(serialize($got))));
+        if ($this->ReadPropertyBoolean('MapImage')) $this->StoreMapImage($got, $got['mapId'], 'Map');
+        return $got;
+    }
+
+    private function LiveBlock()
+    {
+        $raw = $this->GetBuffer('LiveBlock');
+        if ($raw === '') return null;
+        $b = @unserialize(@gzuncompress(base64_decode($raw)), ['allowed_classes' => false]);
+        return is_array($b) ? $b : null;
+    }
+
+    private function IsV2()
+    {
+        $dev = json_decode($this->ReadAttributeString('Device'), true);
+        $model = is_array($dev) && isset($dev['model']) ? substr($dev['model'], strrpos($dev['model'], '.') + 1) : '';
+        return in_array($model, SaugroboterKarte::MAP_V2_MODELS, true);
     }
 
     // Kandidaten für die aktuelle Karte: gemeldeter Objektname (6/3), sonst die neueste Datei
