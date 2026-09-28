@@ -280,6 +280,7 @@ class X60Ultra extends IPSModule
         }
         $this->FormSetValues($form['elements'], 'Rooms', $rows);
         $this->FormRoomPlan($form['elements']);
+        $this->FormStatus($form['elements']);
         // Versionszeile ganz unten
         $lib = json_decode(@file_get_contents(__DIR__ . '/../library.json'), true);
         if (is_array($lib)) {
@@ -288,6 +289,42 @@ class X60Ultra extends IPSModule
                 . substr(strval($lib['date']), 0, 4) . ' · © ' . $lib['author']];
         }
         return json_encode($form);
+    }
+
+    // Statusblock oben in der Instanz: Texte je Zeile
+    private function StatusLines()
+    {
+        $online = @$this->GetIDForIdent('Online') ? $this->GetValue('Online') : false;
+        $dev = json_decode($this->ReadAttributeString('Device'), true);
+        $cloud = !$this->ReadPropertyBoolean('Active') ? 'Instanz nicht aktiv'
+            : (($online ? '✅ verbunden' : '⚠️ keine Verbindung') . (is_array($dev) && !empty($dev['name']) ? ' – ' . $dev['name'] . ' (' . $dev['model'] . ')' : ''));
+        $pin = json_decode($this->ReadAttributeString('LivePin'), true);
+        $cert = is_array($pin) && !empty($pin['fp'])
+            ? '🔒 gemerkt am ' . date('d.m.Y H:i', intval($pin['at'])) . ' – ' . substr($pin['fp'], 0, 23) . '…'
+            : 'noch nicht gemerkt (geschieht beim ersten Live-Kontakt)';
+        $msg = @$this->GetIDForIdent('Message') ? strval($this->GetValue('Message')) : '';
+        return [
+            'StatusCloud' => 'Cloud: ' . $cloud,
+            'StatusLive' => 'Live-Verbindung: ' . $this->LiveStatusText(),
+            'StatusCert' => 'Server-Zertifikat: ' . $cert,
+            'StatusMessage' => 'Letzte Meldung: ' . ($msg !== '' ? $msg : '–')
+        ];
+    }
+
+    private function FormStatus(&$elements)
+    {
+        $lines = $this->StatusLines();
+        foreach ($elements as &$e) {
+            if (isset($e['items'])) $this->FormStatus($e['items']);
+            if (isset($e['name']) && isset($lines[$e['name']])) $e['caption'] = $lines[$e['name']];
+        }
+        unset($e);
+    }
+
+    // Offenes Konfigurationsfenster nachführen (ohne offenes Fenster wirkungslos)
+    protected function UpdateStatusForm()
+    {
+        foreach ($this->StatusLines() as $name => $text) $this->UpdateFormField($name, 'caption', $text);
     }
 
     // Raumplan: je Raum eine Spalte zum Anhaken statt eines Textfelds
@@ -1053,6 +1090,7 @@ class X60Ultra extends IPSModule
         }
         $this->SetPollInterval();
         $this->RefreshViews();
+        $this->UpdateStatusForm();
         return $ok;
     }
 
@@ -1926,6 +1964,7 @@ class X60Ultra extends IPSModule
     {
         $this->SetVal('Message', date('H:i') . ' ' . $text);
         $this->SendDebug('Meldung', $text, 0);
+        $this->UpdateStatusForm();
     }
 
     private function PollSoon()

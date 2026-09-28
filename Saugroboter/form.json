@@ -31,6 +31,33 @@
     },
     {
       "type": "ExpansionPanel",
+      "caption": "Status",
+      "expanded": true,
+      "items": [
+        {
+          "type": "Label",
+          "name": "StatusCloud",
+          "caption": "Cloud: –"
+        },
+        {
+          "type": "Label",
+          "name": "StatusLive",
+          "caption": "Live-Verbindung: –"
+        },
+        {
+          "type": "Label",
+          "name": "StatusCert",
+          "caption": "Server-Zertifikat: –"
+        },
+        {
+          "type": "Label",
+          "name": "StatusMessage",
+          "caption": "Letzte Meldung: –"
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
       "caption": "Konto & Gerät",
       "expanded": true,
       "items": [

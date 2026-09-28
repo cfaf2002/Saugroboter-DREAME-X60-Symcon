@@ -97,9 +97,31 @@ trait SaugroboterLive
                 $this->SetVal('Live', false);
                 $this->SetPollInterval();
             }
+            $this->UpdateStatusForm();
             return true;
         }
         return false;
+    }
+
+    // Zustand der Live-Verbindung in Worten (für den Statusblock der Instanz)
+    protected function LiveStatusText()
+    {
+        if (!$this->ReadPropertyBoolean('Live')) return 'ausgeschaltet';
+        if (!$this->LiveWanted()) return 'wartet (Instanz nicht aktiv oder Zugangsdaten fehlen)';
+        if ($this->LiveOk()) {
+            $since = intval($this->GetBuffer('LiveSince'));
+            return '✅ verbunden' . ($since > 0 ? ' seit ' . date(date('Ymd', $since) == date('Ymd') ? 'H:i' : 'd.m. H:i', $since) : '')
+                . ' – Echtzeitdaten kommen an';
+        }
+        $hold = intval($this->GetBuffer('LiveHold'));
+        if ($hold > time() + 86400) return '⛔ gestoppt – unbekanntes Server-Zertifikat (siehe Letzte Meldung)';
+        if ($hold > time()) return '⏸ pausiert bis ' . date('H:i', $hold) . ' (Anmeldung abgelehnt) – solange normale Abfrage';
+        $pid = $this->LiveParent();
+        if (!$this->LiveIsSocket($pid)) return 'wird eingerichtet …';
+        if (IPS_GetInstance($pid)['InstanceStatus'] != 102) return '⚠️ Socket nicht verbunden – solange normale Abfrage';
+        if ($this->GetBuffer('MqttState') === '1') return 'Anmeldung läuft …';
+        if ($this->GetBuffer('MqttState') === '2') return '⚠️ verbunden, aber seit über 2 Minuten keine Daten';
+        return 'verbindet …';
     }
 
     // ---- Wächter (Timer "LiveCheck", alle 30 s) --------------------------------
@@ -107,6 +129,7 @@ trait SaugroboterLive
     public function LiveCheck()
     {
         $this->SetTimerInterval('LiveCheck', 30000);
+        $this->UpdateStatusForm();
         if (!$this->LiveWanted()) { $this->SetTimerInterval('LiveCheck', 0); return false; }
 
         // Nach wiederholter Ablehnung eine Weile Ruhe geben
@@ -392,12 +415,14 @@ trait SaugroboterLive
                     $this->SetBuffer('MqttState', '2');
                     $this->SetBuffer('LiveFails', '0');
                     $this->SetBuffer('LiveWasUp', '1');
+                    $this->SetBuffer('LiveSince', strval(time()));
                     $sub = '';
                     foreach ($this->LiveTopics() as $t) $sub .= self::MqttStr($t) . "\x01";
                     if ($sub !== '') $this->LiveSend(self::MqttPacket(0x82, pack('n', 1) . $sub));
                     $this->SetVal('Live', true);
                     $this->SendDebug('Live', 'Verbunden, abonniert: ' . implode(' ', $this->LiveTopics()), 0);
                     $this->SetPollInterval();
+                    $this->UpdateStatusForm();
                     return;
                 }
                 $n = intval($this->GetBuffer('LiveFails')) + 1;

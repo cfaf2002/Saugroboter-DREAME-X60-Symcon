@@ -107,6 +107,10 @@ auch mit X40/X50 und verwandten Modellen.
    *Eigener Name* umbenennen. *Änderungen übernehmen*.
 7. Optional: Automatik, Benachrichtigungen, Kartenausrichtung.
 
+**Status auf einen Blick:** Ganz oben in der Instanz zeigt der Block *Status*, ob die Cloud erreichbar ist, ob die
+Live-Verbindung steht (bzw. warum nicht), wann das Server-Zertifikat gemerkt wurde und die letzte Meldung. Er
+aktualisiert sich, solange das Fenster offen ist.
+
 **Live-Verbindung:** ist ab Werk eingeschaltet (*Konto & Gerät → Live-Verbindung*). Das Modul legt dafür beim ersten
 Mal selbst einen **Client Socket** als übergeordnete Instanz an („Saugroboter Live (…)“) und stellt ihn ein – Server,
 Port und TLS kommen aus der Cloud, dort ist nichts von Hand einzutragen. „Überprüfe Peer/Host“ bleiben im Socket aus – geprüft wird stattdessen das gemerkte Server-Zertifikat (siehe *Sicherheit*). Die Variable **Live-Verbindung** zeigt, ob
