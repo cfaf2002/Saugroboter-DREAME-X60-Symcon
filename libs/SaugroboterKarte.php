@@ -19,6 +19,12 @@ class SaugroboterKarte
 {
     const HEADER = 27;
 
+    // Modelle mit Kartenformat 2 (u. a. alle X60-Varianten): Vollbilder im Format 'low5'.
+    // Quelle: Geräteliste von Tasshack/dreame-vacuum (Fähigkeit MAP_V2).
+    const MAP_V2_MODELS = ['r500c', 'r500c1', 'r501da', 'r501w', 'r501wu', 'r5089b', 'r5089u', 'r5090a', 'r5104h',
+        'r510c', 'r510c1', 'r512g', 'r5189j', 'r5189u', 'r520c', 'r520c1', 'r6001a', 'r6011', 'r6012', 'r6015a',
+        'r6111', 'r6112', 'r9515a', 'r9515e'];
+
     // Zellarten nach dem Dekodieren
     const WALL = 255;
     const FLOOR = 254;
@@ -94,11 +100,13 @@ class SaugroboterKarte
             return $s;
         }
         if ($format == 'low5') {
+            // Bit 7 = Teppich, Bit 5..6 = Rand/Wand. Raumnummern 1..30 bleiben auch mit
+            // Randbits Teil des Raums (Raumkante); 31 = Wand bzw. Boden ohne Raum.
             $s = $byte & 0x1F;
             $wall = ($byte >> 5) & 0x03;
             if ($s == 0) return 0;
             if ($s == 31) return $wall > 0 ? self::WALL : self::FLOOR;
-            return $wall > 0 && $wall != 3 ? self::WALL : $s;
+            return $s;
         }
         // low6
         $s = $byte & 0x3F;
@@ -107,26 +115,51 @@ class SaugroboterKarte
     }
 
     // Wählt das Zellformat. "fsm" = 1 im Anhang kennzeichnet das Schiebeformat eindeutig.
-    public static function Detect($b)
+    /**
+     * $extra: bekannte Raumnummern (z. B. aus der gespeicherten Karte), falls der Block selbst keine nennt.
+     * Rückgabe 'shift' | 'low6' | 'low5'.
+     */
+    public static function Detect($b, $extra = [])
     {
         if (!empty($b['info']['fsm'])) return 'shift';
+        $s = self::FormatScores($b, $extra);
+        arsort($s);
+        reset($s);
+        return key($s);
+    }
+
+    // Bewertung je Zellformat (auch für die Diagnose)
+    public static function FormatScores($b, $extra = [])
+    {
         $known = [];
         if (isset($b['info']['seg_inf']) && is_array($b['info']['seg_inf'])) {
             foreach (array_keys($b['info']['seg_inf']) as $k) $known[intval($k)] = true;
         }
-        $best = 'shift';
-        $bestScore = -1;
+        foreach ($extra as $k) $known[intval($k)] = true;
         $n = strlen($b['cells']);
-        $step = max(1, intval($n / 20000));   // Stichprobe reicht
+        $step = max(1, intval($n / 40000));   // Stichprobe reicht
+        $scores = [];
         foreach (['shift', 'low6', 'low5'] as $f) {
-            $score = 0;
+            $hist = [];
+            $room = 0;
             for ($i = 0; $i < $n; $i += $step) {
                 $c = self::Cell(ord($b['cells'][$i]), $f);
-                if ($c > 0 && $c < 250) $score += count($known) ? (isset($known[$c]) ? 2 : -1) : 1;
+                if ($c > 0 && $c < 250) { $room++; $hist[$c] = (isset($hist[$c]) ? $hist[$c] : 0) + 1; }
             }
-            if ($score > $bestScore) { $bestScore = $score; $best = $f; }
+            if (count($known)) {
+                // Treffer auf bekannte Räume zählen, unbekannte Nummern bestrafen
+                $score = 0;
+                foreach ($hist as $c => $cnt) $score += isset($known[$c]) ? 2 * $cnt : -$cnt;
+            } else {
+                // Ohne Vorwissen: echte Karten haben wenige, große Räume. Kleinstflächen
+                // (unter 0,5 % der Raumfläche) deuten auf ein falsch gelesenes Format.
+                $score = 0;
+                foreach ($hist as $c => $cnt) $score += ($room > 0 && $cnt / $room >= 0.005) ? $cnt : -3 * $cnt;
+                if (count($hist) > 40) $score -= $room;
+            }
+            $scores[$f] = $score;
         }
-        return $best;
+        return $scores;
     }
 
     // Räume aus dem Anhang: [seg => ['name' => ..., 'type' => ..., 'hidden' => bool]]

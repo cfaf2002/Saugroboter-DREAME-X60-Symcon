@@ -65,6 +65,7 @@ class X60Ultra extends IPSModule
         $this->RegisterPropertyBoolean('MapImage', true);
         $this->RegisterPropertyInteger('MapRotate', -1);        // -1 = wie in der App
         $this->RegisterPropertyBoolean('MapPath', true);
+        $this->RegisterPropertyString('MapFormat', 'auto');     // Zellformat der Karte (auto/shift/low6/low5)
         $this->RegisterPropertyInteger('WearWarn', 10);
         $this->RegisterPropertyInteger('HistoryCount', 5);
         $this->RegisterPropertyBoolean('DashboardBox', false);
@@ -592,11 +593,21 @@ class X60Ultra extends IPSModule
     {
         return $this->Locked(function () {
             $ml = $this->MiotGet([[6, 8]]);
-            $info = isset($ml['6.8']) ? json_decode($ml['6.8'], true) : null;
-            if (!isset($info['object_name'])) { echo 'Kartenliste nicht verfügbar: ' . ($this->dcLastError ?: 'Gerät liefert keine.'); return false; }
-            $file = $this->CloudFile($info['object_name']);
-            $list = $file !== null ? json_decode($file, true) : null;
-            if (!isset($list['mapstr']) || !is_array($list['mapstr'])) { echo 'Kartenliste nicht lesbar.'; return false; }
+            $info = isset($ml['6.8']) ? $this->Json($ml['6.8']) : null;
+            $list = null;
+            if (!isset($info['object_name'])) {
+                $this->SendDebug('Karten', 'Kartenliste (6/8) fehlt: ' . json_encode($ml) . ' ' . $this->dcLastError, 0);
+            } else {
+                $file = $this->CloudFile($info['object_name']);
+                $list = $file !== null ? $this->Json($file) : null;
+                if (!isset($list['mapstr'])) $this->SendDebug('Karten', 'Kartenliste nicht lesbar: ' . substr(strval($file), 0, 300), 0);
+            }
+            if (!isset($list['mapstr']) || !is_array($list['mapstr'])) {
+                // Rückfall: Räume der aktuellen Etage aus der Live-Karte
+                if ($this->MapsFromLive()) return true;
+                echo "Keine Karten gefunden.\n\n" . $this->MapReport();
+                return false;
+            }
 
             $maps = [];
             $n = 0;
@@ -617,7 +628,11 @@ class X60Ultra extends IPSModule
                 // Bild der Etage schon jetzt, damit die Kachel nicht leer ist
                 if ($this->ReadPropertyBoolean('MapImage')) $this->StoreMapImage($b, $b['mapId'], 'MapFloor' . $b['mapId']);
             }
-            if (count($maps) == 0) { echo 'Keine Karte gefunden – ist die Karte in der App gespeichert?'; return false; }
+            if (count($maps) == 0) {
+                if ($this->MapsFromLive()) return true;
+                echo "Keine Karte dekodierbar.\n\n" . $this->MapReport();
+                return false;
+            }
             $this->WriteAttributeString('Maps', json_encode(array_values($maps)));
             if (!isset($maps[$this->ReadAttributeInteger('Floor')])) {
                 $cur = isset($list['curr_id']) && isset($maps[intval($list['curr_id'])]) ? intval($list['curr_id']) : array_keys($maps)[0];
@@ -640,6 +655,112 @@ class X60Ultra extends IPSModule
             echo "\n\nRäume, die es nicht gibt, in der Liste abwählen und „Änderungen übernehmen“.";
             return true;
         });
+    }
+
+    // Nur die Räume der aktuellen Etage aus der Live-Karte übernehmen (wenn die Kartenliste fehlt)
+    private function MapsFromLive()
+    {
+        $b = $this->FetchLiveMap(true);
+        if ($b === null) return false;
+        $rooms = SaugroboterKarte::Rooms($b, SaugroboterTexte::RoomTypes());
+        if (count($rooms) == 0) return false;
+        $maps = $this->Maps();
+        $maps[$b['mapId']] = ['id' => $b['mapId'], 'name' => isset($maps[$b['mapId']]) ? $maps[$b['mapId']]['name'] : 'Etage 1',
+            'angle' => isset($maps[$b['mapId']]) ? $maps[$b['mapId']]['angle'] : 0, 'left' => $b['left'], 'top' => $b['top'], 'rooms' => $rooms];
+        $this->WriteAttributeString('Maps', json_encode(array_values($maps)));
+        $this->WriteAttributeInteger('Floor', $b['mapId']);
+        $this->WriteAttributeInteger('DeviceFloor', $b['mapId']);
+        $this->SyncRooms();
+        $this->UpdateFormField('Rooms', 'values', json_encode(array_map(function ($r) {
+            return ['use' => $r['use'], 'floor' => $r['floor'], 'map' => $r['map'], 'seg' => $r['seg'], 'app' => $r['app'], 'alias' => $r['alias']];
+        }, $this->RoomList(true))));
+        $this->FetchLiveMap(true);
+        $this->RefreshViews();
+        $names = [];
+        foreach ($rooms as $r) $names[] = $r['name'];
+        echo "Kartenliste nicht verfügbar – Räume der aktuellen Etage aus der Live-Karte übernommen:\n  • " . implode(', ', $names)
+            . "\n\nWeitere Etagen erscheinen, sobald die Kartenliste lesbar ist („Kartendiagnose“).";
+        return true;
+    }
+
+    // Kartendiagnose: was liefert die Cloud? (ohne Kartenbild, nur Aufbau und Kennzahlen)
+    public function MapDiagnosis()
+    {
+        return $this->Locked(function () {
+            echo $this->MapReport();
+            return true;
+        });
+    }
+
+    private function MapReport()
+    {
+        $r = [];
+        $ml = $this->MiotGet([[6, 3], [6, 8]]);
+        $r[] = 'Quelle: ' . ($ml === null ? 'keine Antwort (' . $this->dcLastError . ')' : ($this->dcFromCache ? 'Cloud-Speicher' : 'Roboter direkt'));
+        foreach (['6.3', '6.8'] as $k) {
+            $v = isset($ml[$k]) ? (is_scalar($ml[$k]) ? strval($ml[$k]) : json_encode($ml[$k])) : '–';
+            $r[] = $k . ' = ' . substr(preg_replace('/[A-Za-z0-9+\/_-]{40,}/', '…', $v), 0, 160);
+        }
+        $info = isset($ml['6.8']) ? $this->Json($ml['6.8']) : null;
+        if (isset($info['object_name'])) {
+            $file = $this->CloudFile($info['object_name']);
+            $list = $file !== null ? $this->Json($file) : null;
+            $r[] = 'Kartenliste: ' . ($file === null ? 'Download fehlgeschlagen (' . $this->dcLastError . ')' : strlen($file) . ' Bytes, Schlüssel: '
+                . (is_array($list) ? implode(', ', array_keys($list)) : 'kein JSON'));
+            if (isset($list['mapstr']) && is_array($list['mapstr'])) {
+                foreach ($list['mapstr'] as $i => $e) {
+                    $keys = is_array($e) ? implode(', ', array_keys($e)) : gettype($e);
+                    $text = !empty($e['map']) ? $e['map'] : (!empty($e['rismobj']) ? $this->CloudFile($e['rismobj']) : null);
+                    $r[] = '  Karte ' . ($i + 1) . ' [' . $keys . '] ' . $this->BlockReport($text);
+                }
+            }
+        }
+        foreach ($this->LiveMapObjects() as $o) {
+            $r[] = 'Live-Karte ' . preg_replace('#^.*/#', '…/', $o) . ': ' . $this->BlockReport($this->CloudFile($o));
+        }
+        $out = implode("\n", $r);
+        $this->SendDebug('Kartendiagnose', $out, 0);
+        return $out;
+    }
+
+    private function BlockReport($text)
+    {
+        if ($text === null) return 'nicht ladbar';
+        $b = SaugroboterKarte::Decode($text, self::MAP_IV);
+        if ($b === null) return 'nicht dekodierbar (' . strlen($text) . ' Zeichen, ' . (strpos($text, ',') !== false ? 'mit' : 'ohne') . ' Schlüssel)';
+        $segs = isset($b['info']['seg_inf']) && is_array($b['info']['seg_inf']) ? implode(',', array_keys($b['info']['seg_inf'])) : '–';
+        $hist = [];
+        for ($i = 0; $i < strlen($b['cells']); $i++) { $c = ord($b['cells'][$i]); if ($c) $hist[$c] = (isset($hist[$c]) ? $hist[$c] : 0) + 1; }
+        arsort($hist);
+        $top = [];
+        foreach (array_slice($hist, 0, 8, true) as $v => $c) $top[] = $v . '×' . $c;
+        $sc = SaugroboterKarte::FormatScores($b);
+        return 'Typ ' . $b['type'] . ', Karte ' . $b['mapId'] . ', ' . $b['w'] . '×' . $b['h'] . ', Raster ' . $b['grid']
+            . ', fsm ' . (isset($b['info']['fsm']) ? $b['info']['fsm'] : '–') . ', Räume ' . $segs
+            . "\n      Anhang: " . implode(', ', array_keys($b['info']))
+            . "\n      Häufigste Bytes: " . implode(' ', $top)
+            . "\n      Formate: " . json_encode($sc) . ' → ' . $this->CellFormat($b);
+    }
+
+    private function Json($v)
+    {
+        if (is_array($v)) return $v;
+        $d = json_decode(strval($v), true);
+        return is_array($d) ? $d : null;
+    }
+
+    // Zellformat: Einstellung oder automatisch (mit den bekannten Räumen der Etage als Hilfe)
+    private function CellFormat($b)
+    {
+        $f = $this->ReadPropertyString('MapFormat');
+        if (in_array($f, ['shift', 'low6', 'low5'], true)) return $f;
+        // Für Modelle mit Kartenformat 2 (X60 u. a.) steht das Format fest, außer der Block ist ein Rahmenbild (fsm)
+        $dev = json_decode($this->ReadAttributeString('Device'), true);
+        $model = is_array($dev) && isset($dev['model']) ? substr($dev['model'], strrpos($dev['model'], '.') + 1) : '';
+        if (empty($b['info']['fsm']) && in_array($model, SaugroboterKarte::MAP_V2_MODELS, true)) return 'low5';
+        $maps = $this->Maps();
+        $known = isset($maps[$b['mapId']]) ? array_keys($maps[$b['mapId']]['rooms']) : [];
+        return SaugroboterKarte::Detect($b, $known);
     }
 
     // Diagnose: listet alles, was der Roboter liefert (siid 1–40, piid 1–70)
@@ -783,7 +904,7 @@ class X60Ultra extends IPSModule
         if ($b === null) return;
         $maps = $this->Maps();
         $mapId = isset($maps[$b['mapId']]) ? $b['mapId'] : $this->ActiveFloor();
-        $seg = SaugroboterKarte::RobotRoom($b, SaugroboterKarte::Detect($b));
+        $seg = SaugroboterKarte::RobotRoom($b, $this->CellFormat($b));
         $this->SetVal('Room', $seg > 0 ? $this->RoomName($mapId * 100 + $seg) : 'unterwegs');
     }
 
@@ -819,12 +940,12 @@ class X60Ultra extends IPSModule
         $v = $this->MiotGet([[6, 3], [6, 8]]);
         if (isset($v['6.3'])) {
             $o = $v['6.3'];
-            if (is_string($o) && ($j = json_decode($o, true)) !== null) $o = $j;
+            if (is_string($o) && is_array($j = json_decode($o, true))) $o = $j;
             if (is_array($o)) $o = reset($o);
             if (is_string($o) && $o !== '') $out[] = explode(',', $o)[0];
         }
         if (isset($v['6.8'])) {
-            $l = json_decode($v['6.8'], true);
+            $l = $this->Json($v['6.8']);
             if (isset($l['object_name']) && ($p = strrpos($l['object_name'], '/')) !== false) {
                 $out[] = substr($l['object_name'], 0, $p + 1) . '0';
             }
@@ -839,7 +960,7 @@ class X60Ultra extends IPSModule
             $maps = $this->Maps();
             $rot = isset($maps[$mapId]) ? $maps[$mapId]['angle'] : 0;
         }
-        $png = SaugroboterKarte::Render($b, SaugroboterKarte::Detect($b), [
+        $png = SaugroboterKarte::Render($b, $this->CellFormat($b), [
             'rotate' => $rot, 'path' => $this->ReadPropertyBoolean('MapPath'),
             'selected' => array_map(function ($c) { return $c % 100; }, $this->SelectedRooms())
         ]);
@@ -1445,10 +1566,14 @@ class X60Ultra extends IPSModule
         if (!$this->ReadPropertyBoolean('Active') || !$this->ReadPropertyBoolean('Consent')) { $this->Note('Instanz ist deaktiviert.'); return false; }
         $key = 'SAUG_' . $this->InstanceID;
         $got = false;
-        for ($i = 0; $i < 40 && !$got; $i++) {
+        for ($i = 0; $i < 80 && !$got; $i++) {
             $got = IPS_SemaphoreEnter($key, 250);
         }
-        if (!$got) { $this->Note('Instanz beschäftigt – bitte erneut versuchen.'); return false; }
+        if (!$got) {
+            $this->Note('Instanz beschäftigt – bitte erneut versuchen.');
+            echo 'Die Instanz fragt gerade den Roboter ab – bitte in ein paar Sekunden erneut versuchen.';
+            return false;
+        }
         try {
             $this->dcLastError = '';
             return $fn();

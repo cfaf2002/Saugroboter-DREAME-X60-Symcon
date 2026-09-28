@@ -137,9 +137,19 @@
           "caption": "Liest die in der App gespeicherten Karten mit allen Räumen. Nach Umbau oder Neukartierung erneut einlesen."
         },
         {
-          "type": "Button",
-          "caption": "Karten & Räume einlesen",
-          "onClick": "SAUG_ReadMaps($id);"
+          "type": "RowLayout",
+          "items": [
+            {
+              "type": "Button",
+              "caption": "Karten & Räume einlesen",
+              "onClick": "SAUG_ReadMaps($id);"
+            },
+            {
+              "type": "Button",
+              "caption": "Kartendiagnose",
+              "onClick": "SAUG_MapDiagnosis($id);"
+            }
+          ]
         },
         {
           "type": "Label",
@@ -237,6 +247,29 @@
           "type": "CheckBox",
           "name": "MapPath",
           "caption": "Gefahrene Strecke einzeichnen"
+        },
+        {
+          "type": "Select",
+          "name": "MapFormat",
+          "caption": "Zellformat (nur ändern, wenn die Karte falsch aussieht)",
+          "options": [
+            {
+              "caption": "automatisch",
+              "value": "auto"
+            },
+            {
+              "caption": "Format A",
+              "value": "shift"
+            },
+            {
+              "caption": "Format B",
+              "value": "low6"
+            },
+            {
+              "caption": "Format C",
+              "value": "low5"
+            }
+          ]
         }
       ]
     },
