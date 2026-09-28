@@ -111,7 +111,8 @@ class X60Ultra extends IPSModule
         $this->RegisterAttributeString('LogRooms', '{}');   // Startzeit -> gereinigte Räume
         $this->RegisterAttributeInteger('PresenceWatched', 0);
         $this->RegisterAttributeString('MapMeta', '{}');    // Lage der Räume je Kartenbild (Beschriftung/Antippen)
-        $this->RegisterAttributeString('LastLog', '');      // Startzeit der Fahrt hinter "Letzte Reinigung"
+        $this->RegisterAttributeString('LastLog', '');
+        $this->RegisterAttributeString('LivePin', '');     // gemerktes Zertifikat des Live-Servers      // Startzeit der Fahrt hinter "Letzte Reinigung"
 
         // ---- Profile ----
         $this->Profile('SAUG.State', 1, 'Robot', '', '', SaugroboterTexte::States());
@@ -278,6 +279,7 @@ class X60Ultra extends IPSModule
                 'app' => $r['app'], 'alias' => $r['alias']];
         }
         $this->FormSetValues($form['elements'], 'Rooms', $rows);
+        $this->FormRoomPlan($form['elements']);
         // Versionszeile ganz unten
         $lib = json_decode(@file_get_contents(__DIR__ . '/../library.json'), true);
         if (is_array($lib)) {
@@ -286,6 +288,52 @@ class X60Ultra extends IPSModule
                 . substr(strval($lib['date']), 0, 4) . ' · © ' . $lib['author']];
         }
         return json_encode($form);
+    }
+
+    // Raumplan: je Raum eine Spalte zum Anhaken statt eines Textfelds
+    private function FormRoomPlan(&$elements)
+    {
+        $rooms = $this->RoomList();
+        if (!count($rooms)) return;                    // noch keine Räume eingelesen: Textfeld bleibt
+        $multi = count($this->Maps()) > 1;
+        foreach ($elements as &$e) {
+            if (isset($e['items'])) $this->FormRoomPlan($e['items']);
+            if (!isset($e['name']) || $e['name'] !== 'AutoPlan') continue;
+            $cols = [];
+            foreach ($e['columns'] as $c) if ($c['name'] !== 'rooms') $cols[] = $c;
+            foreach ($rooms as $r) {
+                $cols[] = ['caption' => $r['name'] . ($multi ? ' (' . $r['floor'] . ')' : ''), 'name' => 'r' . $r['code'],
+                    'width' => '110px', 'add' => false, 'edit' => ['type' => 'CheckBox']];
+            }
+            $cols[] = ['caption' => 'frei', 'name' => 'off', 'width' => '70px', 'add' => false, 'edit' => ['type' => 'CheckBox']];
+            $e['columns'] = $cols;
+            // Gespeicherte Zeilen (auch alte mit Textfeld) in Häkchen umsetzen
+            $vals = [];
+            $plan = json_decode($this->ReadPropertyString('AutoPlan'), true);
+            if (is_array($plan)) foreach ($plan as $row) {
+                $v = ['day' => isset($row['day']) ? intval($row['day']) : 0, 'off' => false];
+                $codes = $this->PlanCodes($row);
+                if ($codes === '-') $v['off'] = true;
+                foreach ($rooms as $r) $v['r' . $r['code']] = is_array($codes) && in_array($r['code'], $codes, true);
+                $vals[] = $v;
+            }
+            $e['values'] = $vals;
+        }
+        unset($e);
+    }
+
+    // Räume einer Raumplan-Zeile: '-' = frei, [] = alles, sonst Raumcodes
+    private function PlanCodes($row)
+    {
+        if (!empty($row['off'])) return '-';
+        $codes = [];
+        foreach ($row as $k => $v) {
+            if ($v === true && preg_match('/^r(\d+)$/', $k, $m)) $codes[] = intval($m[1]);
+        }
+        if (count($codes)) return $codes;
+        $text = isset($row['rooms']) ? trim(strval($row['rooms'])) : '';
+        if ($text === '-') return '-';
+        return $text === '' ? [] : $this->ResolveRooms($text);
     }
 
     private function FormSetValues(&$elements, $name, $values)
@@ -1396,9 +1444,15 @@ class X60Ultra extends IPSModule
         $floor = $this->ActiveFloor();
         $out = [];
         foreach ($items as $it) {
+            $hit = null;
+            // Ganzzahl aus einer Liste = Raumcode (Etage * 100 + Nummer), auch auf Etage 0
+            if (is_int($it)) {
+                foreach ($list as $r) if ($r['code'] == $it) { $hit = $r['code']; break; }
+                if ($hit !== null && !in_array($hit, $out, true)) $out[] = $hit;
+                continue;
+            }
             $it = trim(strval($it));
             if ($it === '') continue;
-            $hit = null;
             if (ctype_digit($it)) {
                 $n = intval($it);
                 foreach ($list as $r) {
@@ -1622,11 +1676,11 @@ class X60Ultra extends IPSModule
         if ($why !== '') return false;
 
         $rooms = $this->AutoRoomsToday();
-        $ok = $rooms === '' ? $this->CleanAll() : $this->CleanRooms($rooms);
+        $ok = !count($rooms) ? $this->CleanAll() : $this->CleanRooms($rooms);
         if ($ok) {
             $this->WriteAttributeInteger('LastAuto', time());
             $this->WriteAttributeInteger('JobByAuto', 1);
-            $what = $rooms === '' ? 'alles' : $rooms;
+            $what = !count($rooms) ? 'alles' : $this->RoomNames($rooms);
             $this->SetVal('AutoStatus', 'gestartet ' . date('H:i') . ' (' . $what . ')');
             if ($this->ReadPropertyBoolean('NotifyAuto')) $this->Push('Automatik', 'Niemand zu Hause – Reinigung gestartet: ' . $what . '.');
         } else {
@@ -1638,7 +1692,7 @@ class X60Ultra extends IPSModule
     }
 
     /**
-     * Räume für heute laut Raumplan: '' = alles, '-' = heute nicht, sonst Raumliste.
+     * Räume für heute laut Raumplan: [] = alles, '-' = heute nicht, sonst Raumcodes.
      * Genaueste Zeile gewinnt: bestimmter Tag vor Mo–Fr/Sa+So vor täglich. Ohne passende Zeile gilt "Räume".
      */
     private function AutoRoomsToday()
@@ -1649,9 +1703,16 @@ class X60Ultra extends IPSModule
         if (is_array($rows)) foreach ($rows as $r) {
             $d = isset($r['day']) ? intval($r['day']) : 0;
             $match = $d == $dow ? 3 : (($d == 8 && $dow <= 5) || ($d == 9 && $dow >= 6) ? 2 : ($d == 0 ? 1 : 0));
-            if ($match > $rank && $match > 0) { $rank = $match; $best = trim(isset($r['rooms']) ? strval($r['rooms']) : ''); }
+            if ($match > $rank && $match > 0) {
+                $rank = $match;
+                $best = $this->PlanCodes($r);
+            }
         }
-        return $best !== null ? $best : trim($this->ReadPropertyString('AutoRooms'));
+        if ($best === null) {
+            $text = trim($this->ReadPropertyString('AutoRooms'));
+            $best = $text === '-' ? '-' : ($text === '' ? [] : $this->ResolveRooms($text));
+        }
+        return $best;
     }
 
     // '' = darf starten, sonst der Grund

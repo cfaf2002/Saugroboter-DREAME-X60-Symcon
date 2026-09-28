@@ -96,7 +96,7 @@
         },
         {
           "type": "Label",
-          "caption": "Nutzt dieselbe Push-Verbindung (MQTT) wie die App. Dafür legt das Modul automatisch einen Client Socket als übergeordnete Instanz an und stellt ihn selbst ein. Fällt die Verbindung aus, fragt das Modul wie gewohnt regelmäßig ab."
+          "caption": "Nutzt dieselbe Push-Verbindung (MQTT) wie die App. Dafür legt das Modul automatisch einen Client Socket als übergeordnete Instanz an und stellt ihn selbst ein. Fällt die Verbindung aus, fragt das Modul wie gewohnt regelmäßig ab. Der Live-Server hat kein öffentlich prüfbares Zertifikat. Das Modul merkt sich deshalb sein Zertifikat beim ersten Kontakt und sendet die Anmeldung nur, wenn der Server später dasselbe vorzeigt."
         },
         {
           "type": "RowLayout",
@@ -137,6 +137,12 @@
               "type": "Button",
               "caption": "Live-Verbindung neu aufbauen",
               "onClick": "SAUG_LiveRestart($id);"
+            },
+            {
+              "type": "Button",
+              "caption": "Server-Zertifikat neu übernehmen",
+              "onClick": "SAUG_LiveTrustCertificate($id);",
+              "confirm": "Nur nötig, wenn Dreame das Zertifikat des Live-Servers erneuert hat. Wirklich neu übernehmen?"
             }
           ]
         }
@@ -383,7 +389,7 @@
         },
         {
           "type": "Label",
-          "caption": "Raumplan: je Tag andere Räume. Leer = alles, „-“ = an diesem Tag nicht reinigen. Ein bestimmter Tag geht vor Mo–Fr/Sa+So, das vor täglich."
+          "caption": "Raumplan: je Tag die Räume anhaken. Nichts angehakt = alles, „frei“ = an diesem Tag nicht reinigen. Ein bestimmter Tag geht vor Mo–Fr/Sa+So, das vor täglich. Räume einer Zeile müssen auf derselben Etage liegen."
         },
         {
           "type": "List",

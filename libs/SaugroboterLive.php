@@ -134,10 +134,11 @@ trait SaugroboterLive
         }
         list($host, $port) = explode(':', $dev['host'], 2);
         if ($this->CloudRegion() == 'kr') $host = str_replace('10100', '10000', $host);
-        // Zertifikat prüfen wie bei den übrigen Cloud-Zugriffen: sonst könnte ein Mitleser das Token abgreifen
-        $verify = $this->ReadPropertyBoolean('VerifyTLS');
+        // Der Live-Server hat kein öffentlich prüfbares Zertifikat (die App prüft es deshalb gar nicht).
+        // Der Socket verschlüsselt nur; geschützt wird das Token durch die Zertifikatsbindung in LiveConnect().
+        $this->SetBuffer('LiveHost', $host . ':' . intval($port));
         $this->LiveSocketConfig($pid, ['Host' => $host, 'Port' => intval($port), 'UseSSL' => true,
-            'VerifyPeer' => $verify, 'VerifyHost' => $verify, 'Open' => true]);
+            'VerifyPeer' => false, 'VerifyHost' => false, 'Open' => true]);
 
         if (IPS_GetInstance($pid)['InstanceStatus'] != 102) return false;   // Socket baut noch auf
         $state = $this->GetBuffer('MqttState');
@@ -159,6 +160,85 @@ trait SaugroboterLive
         $this->LiveReconnect('von Hand');
         $this->SetTimerInterval('LiveCheck', 3000);
         return true;
+    }
+
+    // ---- Zertifikatsbindung ---------------------------------------------------------
+    // Beim ersten Kontakt wird die Zertifikatskette des Live-Servers gemerkt (oberstes Zertifikat).
+    // Vor jeder Anmeldung muss der Server eine Kette vorzeigen, die zu diesem Zertifikat passt –
+    // sonst geht das Token nicht raus. Schützt vor Mitlesern, auch ohne öffentliche Zertifizierungsstelle.
+
+    private function LivePinOk($bindDomain)
+    {
+        if (!$this->ReadPropertyBoolean('VerifyTLS')) return true;      // bewusst abgeschaltet
+        $parts = explode(':', $bindDomain, 2);
+        $host = $parts[0];
+        if ($this->CloudRegion() == 'kr') $host = str_replace('10100', '10000', $host);
+        $port = isset($parts[1]) ? intval($parts[1]) : 0;
+
+        // Ergebnis kurz merken (Wiederverbinden in Folge)
+        if (intval($this->GetBuffer('PinOkAt')) > time() - 300 && $this->GetBuffer('PinOkHost') === $host) return true;
+
+        $chain = $this->LiveFetchChain($host, $port);
+        if (!is_array($chain) || !count($chain)) {
+            $this->SendDebug('Live', 'Zertifikat des Servers nicht lesbar – Anmeldung verschoben', 0);
+            return false;
+        }
+        $top = end($chain);
+        $fp = openssl_x509_fingerprint($top, 'sha256');
+        $info = openssl_x509_parse($top);
+        $name = is_array($info) && isset($info['name']) ? $info['name'] : '?';
+        $pin = json_decode($this->ReadAttributeString('LivePin'), true);
+
+        if (!is_array($pin) || empty($pin['fp'])) {
+            $this->WriteAttributeString('LivePin', json_encode(['fp' => $fp, 'name' => $name, 'at' => time()]));
+            $this->SendDebug('Live', 'Server-Zertifikat gemerkt: ' . $name . ' ' . $fp, 0);
+            $this->Note('Live-Verbindung: Zertifikat des Servers gemerkt.');
+        } elseif (!hash_equals($pin['fp'], $fp) || !self::ChainValid($chain)) {
+            $this->SetBuffer('LiveHold', strval(time() + 86400 * 365));
+            $this->LiveSocketOpen(false);
+            $this->SetVal('Live', false);
+            $this->SendDebug('Live', 'Zertifikat passt NICHT: ' . $name . ' ' . $fp . ' (gemerkt: ' . $pin['name'] . ' ' . $pin['fp'] . ')', 0);
+            $this->Note('Live-Verbindung gestoppt: Der Server zeigt ein anderes Zertifikat als bisher. '
+                . 'Wenn Dreame es erneuert hat: „Server-Zertifikat neu übernehmen“. Sonst könnte jemand die Verbindung umleiten.');
+            if ($this->ReadPropertyBoolean('NotifyError')) $this->Push('Saugroboter', 'Live-Verbindung gestoppt: unbekanntes Server-Zertifikat.');
+            return false;
+        }
+        $this->SetBuffer('PinOkAt', strval(time()));
+        $this->SetBuffer('PinOkHost', $host);
+        return true;
+    }
+
+    // Jedes Zertifikat der Kette muss vom nächsten unterschrieben sein
+    public static function ChainValid($chain)
+    {
+        $chain = array_values($chain);
+        for ($i = 0; $i < count($chain) - 1; $i++) {
+            $key = openssl_pkey_get_public($chain[$i + 1]);
+            if ($key === false || openssl_x509_verify($chain[$i], $key) !== 1) return false;
+        }
+        return true;
+    }
+
+    // Zertifikatskette des Servers holen (nur ansehen, keine Daten senden)
+    protected function LiveFetchChain($host, $port)
+    {
+        $ctx = stream_context_create(['ssl' => [
+            'capture_peer_cert_chain' => true, 'verify_peer' => false, 'verify_peer_name' => false,
+            'allow_self_signed' => true, 'SNI_enabled' => true, 'peer_name' => $host
+        ]]);
+        $fp = @stream_socket_client('ssl://' . $host . ':' . $port, $errno, $errstr, 8, STREAM_CLIENT_CONNECT, $ctx);
+        if ($fp === false) { $this->SendDebug('Live', 'Zertifikatsabruf: ' . $errstr, 0); return null; }
+        $p = stream_context_get_params($fp);
+        fclose($fp);
+        return isset($p['options']['ssl']['peer_certificate_chain']) ? $p['options']['ssl']['peer_certificate_chain'] : null;
+    }
+
+    // Button "Server-Zertifikat neu übernehmen"
+    public function LiveTrustCertificate()
+    {
+        $this->WriteAttributeString('LivePin', '');
+        $this->SetBuffer('PinOkAt', '0');
+        return $this->LiveRestart();
     }
 
     private function LiveSocketConfig($pid, $want)
@@ -197,6 +277,8 @@ trait SaugroboterLive
         if (!$this->CloudLogin()) { $this->SendDebug('Live', 'Keine Anmeldung: ' . $this->dcLastError, 0); return false; }
         $dev = $this->CloudDevice();
         if (!is_array($dev) || empty($dev['host'])) return false;
+        // Token erst senden, wenn der Server sein bekanntes Zertifikat vorzeigt
+        if (!$this->LivePinOk($dev['host'])) return false;
         $uid = $this->CloudToken('uid');
         $master = !empty($dev['master']) ? $dev['master'] : $uid;
         $rand = '';

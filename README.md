@@ -109,7 +109,7 @@ auch mit X40/X50 und verwandten Modellen.
 
 **Live-Verbindung:** ist ab Werk eingeschaltet (*Konto & Gerät → Live-Verbindung*). Das Modul legt dafür beim ersten
 Mal selbst einen **Client Socket** als übergeordnete Instanz an („Saugroboter Live (…)“) und stellt ihn ein – Server,
-Port und TLS kommen aus der Cloud, dort ist nichts von Hand einzutragen. Das Zertifikat wird geprüft wie bei allen anderen Cloud-Zugriffen. Die Variable **Live-Verbindung** zeigt, ob
+Port und TLS kommen aus der Cloud, dort ist nichts von Hand einzutragen. „Überprüfe Peer/Host“ bleiben im Socket aus – geprüft wird stattdessen das gemerkte Server-Zertifikat (siehe *Sicherheit*). Die Variable **Live-Verbindung** zeigt, ob
 gerade Echtzeitdaten ankommen. Wird die Instanz gelöscht, bleibt der Client Socket stehen und kann mit gelöscht werden.
 
 > **Tipp für neue Modelle:** *Gerät scannen (Diagnose)* listet alle Werte, die der Roboter liefert (auch im Debug-Fenster).
@@ -178,14 +178,16 @@ Gestartet wird, wenn **alle** Bedingungen erfüllt sind:
 
 Gereinigt wird alles oder die unter *Räume* eingetragenen Räume („Küche, Flur“) – mit den aktuellen Vorwahlen.
 
-**Raumplan:** Im Raumplan legst du je Tag andere Räume fest. Leer = alles, „-“ = an diesem Tag nicht reinigen.
-Ein bestimmter Tag geht vor *Mo–Fr* bzw. *Sa + So*, das vor *täglich*. Gibt der Plan für heute nichts vor, gilt *Räume*.
+**Raumplan:** Im Raumplan hat jeder Raum eine eigene Spalte zum Anhaken (sobald die Räume eingelesen sind).
+Nichts angehakt = alles, *frei* = an diesem Tag nicht reinigen. Ein bestimmter Tag geht vor *Mo–Fr* bzw. *Sa + So*,
+das vor *täglich*. Gibt der Plan für heute nichts vor, gilt *Räume*. Die Räume einer Zeile müssen auf derselben Etage liegen.
 
-| Tag | Räume |
-|---|---|
-| Mo–Fr | Küche |
-| Samstag | *(leer = alles)* |
-| Sonntag | - |
+| Tag | Wohnzimmer | Küche | Flur | frei |
+|---|---|---|---|---|
+| Mo–Fr |  | ✓ |  |  |
+| Samstag |  |  |  |  |
+| Sonntag |  |  |  | ✓ |
+
 Kommt jemand heim, fährt der Roboter auf Wunsch zurück zur Station. Die Variable **Automatik** zeigt jederzeit,
 worauf die Automatik gerade wartet.
 
@@ -226,6 +228,7 @@ SAUG_ReadMaps($id);                          // Karten neu einlesen
 SAUG_TestConnection($id);
 SAUG_ScanDevice($id);                        // Diagnose: alle Gerätewerte
 SAUG_LiveRestart($id);                       // Live-Verbindung neu aufbauen
+SAUG_LiveTrustCertificate($id);              // erneuertes Server-Zertifikat übernehmen
 ```
 
 Alle Befehle geben `true`/`false` zurück; der Grund eines Fehlschlags steht in **Letzte Meldung**.
@@ -261,9 +264,13 @@ Alle Befehle geben `true`/`false` zurück; der Grund eines Fehlschlags steht in 
 
 ## Sicherheit
 
-- **Verschlüsselt und geprüft**: Alle Verbindungen zur Cloud – auch die Live-Verbindung – laufen über TLS mit
-  Zertifikatsprüfung (*TLS-Zertifikate prüfen*, ab Werk an). Abschalten nur als letzten Ausweg: dann könnte jemand
-  im Netz das Zugangstoken mitlesen.
+- **Verschlüsselt und geprüft**: Die Cloud-Zugriffe laufen über TLS mit Zertifikatsprüfung (*TLS-Zertifikate
+  prüfen*, ab Werk an). Abschalten nur als letzten Ausweg: dann könnte jemand im Netz das Zugangstoken mitlesen.
+- **Live-Verbindung mit Zertifikatsbindung**: Der Live-Server von Dreame hat kein Zertifikat einer öffentlichen
+  Zertifizierungsstelle (die App prüft es deshalb gar nicht). Das Modul merkt sich beim ersten Kontakt die
+  Zertifikatskette des Servers und schickt die Anmeldung mit dem Token nur, wenn der Server später eine dazu
+  passende, korrekt unterschriebene Kette vorzeigt. Passt sie nicht, stoppt die Live-Verbindung mit einer Meldung
+  (und Push bei Störungen). Hat Dreame das Zertifikat erneuert, übernimmst du es mit *Server-Zertifikat neu übernehmen*.
 - **Passwort**: gespeichert wird nur der Hash, den die Cloud zur Anmeldung erwartet. Das schützt das Klartext-Passwort
   (wichtig, falls du es auch woanders nutzt) – der Hash selbst reicht aber zur Anmeldung bei Dreame. Einstellungen und
   Backups von Symcon deshalb wie Zugangsdaten behandeln. Am sichersten: ein eigenes, nur hier genutztes Passwort.
