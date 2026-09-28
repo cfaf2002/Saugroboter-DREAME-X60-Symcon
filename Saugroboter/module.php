@@ -640,15 +640,13 @@ class X60Ultra extends IPSModule
     private function StartRooms($floor, $codes, $over = [])
     {
         if (!$this->PrepareFloor($floor)) return false;
-        $this->ApplyPresets($over);
+        $cur = $this->ApplyPresets($over, true);
 
+        // Saugkraft und Feuchte gehen je Raum im Startbefehl mit; "wie am Gerät" = aktueller Gerätewert
         $fan = $this->Setting('Suction', $over);
         $water = $this->Setting('Wetness', $over);
-        if ($fan < 0 || $water < 1) {
-            $cur = $this->MiotGet([[4, 4], [4, 5]]);
-            if ($fan < 0) $fan = isset($cur['4.4']) ? intval($cur['4.4']) : 1;
-            if ($water < 1) $water = isset($cur['4.5']) ? intval($cur['4.5']) : 2;
-        }
+        if ($fan < 0) $fan = isset($cur['4.4']) ? intval($cur['4.4']) : 1;
+        if ($water < 1) $water = isset($cur['4.5']) ? intval($cur['4.5']) : 2;
         $passes = max(1, min(3, $this->Setting('Passes', $over)));
         $list = [];
         foreach ($codes as $c) {
@@ -682,7 +680,14 @@ class X60Ultra extends IPSModule
     }
 
     // Vorwahlen vor einem Start ans Gerät schicken
-    private function ApplyPresets($over = [])
+    /**
+     * Vorwahlen vor dem Start ans Gerät geben – mit so wenig Cloud-Aufrufen wie möglich:
+     * aktuelle Gerätewerte kommen aus dem Zwischenspeicher (Abfrage/Live), alle Änderungen
+     * gehen in einem einzigen set_properties. Bei Raumreinigung stecken Saugkraft und Feuchte
+     * ohnehin im Startbefehl und werden nicht extra gesetzt.
+     * Rückgabe: Gerätewerte ['4.4' => …, '4.5' => …] für den Startbefehl.
+     */
+    private function ApplyPresets($over = [], $rooms = false)
     {
         $fan = $this->Setting('Suction', $over);
         $wet = $this->Setting('Wetness', $over);
@@ -690,29 +695,63 @@ class X60Ultra extends IPSModule
         $cg = $this->Setting('CleanGenius', $over);
         $mode = $this->Setting('Mode', $over);
 
-        $need = [[4, 23], [4, 50]];
-        $cur = $this->MiotGet($need);
-        if ($cur === null) $cur = [];
+        $cur = $this->DevCfg();
+        $need = ($cg >= 0 || $fan >= 0 || $wet >= 1 || $route >= 1) && !isset($cur['4.50'])
+            || ($mode >= 0 && !isset($cur['4.23'])) || ($rooms && ($fan < 0 || $wet < 1) && !isset($cur['4.4'], $cur['4.5']));
+        if ($need) {
+            $got = $this->MiotGet([[4, 23], [4, 50], [4, 4], [4, 5]]);
+            if (is_array($got)) { $cur = $got + $cur; $this->DevCfg($got); }
+        }
 
+        $set = [];
         // CleanGenius bestimmt Saugkraft, Feuchte und Route selbst. Wer diese Werte vorwählt,
         // meint sie auch – dann CleanGenius für diese Fahrt ausschalten.
         $devCg = isset($cur['4.50']) ? $this->AutoSwitch($cur['4.50'], 'SmartHost') : null;
         if ($cg < 0 && $devCg !== null && $devCg > 0 && ($fan >= 0 || $wet >= 1 || $route >= 1)) $cg = 0;
-        if ($cg >= 0 && $devCg !== null && $cg != $devCg) {
-            $this->MiotSet([[4, 50, json_encode(['k' => 'SmartHost', 'v' => $cg])]]);
-        }
-
+        if ($cg >= 0 && $devCg !== null && $cg != $devCg) $set[] = [4, 50, json_encode(['k' => 'SmartHost', 'v' => $cg])];
         if ($mode >= 0 && isset($cur['4.23'])) {
             // Moduswert ist gepackt: unterste zwei Bits = Modus (Geräte mit Mopp-Anhebung)
             $bits = [0 => 2, 1 => 1, 2 => 0, 3 => 3][$mode];
             $raw = intval($cur['4.23']);
-            if (($raw & 3) != $bits) $this->MiotSet([[4, 23, ($raw & ~3) | $bits]]);
+            if (($raw & 3) != $bits) $set[] = [4, 23, ($raw & ~3) | $bits];
         }
-        $set = [];
-        if ($fan >= 0) $set[] = [4, 4, $fan];
-        if ($wet >= 1) $set[] = [4, 5, $wet];
-        if (count($set)) $this->MiotSet($set);
-        if ($route >= 1) $this->MiotSet([[4, 50, json_encode(['k' => 'CleanRoute', 'v' => $route])]]);
+        if (!$rooms) {
+            if ($fan >= 0 && (!isset($cur['4.4']) || intval($cur['4.4']) != $fan)) $set[] = [4, 4, $fan];
+            if ($wet >= 1 && (!isset($cur['4.5']) || intval($cur['4.5']) != $wet)) $set[] = [4, 5, $wet];
+        }
+        $devRoute = isset($cur['4.50']) ? $this->AutoSwitch($cur['4.50'], 'CleanRoute') : null;
+        $routeSet = $route >= 1 && $devRoute !== $route;
+        // zwei Einträge für 4/50 in einem Aufruf nimmt nicht jedes Gerät an – Route dann getrennt
+        if ($routeSet && !count(array_filter($set, function ($x) { return $x[1] == 50; }))) {
+            $set[] = [4, 50, json_encode(['k' => 'CleanRoute', 'v' => $route])];
+            $routeSet = false;
+        }
+        if (count($set)) {
+            $this->MiotSet($set);
+            $mem = [];
+            foreach ($set as $x) if ($x[1] != 50) $mem['4.' . $x[1]] = $x[2];
+            $this->DevCfg($mem + ['4.50' => null]);    // 4/50 ist ein Sammelwert – beim nächsten Mal frisch lesen
+        }
+        if ($routeSet) $this->MiotSet([[4, 50, json_encode(['k' => 'CleanRoute', 'v' => $route])]]);
+        return $cur;
+    }
+
+    // Zwischenspeicher der Geräte-Einstellungen (4/4, 4/5, 4/23, 4/50), höchstens 15 Minuten alt.
+    // Mit $put werden Werte ergänzt (null löscht einen Eintrag).
+    private function DevCfg($put = null)
+    {
+        $c = json_decode($this->GetBuffer('DevCfg'), true);
+        if (!is_array($c) || intval($c['_at'] ?? 0) < time() - 900) $c = [];
+        if ($put !== null) {
+            foreach ($put as $k => $v) {
+                if (!in_array($k, ['4.4', '4.5', '4.23', '4.50'], true)) continue;
+                if ($v === null) unset($c[$k]); else $c[$k] = $v;
+            }
+            $c['_at'] = time();
+            $this->SetBuffer('DevCfg', json_encode($c));
+        }
+        unset($c['_at']);
+        return $c;
     }
 
     // Wert aus der Sammel-Property 4/50 (Liste von {k, v})
@@ -1014,6 +1053,7 @@ class X60Ultra extends IPSModule
                 if ($slow || in_array($ident, ['Charging', 'Progress'], true)) $keys[] = [$x[1], $x[2]];
             }
             if ($slow) {
+                $keys[] = [4, 4]; $keys[] = [4, 5];     // Saugkraft/Feuchte am Gerät (für schnellen Start)
                 foreach (SaugroboterTexte::Consumables() as $c) if ($this->HasCap($caps, $c[1], $c[2])) $keys[] = [$c[1], $c[2]];
                 $this->SetBuffer('SlowAt', strval(time()));
             }
@@ -1052,6 +1092,7 @@ class X60Ultra extends IPSModule
             }
 
             $this->SetVal('DeviceSettings', $this->DescribeSettings($v));
+            if (!$this->dcFromCache) $this->DevCfg(array_intersect_key($v, array_flip(['4.4', '4.5', '4.23', '4.50'])));
 
             // Auftrag verfolgen
             $group = SaugroboterTexte::StateGroup($state);

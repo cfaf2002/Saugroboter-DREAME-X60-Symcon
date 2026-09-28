@@ -182,7 +182,7 @@
   function flash(t, kind, ms) {
     var f = document.getElementById('flash');
     if (!f) { f = document.createElement('div'); f.id = 'flash'; document.body.appendChild(f); }
-    f.innerHTML = (kind === 'ok' ? ic('check') : kind === 'err' ? ic('alert') : '') + '<span>' + esc(t) + '</span>';
+    f.innerHTML = (kind === 'ok' ? ic('check') : kind === 'err' ? ic('alert') : kind === 'wait' ? '<span class="spin"></span>' : '') + '<span>' + esc(t) + '</span>';
     f.className = 'show ' + (kind || '');
     clearTimeout(flash.t); flash.t = setTimeout(function () { f.className = kind || ''; }, ms || 1800);
   }
@@ -357,8 +357,8 @@
       if (a === 'close' && dl.classList.contains('dlg-back') && e.target !== dl) return;   // Klick im Dialog selbst schließt nicht
       var d = dialog;
       dialog = null;
-      if (a === 'go' && d.mode === 'sel') { act('TileCleanSel', JSON.stringify(d.vals), 'sel'); flash('Wird gesendet …'); }
-      else if (a === 'go') { act('TileClean', JSON.stringify(Object.assign({ code: d.code }, d.vals)), 'r' + d.code); flash('Wird gesendet …'); }
+      if (a === 'go' && d.mode === 'sel') { act('TileCleanSel', JSON.stringify(d.vals), 'sel'); flash('Wird gesendet …', 'wait', 30000); }
+      else if (a === 'go') { act('TileClean', JSON.stringify(Object.assign({ code: d.code }, d.vals)), 'r' + d.code); flash('Wird gesendet …', 'wait', 30000); }
       else if (a === 'save') {
         Object.keys(d.vals).forEach(function (k) { if (d.vals[k] !== view.presets[k].v) requestAction(k, d.vals[k]); });
         flash('Vorwahlen übernommen', 'ok'); render();
@@ -371,7 +371,7 @@
     if (t && t.dataset.view) { showLast = t.dataset.view === 'last'; render(); return; }
     if (!t || t.disabled) return;
     if (t.dataset.open) { openDialogFor(t.dataset.open); return; }
-    if (t.dataset.cmd) { act('Command', parseInt(t.dataset.cmd, 10), 'c' + t.dataset.cmd); if (['8', '9'].indexOf(t.dataset.cmd) < 0) flash('Wird gesendet …'); }
+    if (t.dataset.cmd) { act('Command', parseInt(t.dataset.cmd, 10), 'c' + t.dataset.cmd); if (['8', '9'].indexOf(t.dataset.cmd) < 0) flash('Wird gesendet …', 'wait', 30000); }
     else if (t.dataset.floor) act('Floor', parseInt(t.dataset.floor, 10));
     else if (t.dataset.room) act('TileRoom', parseInt(t.dataset.room, 10), 'r' + t.dataset.room);
     else if (t.dataset.auto) act('AutoAway', t.dataset.auto === '1');

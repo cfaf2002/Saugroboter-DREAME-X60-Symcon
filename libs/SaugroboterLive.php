@@ -505,6 +505,9 @@ trait SaugroboterLive
         if (isset($v['4.3'])) $this->SetVal('CleanArea', intval($v['4.3']));
         if (isset($v['4.63']) && @$this->GetIDForIdent('Progress')) $this->SetVal('Progress', intval($v['4.63']));
         foreach (['4.41', '27.1', '27.2', '27.3'] as $k) if (isset($v[$k])) $poll = true;
+        // Geräte-Einstellungen mitschreiben (spart beim nächsten Start das Nachfragen)
+        $cfg = array_intersect_key($v, array_flip(['4.4', '4.5', '4.23', '4.50']));
+        if (count($cfg)) $this->DevCfg($cfg);
 
         // Karte: 6/1 = Kartenbild (Voll- oder Differenzbild) direkt in der Nachricht,
         //        6/3 = Name einer neu abgelegten Kartendatei
