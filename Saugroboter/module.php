@@ -593,7 +593,7 @@ class X60Ultra extends IPSModule
     public function ReadMaps()
     {
         return $this->Locked(function () {
-            $ml = $this->MiotGet([[6, 8]]);
+            $ml = $this->MapKeys();
             $info = isset($ml['6.8']) ? $this->Json($ml['6.8']) : null;
             $list = null;
             if (!isset($info['object_name'])) {
@@ -696,7 +696,7 @@ class X60Ultra extends IPSModule
     private function MapReport()
     {
         $r = [];
-        $ml = $this->MiotGet([[6, 3], [6, 8]]);
+        $ml = $this->MapKeys();
         $r[] = 'Quelle: ' . ($ml === null ? 'keine Antwort (' . $this->dcLastError . ')' : ($this->dcFromCache ? 'Cloud-Speicher' : 'Roboter direkt'));
         foreach (['6.3', '6.8'] as $k) {
             $v = isset($ml[$k]) ? (is_scalar($ml[$k]) ? strval($ml[$k]) : json_encode($ml[$k])) : '–';
@@ -741,6 +741,19 @@ class X60Ultra extends IPSModule
             . "\n      Anhang: " . implode(', ', array_keys($b['info']))
             . "\n      Häufigste Bytes: " . implode(' ', $top)
             . "\n      Formate: " . json_encode($sc) . ' → ' . $this->CellFormat($b);
+    }
+
+    // Objektnamen der Karten (6/3 aktuelle Karte, 6/8 Kartenliste). Manche Modelle (X60) liefern sie
+    // nicht auf direkte Anfrage, sondern nur als gemeldeten Wert im Cloud-Speicher – dann dort nachsehen.
+    private function MapKeys()
+    {
+        $v = $this->MiotGet([[6, 3], [6, 8]]);
+        if ($v === null) $v = [];
+        if (!isset($v['6.3']) || !isset($v['6.8'])) {
+            $c = $this->CloudCachedProps([[6, 3], [6, 8]]);
+            if (is_array($c)) foreach ($c as $k => $x) if (!isset($v[$k])) $v[$k] = $x;
+        }
+        return $v;
     }
 
     private function Json($v)
@@ -948,7 +961,7 @@ class X60Ultra extends IPSModule
     private function LiveMapObjects()
     {
         $out = [];
-        $v = $this->MiotGet([[6, 3], [6, 8]]);
+        $v = $this->MapKeys();
         if (isset($v['6.3'])) {
             $o = $v['6.3'];
             if (is_string($o) && is_array($j = json_decode($o, true))) $o = $j;
