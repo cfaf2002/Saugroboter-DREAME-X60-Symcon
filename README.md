@@ -12,7 +12,7 @@ X60 Ultra, passend für die aktuellen Modelle der X-Serie (X40, X50, X60) und ve
 Die X-Modelle bieten keinen lokalen Zugang. Das Modul spricht deshalb wie die Dreamehome-App mit der
 Hersteller-Cloud – es läuft selbst aber vollständig in deiner Symcon-Instanz, ohne zusätzliche Dienste.
 
-**Version 1.0** · IP-Symcon ab 7.0 (Kachel ab 7.1)
+**Version 1.1** · IP-Symcon ab 7.0 (Kachel ab 7.1) · Version und Build stehen unten in der Instanzkonfiguration
 
 ---
 
@@ -56,11 +56,14 @@ Hersteller-Cloud – es läuft selbst aber vollständig in deiner Symcon-Instanz
 
 **Karte**
 - Kartenbild aller Etagen mit Räumen, Roboter (mit Blickrichtung), Station und gefahrener Strecke
+- **Raumnamen in der Karte**; **Raum antippen** fragt nach, wie gereinigt werden soll (Modus, Saugkraft, Wischfeuchte, Durchgänge, Route, CleanGenius) – nur für diese Fahrt
+- **Karte der letzten Reinigung** mit der gefahrenen Strecke (Umschalter in der Kachel)
 - Eigene Raumnamen aus der App, in der App ausgeblendete Räume werden erkannt
 - Verschlüsselte Karten neuerer Firmware werden entschlüsselt
 
 **Automationen**
 - Reinigen bei Abwesenheit über eine Anwesenheitsvariable
+- **Raumplan**: je Wochentag andere Räume (z. B. werktags nur die Küche, am Wochenende alles)
 - Push-Benachrichtigungen über Kachel-Visualisierung oder WebFront
 
 **Visualisierung**
@@ -135,7 +138,10 @@ In der **Kachel-Visualisierung** die Instanz direkt als Kachel hinzufügen. Die 
 
 - Zustand, Raum, Fortschritt und Akku
 - Störungen mit Kurzhilfe (Hinweise lassen sich quittieren)
-- die Karte mit Roboter, Station und Strecke
+- die Karte mit Roboter, Station, Strecke und Raumnamen – **Raum antippen** öffnet die Nachfrage *Wie soll gereinigt werden?*
+  mit *Jetzt reinigen* (während einer Fahrt: *Nach der laufenden Fahrt*), *Nur auswählen* und *Abbrechen*.
+  Die Einstellungen gelten nur für diese Fahrt, die Vorwahlen bleiben unverändert.
+- Umschalter *Aktuell* / *Letzte Reinigung*
 - passende Knöpfe je nach Lage (in Ruhe: *Alles reinigen*; während der Fahrt: *Pause*, *Stopp*, *Zur Station*)
 - Etagen- und Raumwahl – während einer Fahrt wird aus *Auswahl reinigen* automatisch *Danach reinigen*
 - Station mit Mopp waschen, Trocknen, Absaugen
@@ -156,8 +162,18 @@ Gestartet wird, wenn **alle** Bedingungen erfüllt sind:
 - die Uhrzeit liegt im Zeitfenster, der Wochentag ist freigegeben
 - die letzte Automatik-Fahrt liegt mindestens *n* Stunden zurück
 - der Akku hat mindestens *n* %, der Roboter ist erreichbar, frei und ohne Störung
+- der Raumplan sieht heute eine Reinigung vor
 
 Gereinigt wird alles oder die unter *Räume* eingetragenen Räume („Küche, Flur“) – mit den aktuellen Vorwahlen.
+
+**Raumplan:** Im Raumplan legst du je Tag andere Räume fest. Leer = alles, „-“ = an diesem Tag nicht reinigen.
+Ein bestimmter Tag geht vor *Mo–Fr* bzw. *Sa + So*, das vor *täglich*. Gibt der Plan für heute nichts vor, gilt *Räume*.
+
+| Tag | Räume |
+|---|---|
+| Mo–Fr | Küche |
+| Samstag | *(leer = alles)* |
+| Sonntag | - |
 Kommt jemand heim, fährt der Roboter auf Wunsch zurück zur Station. Die Variable **Automatik** zeigt jederzeit,
 worauf die Automatik gerade wartet.
 
@@ -183,6 +199,7 @@ SAUG_CleanAll($id);                          // alles (gewählte Etage)
 SAUG_CleanRooms($id, 'Küche, Flur');         // Räume per Name …
 SAUG_CleanRooms($id, '5,6');                 // … per Nummer auf der gewählten Etage
 SAUG_CleanRooms($id, [105, 106]);            // … oder per Code (Etage * 100 + Nummer)
+SAUG_CleanRoomsWith($id, 'Küche', '{"Mode":0,"Suction":3,"Passes":2}');  // eigene Einstellungen nur für diese Fahrt
 SAUG_CleanSelection($id);                    // alle angehakten Räume
 SAUG_QueueSelection($id);                    // Auswahl nach der laufenden Fahrt reinigen
 SAUG_ClearSelection($id);

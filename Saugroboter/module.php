@@ -80,6 +80,7 @@ class X60Ultra extends IPSModule
         $this->RegisterPropertyInteger('AutoBattery', 60);
         $this->RegisterPropertyString('AutoRooms', '');
         $this->RegisterPropertyBoolean('AutoReturn', true);
+        $this->RegisterPropertyString('AutoPlan', '[]');         // [{day, rooms}] – Räume je Wochentag
         // Benachrichtigungen
         $this->RegisterPropertyInteger('NotifyTarget', 0);
         $this->RegisterPropertyBoolean('NotifyDone', true);
@@ -95,6 +96,7 @@ class X60Ultra extends IPSModule
         $this->RegisterAttributeInteger('Floor', -1);       // gewählte Karte
         $this->RegisterAttributeInteger('DeviceFloor', -1); // Karte, auf der das Gerät zuletzt stand
         $this->RegisterAttributeString('Queue', '[]');
+        $this->RegisterAttributeString('QueueSettings', '{}'); // Einstellungen für die vorgemerkten Räume
         $this->RegisterAttributeInteger('Job', 0);          // 1 = Auftrag läuft
         $this->RegisterAttributeString('JobInfo', '{}');    // Werte des laufenden Auftrags
         $this->RegisterAttributeInteger('JobByAuto', 0);
@@ -104,6 +106,8 @@ class X60Ultra extends IPSModule
         $this->RegisterAttributeString('LastMaintenance', '[]');
         $this->RegisterAttributeString('LogRooms', '{}');   // Startzeit -> gereinigte Räume
         $this->RegisterAttributeInteger('PresenceWatched', 0);
+        $this->RegisterAttributeString('MapMeta', '{}');    // Lage der Räume je Kartenbild (Beschriftung/Antippen)
+        $this->RegisterAttributeString('LastLog', '');      // Startzeit der Fahrt hinter "Letzte Reinigung"
 
         // ---- Profile ----
         $this->Profile('SAUG.State', 1, 'Robot', '', '', SaugroboterTexte::States());
@@ -258,6 +262,13 @@ class X60Ultra extends IPSModule
                 'app' => $r['app'], 'alias' => $r['alias']];
         }
         $this->FormSetValues($form['elements'], 'Rooms', $rows);
+        // Versionszeile ganz unten
+        $lib = json_decode(@file_get_contents(__DIR__ . '/../library.json'), true);
+        if (is_array($lib)) {
+            $form['actions'][] = ['type' => 'Label', 'italic' => true, 'caption' => $lib['name'] . ' · Version ' . $lib['version']
+                . ' · Build ' . $lib['build'] . ' · ' . substr(strval($lib['date']), 6, 2) . '.' . substr(strval($lib['date']), 4, 2) . '.'
+                . substr(strval($lib['date']), 0, 4) . ' · © ' . $lib['author']];
+        }
         return json_encode($form);
     }
 
@@ -296,6 +307,15 @@ class X60Ultra extends IPSModule
                 return;
             case 'TileReset':
                 $this->ResetConsumable(strval($Value));
+                return;
+            case 'TileClean':
+                // Kachel: Raum per Antippen mit Einstellungen aus der Nachfrage reinigen
+                $d = $this->Json($Value);
+                if (!is_array($d) || empty($d['code'])) return;
+                $code = intval($d['code']);
+                unset($d['code']);
+                $this->CleanRoomsWith([$code], json_encode($d));
+                $this->RefreshViews();
                 return;
             case 'TileRoom':
                 // Kachel: Raum in der Auswahl umschalten (Wert = Raumcode)
@@ -381,13 +401,41 @@ class X60Ultra extends IPSModule
      */
     public function CleanRooms($Rooms)
     {
+        return $this->CleanRoomsWith($Rooms, '{}');
+    }
+
+    /**
+     * Wie CleanRooms, aber mit eigenen Einstellungen nur für diese Fahrt (die Vorwahlen bleiben unverändert).
+     * $Settings: JSON, z. B. '{"Mode":1,"Suction":2,"Wetness":3,"Route":2,"Passes":2,"CleanGenius":0}'
+     * – fehlende Werte kommen aus den Vorwahlen, -1 = wie am Gerät.
+     * Läuft gerade eine Reinigung, werden die Räume samt Einstellungen für danach vorgemerkt.
+     */
+    public function CleanRoomsWith($Rooms, $Settings)
+    {
+        $over = $this->Json($Settings);
+        if (!is_array($over)) $over = [];
         $codes = $this->ResolveRooms($Rooms);
         if (count($codes) == 0) { $this->Note('Keine passenden Räume gefunden.'); return false; }
         $floors = array_unique(array_map(function ($c) { return intdiv($c, 100); }, $codes));
         if (count($floors) > 1) { $this->Note('Ein Durchgang kann nur Räume einer Etage reinigen.'); return false; }
-        return $this->Locked(function () use ($codes, $floors) {
-            return $this->StartRooms(reset($floors), $codes);
+        if ($this->ReadAttributeInteger('Job') == 1 && count($over)) {
+            $q = $this->ReadQueue();
+            foreach ($codes as $c) if (!in_array($c, $q, true)) $q[] = $c;
+            $this->WriteAttributeString('QueueSettings', json_encode($over));
+            $this->WriteQueue($q);
+            $this->Note('Vorgemerkt: ' . $this->RoomNames($q));
+            $this->RefreshViews();
+            return true;
+        }
+        return $this->Locked(function () use ($codes, $floors, $over) {
+            return $this->StartRooms(reset($floors), $codes, $over);
         });
+    }
+
+    // Einstellung für diese Fahrt: Übersteuerung, sonst Vorwahl
+    private function Setting($name, $over)
+    {
+        return is_array($over) && isset($over[$name]) ? intval($over[$name]) : $this->GetValue($name);
     }
 
     public function CleanSelection()
@@ -449,19 +497,19 @@ class X60Ultra extends IPSModule
         return false;
     }
 
-    private function StartRooms($floor, $codes)
+    private function StartRooms($floor, $codes, $over = [])
     {
         if (!$this->PrepareFloor($floor)) return false;
-        $this->ApplyPresets();
+        $this->ApplyPresets($over);
 
-        $fan = $this->GetValue('Suction');
-        $water = $this->GetValue('Wetness');
+        $fan = $this->Setting('Suction', $over);
+        $water = $this->Setting('Wetness', $over);
         if ($fan < 0 || $water < 1) {
             $cur = $this->MiotGet([[4, 4], [4, 5]]);
             if ($fan < 0) $fan = isset($cur['4.4']) ? intval($cur['4.4']) : 1;
             if ($water < 1) $water = isset($cur['4.5']) ? intval($cur['4.5']) : 2;
         }
-        $passes = max(1, min(3, $this->GetValue('Passes')));
+        $passes = max(1, min(3, $this->Setting('Passes', $over)));
         $list = [];
         foreach ($codes as $c) {
             // letztes Feld = Reihenfolge; aktuelle Modelle erwarten hier 1 (Reihenfolge aus der App)
@@ -494,13 +542,13 @@ class X60Ultra extends IPSModule
     }
 
     // Vorwahlen vor einem Start ans Gerät schicken
-    private function ApplyPresets()
+    private function ApplyPresets($over = [])
     {
-        $fan = $this->GetValue('Suction');
-        $wet = $this->GetValue('Wetness');
-        $route = $this->GetValue('Route');
-        $cg = $this->GetValue('CleanGenius');
-        $mode = $this->GetValue('Mode');
+        $fan = $this->Setting('Suction', $over);
+        $wet = $this->Setting('Wetness', $over);
+        $route = $this->Setting('Route', $over);
+        $cg = $this->Setting('CleanGenius', $over);
+        $mode = $this->Setting('Mode', $over);
 
         $need = [[4, 23], [4, 50]];
         $cur = $this->MiotGet($need);
@@ -989,36 +1037,59 @@ class X60Ultra extends IPSModule
             $maps = $this->Maps();
             $rot = isset($maps[$mapId]) ? $maps[$mapId]['angle'] : 0;
         }
-        $png = SaugroboterKarte::Render($b, $this->CellFormat($b), [
-            'rotate' => $rot, 'path' => $this->ReadPropertyBoolean('MapPath'),
+        $format = $this->CellFormat($b);
+        $png = SaugroboterKarte::Render($b, $format, [
+            'rotate' => $rot, 'path' => $this->ReadPropertyBoolean('MapPath') || $ident == 'MapLast',
             'selected' => array_map(function ($c) { return $c % 100; }, $this->SelectedRooms())
         ]);
         if ($png === null) return;
+        $names = ['Map' => 'Karte', 'MapLast' => 'Karte letzte Reinigung'];
         $mid = @IPS_GetObjectIDByIdent($ident, $this->InstanceID);
         if (!$mid) {
             $mid = IPS_CreateMedia(1);
             IPS_SetParent($mid, $this->InstanceID);
             IPS_SetIdent($mid, $ident);
-            IPS_SetName($mid, $ident == 'Map' ? 'Karte' : ('Karte ' . $mapId));
-            IPS_SetPosition($mid, 2);
+            IPS_SetName($mid, isset($names[$ident]) ? $names[$ident] : ('Karte ' . $mapId));
+            IPS_SetPosition($mid, $ident == 'MapLast' ? 3 : 2);
             IPS_SetHidden($mid, $ident != 'Map');
             IPS_SetMediaFile($mid, 'media/Saugroboter_' . $this->InstanceID . '_' . $ident . '.png', false);
         }
         IPS_SetMediaContent($mid, base64_encode($png));
-        $this->SetBuffer('MapStamp', strval(microtime(true)));
+
+        $meta = json_decode($this->ReadAttributeString('MapMeta'), true);
+        if (!is_array($meta)) $meta = [];
+        $layout = SaugroboterKarte::Layout($b, $format, $rot);
+        if ($layout !== null) {
+            if (!isset($this->Maps()[$layout['mapId']])) $layout['mapId'] = $this->ActiveFloor();
+            $meta[$ident] = $layout;
+            $this->WriteAttributeString('MapMeta', json_encode($meta));
+        }
+        $this->SetBuffer($ident == 'MapLast' ? 'LastStamp' : 'MapStamp', strval(microtime(true)));
     }
 
     // Bild für die Anzeige: Live-Karte, sonst das Bild der gewählten Etage
-    private function MapDataUri()
+    // Welches Bild die Anzeige zeigt: Live-Karte, sonst das Bild der gewählten Etage
+    private function MapIdent()
     {
         foreach (['Map', 'MapFloor' . $this->ActiveFloor()] as $ident) {
-            $mid = @IPS_GetObjectIDByIdent($ident, $this->InstanceID);
-            if ($mid) {
-                $c = @IPS_GetMediaContent($mid);
-                if ($c) return 'data:image/png;base64,' . $c;
-            }
+            if (@IPS_GetObjectIDByIdent($ident, $this->InstanceID)) return $ident;
         }
         return '';
+    }
+
+    private function MapDataUri($ident = null)
+    {
+        if ($ident === null) $ident = $this->MapIdent();
+        if ($ident === '') return '';
+        $mid = @IPS_GetObjectIDByIdent($ident, $this->InstanceID);
+        $c = $mid ? @IPS_GetMediaContent($mid) : '';
+        return $c ? 'data:image/png;base64,' . $c : '';
+    }
+
+    private function MapMeta($ident)
+    {
+        $meta = json_decode($this->ReadAttributeString('MapMeta'), true);
+        return is_array($meta) && isset($meta[$ident]) ? $meta[$ident] : null;
     }
 
     // ---- Verlauf ----
@@ -1032,6 +1103,7 @@ class X60Ultra extends IPSModule
         $lines = [];
         $seen = [];
         $downloads = 0;
+        $newest = null;   // jüngste Fahrt mit Reinigungsprotokoll
         foreach ($list as $item) {
             $raw = isset($item['history']) ? $item['history'] : (isset($item['value']) ? $item['value'] : '');
             $data = json_decode($raw, true);
@@ -1043,6 +1115,7 @@ class X60Ultra extends IPSModule
             if (empty($f[8]) || isset($seen[$f[8]])) continue;
             $seen[$f[8]] = true;
             $start = intval($f[8]);
+            if ($newest === null && !empty($f[9])) $newest = ['start' => $start, 'log' => $f[9]];
 
             // gereinigte Räume aus dem Reinigungsprotokoll (je Fahrt einmal laden)
             $key = strval($start);
@@ -1078,6 +1151,18 @@ class X60Ultra extends IPSModule
             if (count($lines) >= $n) break;
         }
         if (count($cache) > 60) { krsort($cache); $cache = array_slice($cache, 0, 60, true); }
+
+        // Karte der letzten Fahrt (einmal je Fahrt laden und zeichnen)
+        if ($newest !== null && $this->ReadAttributeString('LastLog') !== strval($newest['start'])) {
+            $obj = strval($newest['log']);
+            $txt = $this->CloudFile(explode(',', $obj)[0]);
+            $k = strpos($obj, ',') !== false ? explode(',', $obj)[1] : null;
+            $b = $txt === null ? null : SaugroboterKarte::Decode($k !== null && strpos($txt, ',') === false ? $txt . ',' . $k : $txt, self::MAP_IV);
+            if ($b !== null) {
+                $this->StoreMapImage($b, $b['mapId'], 'MapLast');
+                $this->WriteAttributeString('LastLog', strval($newest['start']));
+            }
+        }
         $this->WriteAttributeString('LogRooms', json_encode($cache));
         $this->SetVal('LastRun', count($lines) ? $lines[0] : '');
         $this->SetVal('History', implode("\n", $lines));
@@ -1186,6 +1271,14 @@ class X60Ultra extends IPSModule
                 ];
             }
         }
+        return $out;
+    }
+
+    // Raumcode -> Anzeigename (alle verwendeten Räume, für die Kartenbeschriftung)
+    private function RoomNameMap()
+    {
+        $out = [];
+        foreach ($this->RoomList() as $r) $out[strval($r['code'])] = $r['name'];
         return $out;
     }
 
@@ -1308,8 +1401,10 @@ class X60Ultra extends IPSModule
         $floor = intdiv($q[0], 100);
         $now = array_values(array_filter($q, function ($c) use ($floor) { return intdiv($c, 100) == $floor; }));
         $rest = array_values(array_diff($q, $now));
+        $over = $this->Json($this->ReadAttributeString('QueueSettings'));
+        $this->WriteAttributeString('QueueSettings', '{}');
         $this->WriteQueue($rest);
-        $this->StartRooms($floor, $now);
+        $this->StartRooms($floor, $now, is_array($over) ? $over : []);
     }
 
     // =========================================================================
@@ -1433,19 +1528,37 @@ class X60Ultra extends IPSModule
         $this->SetVal('AutoStatus', $why === '' ? 'startet …' : $why);
         if ($why !== '') return false;
 
-        $rooms = trim($this->ReadPropertyString('AutoRooms'));
+        $rooms = $this->AutoRoomsToday();
         $ok = $rooms === '' ? $this->CleanAll() : $this->CleanRooms($rooms);
         if ($ok) {
             $this->WriteAttributeInteger('LastAuto', time());
             $this->WriteAttributeInteger('JobByAuto', 1);
-            $this->SetVal('AutoStatus', 'gestartet ' . date('H:i'));
-            if ($this->ReadPropertyBoolean('NotifyAuto')) $this->Push('Automatik', 'Niemand zu Hause – Reinigung gestartet.');
+            $what = $rooms === '' ? 'alles' : $rooms;
+            $this->SetVal('AutoStatus', 'gestartet ' . date('H:i') . ' (' . $what . ')');
+            if ($this->ReadPropertyBoolean('NotifyAuto')) $this->Push('Automatik', 'Niemand zu Hause – Reinigung gestartet: ' . $what . '.');
         } else {
             $this->SetBuffer('AutoRetry', strval(time() + 1800));
             $this->SetVal('AutoStatus', 'Start fehlgeschlagen, neuer Versuch ' . date('H:i', time() + 1800));
         }
         $this->RefreshViews();
         return $ok;
+    }
+
+    /**
+     * Räume für heute laut Raumplan: '' = alles, '-' = heute nicht, sonst Raumliste.
+     * Genaueste Zeile gewinnt: bestimmter Tag vor Mo–Fr/Sa+So vor täglich. Ohne passende Zeile gilt "Räume".
+     */
+    private function AutoRoomsToday()
+    {
+        $rows = json_decode($this->ReadPropertyString('AutoPlan'), true);
+        $dow = intval(date('N'));
+        $best = null; $rank = -1;
+        if (is_array($rows)) foreach ($rows as $r) {
+            $d = isset($r['day']) ? intval($r['day']) : 0;
+            $match = $d == $dow ? 3 : (($d == 8 && $dow <= 5) || ($d == 9 && $dow >= 6) ? 2 : ($d == 0 ? 1 : 0));
+            if ($match > $rank && $match > 0) { $rank = $match; $best = trim(isset($r['rooms']) ? strval($r['rooms']) : ''); }
+        }
+        return $best !== null ? $best : trim($this->ReadPropertyString('AutoRooms'));
     }
 
     // '' = darf starten, sonst der Grund
@@ -1470,6 +1583,7 @@ class X60Ultra extends IPSModule
         if ($from != $to && !($from < $to ? ($h >= $from && $h < $to) : ($h >= $from || $h < $to))) {
             return 'außerhalb ' . $from . '–' . $to . ' Uhr';
         }
+        if ($this->AutoRoomsToday() === '-') return 'heute laut Raumplan frei';
         if (!$this->GetValue('Online')) return 'Roboter nicht erreichbar';
         if ($this->ReadAttributeInteger('Job') == 1) return 'Roboter ist unterwegs';
         if ($this->GetValue('Battery') < $this->ReadPropertyInteger('AutoBattery')) {
@@ -1490,7 +1604,8 @@ class X60Ultra extends IPSModule
     {
         $html = file_get_contents(__DIR__ . '/module.html');
         $html = str_replace('/*STYLE*/', file_get_contents(__DIR__ . '/tile.css'), $html);
-        return str_replace('"__INIT__"', json_encode(['view' => $this->ViewModel(), 'map' => $this->MapDataUri()]), $html);
+        return str_replace('"__INIT__"', json_encode(['view' => $this->ViewModel(), 'map' => $this->MapDataUri(),
+            'mapLast' => $this->MapDataUri('MapLast')]), $html);
     }
 
     // Kachel und HTML-Box auffrischen. Das Kartenbild geht nur nach einer Änderung mit.
@@ -1500,6 +1615,11 @@ class X60Ultra extends IPSModule
         $vm = $this->ViewModel();
         if (method_exists($this, 'UpdateVisualizationValue')) {
             $msg = ['view' => $vm];
+            $last = $this->GetBuffer('LastStamp');
+            if ($last !== $this->GetBuffer('LastSent')) {
+                $msg['mapLast'] = $this->MapDataUri('MapLast');
+                $this->SetBuffer('LastSent', $last);
+            }
             $stamp = $this->GetBuffer('MapStamp');
             if ($stamp !== $this->GetBuffer('MapSent')) {
                 $msg['map'] = $this->MapDataUri();
@@ -1562,7 +1682,11 @@ class X60Ultra extends IPSModule
             'history' => array_values(array_filter(explode("\n", $this->GetValue('History')))),
             'auto' => $this->GetValue('AutoAway'), 'autoStatus' => $this->GetValue('AutoStatus'),
             'autoConfigured' => $this->Home() !== null,
-            'message' => $this->GetValue('Message')
+            'message' => $this->GetValue('Message'),
+            'mapMeta' => $this->MapMeta($this->MapIdent()),
+            'lastMeta' => $this->MapMeta('MapLast'),
+            'lastRun' => $this->GetValue('LastRun'),
+            'roomNames' => $this->RoomNameMap()
         ];
     }
 

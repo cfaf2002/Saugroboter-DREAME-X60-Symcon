@@ -227,12 +227,10 @@ class SaugroboterKarte
      * Zeichnet den Block als PNG. $opt: rotate (0/90/180/270), highlight (Raum), size (px),
      * selected (Liste Räume), path (bool). Rückgabe PNG-Binärdaten oder null.
      */
-    public static function Render($b, $format, $opt = [])
+    // Sichtbarer Ausschnitt (Rasterzellen) mit kleinem Rand: [x0, y0, x1, y1]; x1 < 0 = leer
+    public static function Bounds($b, $format)
     {
-        if (!function_exists('imagecreatetruecolor') || $b['w'] <= 0 || $b['h'] <= 0) return null;
         $w = $b['w']; $h = $b['h']; $cells = $b['cells'];
-
-        // belegten Bereich bestimmen
         $x0 = $w; $y0 = $h; $x1 = -1; $y1 = -1;
         for ($y = 0; $y < $h; $y++) {
             $row = $y * $w;
@@ -244,8 +242,68 @@ class SaugroboterKarte
                 if ($y > $y1) $y1 = $y;
             }
         }
+        if ($x1 < 0) return [0, 0, -1, -1];
+        return [max(0, $x0 - 3), max(0, $y0 - 3), min($w - 1, $x1 + 3), min($h - 1, $y1 + 3)];
+    }
+
+    /**
+     * Lage der Räume im gezeichneten Bild – für Beschriftung und Antippen in der Kachel.
+     * Koordinaten als Anteil (0..1) des fertigen, ggf. gedrehten Bildes.
+     * grid: grobes Raster des ungedrehten Bildes, je Zeichen ein Raum (chr(48 + Nr.)) oder '.'.
+     */
+    public static function Layout($b, $format, $rotate = 0)
+    {
+        list($x0, $y0, $x1, $y1) = self::Bounds($b, $format);
         if ($x1 < 0) return null;
-        $x0 = max(0, $x0 - 3); $y0 = max(0, $y0 - 3); $x1 = min($w - 1, $x1 + 3); $y1 = min($h - 1, $y1 + 3);
+        $cw = $x1 - $x0 + 1; $ch = $y1 - $y0 + 1;
+        $w = $b['w']; $cells = $b['cells'];
+        $rot = ($rotate % 360 + 360) % 360;
+        $sum = [];
+        for ($y = $y0; $y <= $y1; $y++) {
+            for ($x = $x0; $x <= $x1; $x++) {
+                $c = self::Cell(ord($cells[$y * $w + $x]), $format, true);
+                if ($c <= 0 || $c >= 250) continue;
+                if (!isset($sum[$c])) $sum[$c] = [0, 0, 0];
+                $sum[$c][0] += $x; $sum[$c][1] += $y; $sum[$c][2]++;
+            }
+        }
+        $rooms = [];
+        foreach ($sum as $c => $v) {
+            if ($v[2] < 20) continue;   // Krümel nicht beschriften
+            // Bild ist vertikal gespiegelt (Kartenachse nach oben)
+            $fx = (($v[0] / $v[2]) - $x0 + 0.5) / $cw;
+            $fy = ($y1 - ($v[1] / $v[2]) + 0.5) / $ch;
+            $rooms[$c] = self::Rotate($fx, $fy, $rot);
+        }
+        $gw = min(120, $cw); $gh = max(1, intval(round($ch * $gw / $cw)));
+        $grid = '';
+        for ($gy = 0; $gy < $gh; $gy++) {
+            for ($gx = 0; $gx < $gw; $gx++) {
+                $x = $x0 + intval(($gx + 0.5) * $cw / $gw);
+                $y = $y1 - intval(($gy + 0.5) * $ch / $gh);
+                $c = self::Cell(ord($cells[$y * $w + $x]), $format, true);
+                $grid .= ($c > 0 && $c < 63) ? chr(48 + $c) : '.';
+            }
+        }
+        return ['mapId' => $b['mapId'], 'rot' => $rot, 'rooms' => $rooms, 'gw' => $gw, 'gh' => $gh, 'grid' => $grid];
+    }
+
+    // Anteilskoordinaten im Uhrzeigersinn drehen (passend zu Render)
+    public static function Rotate($fx, $fy, $rot)
+    {
+        if ($rot == 90) return [round(1 - $fy, 4), round($fx, 4)];
+        if ($rot == 180) return [round(1 - $fx, 4), round(1 - $fy, 4)];
+        if ($rot == 270) return [round($fy, 4), round(1 - $fx, 4)];
+        return [round($fx, 4), round($fy, 4)];
+    }
+
+    public static function Render($b, $format, $opt = [])
+    {
+        if (!function_exists('imagecreatetruecolor') || $b['w'] <= 0 || $b['h'] <= 0) return null;
+        $w = $b['w']; $h = $b['h']; $cells = $b['cells'];
+
+        list($x0, $y0, $x1, $y1) = self::Bounds($b, $format);
+        if ($x1 < 0) return null;
         $cw = $x1 - $x0 + 1; $ch = $y1 - $y0 + 1;
         $size = isset($opt['size']) ? intval($opt['size']) : 560;
         $k = max(1, min(10, intval(floor($size / max($cw, $ch)))));

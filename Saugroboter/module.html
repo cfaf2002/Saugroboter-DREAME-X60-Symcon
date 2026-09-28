@@ -5,7 +5,7 @@
 <div id="app"></div>
 <script>
 (function () {
-  var view = null, map = '', busy = {}, open = { settings: false, wear: false, hist: false };
+  var view = null, map = '', mapLast = '', showLast = false, dialog = null, busy = {}, open = { settings: false, wear: false, hist: false };
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -25,6 +25,76 @@
     return '<div class="bat" title="Akku"><svg width="44" height="44"><circle cx="22" cy="22" r="' + r + '" fill="none" stroke="var(--line)" stroke-width="4"/>' +
       '<circle cx="22" cy="22" r="' + r + '" fill="none" stroke="' + col + '" stroke-width="4" stroke-linecap="round" stroke-dasharray="' +
       (c * p) + ' ' + c + '"/></svg><b>' + (charging ? '⚡' : '') + v + '</b></div>';
+  }
+
+  // Karte mit Raumnamen; Antippen eines Raums wählt ihn aus (nur Live-Ansicht)
+  function mapBlock(v) {
+    var last = showLast && mapLast;
+    var src = last ? mapLast : map, meta = last ? v.lastMeta : v.mapMeta;
+    if (!src) return '<div class="map"><div class="empty">Keine Karte – in der Instanz „Karten &amp; Räume einlesen“.</div></div>';
+    var sel = {};
+    v.rooms.forEach(function (r) { sel[r.code] = r.sel; });
+    var h = '<div class="map"><div class="mapwrap' + (last ? '' : ' pick') + '"><img id="mapimg" src="' + src + '" alt="Karte">';
+    if (meta && meta.rooms) {
+      Object.keys(meta.rooms).forEach(function (seg) {
+        var code = meta.mapId * 100 + parseInt(seg, 10), name = v.roomNames[code];
+        if (!name) return;
+        var p = meta.rooms[seg];
+        h += '<span class="lbl' + (!last && sel[code] ? ' on' : '') + '" style="left:' + (p[0] * 100) + '%;top:' + (p[1] * 100) + '%">' + esc(name) + '</span>';
+      });
+    }
+    h += '</div>';
+    if (mapLast) {
+      h += '<div class="maptabs"><button class="chip' + (last ? '' : ' on') + '" data-view="live">Aktuell</button>' +
+        '<button class="chip' + (last ? ' on' : '') + '" data-view="last">Letzte Reinigung</button></div>';
+    }
+    if (last && v.lastRun) h += '<div class="small mute" style="padding:0 10px 8px">' + esc(v.lastRun) + '</div>';
+    else if (v.rooms.length) h += '<div class="small mute" style="padding:0 10px 8px">Raum antippen, um ihn zu reinigen</div>';
+    return h + '</div>';
+  }
+
+  // Tippposition -> Raumcode (Drehung der Karte rückgängig machen, dann im Raster nachsehen)
+  function roomAt(ev, meta) {
+    var img = document.getElementById('mapimg');
+    if (!img || !meta || !meta.grid) return 0;
+    var r = img.getBoundingClientRect();
+    var u = (ev.clientX - r.left) / r.width, w = (ev.clientY - r.top) / r.height, fx = u, fy = w;
+    if (meta.rot === 90) { fx = w; fy = 1 - u; }
+    else if (meta.rot === 180) { fx = 1 - u; fy = 1 - w; }
+    else if (meta.rot === 270) { fx = 1 - w; fy = u; }
+    if (fx < 0 || fy < 0 || fx >= 1 || fy >= 1) return 0;
+    var ch = meta.grid.charAt(Math.floor(fy * meta.gh) * meta.gw + Math.floor(fx * meta.gw));
+    return ch === '.' || ch === '' ? 0 : meta.mapId * 100 + (ch.charCodeAt(0) - 48);
+  }
+
+  // Nachfrage nach dem Antippen eines Raums: wie soll gereinigt werden?
+  var DLG = [['Mode', 'Modus'], ['Suction', 'Saugkraft'], ['Wetness', 'Wischfeuchte'], ['Passes', 'Durchgänge'], ['Route', 'Route'], ['CleanGenius', 'CleanGenius']];
+  function dialogBlock(v) {
+    if (!dialog) return '';
+    var d = dialog, h = '<div class="dlg-back" data-dlg="close"><div class="dlg" role="dialog">';
+    h += '<div class="dlg-title">' + esc(d.name) + '</div><div class="small mute">Wie soll gereinigt werden?</div><div class="grid2" style="margin-top:12px">';
+    DLG.forEach(function (f) {
+      var k = f[0], p = v.presets[k];
+      // Wischfeuchte beim reinen Saugen und Saugkraft beim reinen Wischen ausblenden
+      if ((k === 'Wetness' && d.vals.Mode === 0) || (k === 'Suction' && d.vals.Mode === 1)) return;
+      h += '<label class="sel">' + f[1] + '<select data-dlgset="' + k + '">';
+      p.o.forEach(function (o) { h += '<option value="' + o[0] + '"' + (o[0] === d.vals[k] ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; });
+      h += '</select></label>';
+    });
+    h += '</div><div class="row" style="margin-top:14px">' +
+      '<button class="btn main" data-dlg="go">' + (v.job ? 'Nach der laufenden Fahrt' : 'Jetzt reinigen') + '</button></div>' +
+      '<div class="row" style="margin-top:8px"><button class="btn" data-dlg="select">' + (d.sel ? 'Aus Auswahl entfernen' : 'Nur auswählen') + '</button>' +
+      '<button class="btn" data-dlg="close">Abbrechen</button></div></div></div>';
+    return h;
+  }
+
+  function openDialog(code) {
+    var r = view.rooms.filter(function (x) { return x.code === code; })[0];
+    if (!r) return;
+    var vals = {};
+    DLG.forEach(function (f) { vals[f[0]] = view.presets[f[0]].v; });
+    dialog = { code: code, name: r.name, sel: r.sel, vals: vals };
+    render();
   }
 
   function controls(v) {
@@ -56,7 +126,7 @@
         (v.warning ? '<div style="margin-top:6px"><button class="btn sm" data-cmd="14">Quittieren</button></div>' : '') + '</div>';
     }
 
-    h += '<div class="map">' + (map ? '<img src="' + map + '" alt="Karte">' : '<div class="empty">Keine Karte – in der Instanz „Karten &amp; Räume einlesen“.</div>') + '</div>';
+    h += mapBlock(v);
     h += '<div class="row" style="margin-top:12px">' + controls(v) + '</div>';
 
     // Etage und Räume
@@ -120,11 +190,30 @@
       h += '</div></details>';
     }
     if (v.message) h += '<div class="msg">' + esc(v.message) + '</div>';
+    h += dialogBlock(v);
     el.innerHTML = h;
   }
 
   document.addEventListener('click', function (e) {
+    if (e.target.id === 'mapimg' || (e.target.classList && e.target.classList.contains('lbl'))) {
+      if (showLast || !view) return;
+      var code = roomAt(e, view.mapMeta);
+      if (code) openDialog(code);
+      return;
+    }
+    var dl = e.target.closest('[data-dlg]');
+    if (dl && dialog) {
+      var a = dl.dataset.dlg;
+      if (a === 'close' && e.target !== dl) return;   // Klick im Dialog selbst schließt nicht
+      var d = dialog;
+      dialog = null;
+      if (a === 'go') act('TileClean', JSON.stringify(Object.assign({ code: d.code }, d.vals)), 'r' + d.code);
+      else if (a === 'select') act('TileRoom', d.code, 'r' + d.code);
+      else render();
+      return;
+    }
     var t = e.target.closest('button');
+    if (t && t.dataset.view) { showLast = t.dataset.view === 'last'; render(); return; }
     if (!t || t.disabled) return;
     if (t.dataset.cmd) act('Command', parseInt(t.dataset.cmd, 10), 'c' + t.dataset.cmd);
     else if (t.dataset.floor) act('Floor', parseInt(t.dataset.floor, 10));
@@ -135,6 +224,7 @@
     }
   });
   document.addEventListener('change', function (e) {
+    if (e.target.dataset.dlgset && dialog) { dialog.vals[e.target.dataset.dlgset] = parseInt(e.target.value, 10); render(); return; }
     if (e.target.dataset.preset) act(e.target.dataset.preset, parseInt(e.target.value, 10));
   });
   document.addEventListener('toggle', function (e) {
@@ -145,6 +235,7 @@
   window.handleMessage = function (data) {
     var d = typeof data === 'string' ? JSON.parse(data) : data;
     if (d.map) map = d.map;
+    if (d.mapLast) mapLast = d.mapLast;
     if (d.view) { view = d.view; busy = {}; }
     render();
   };

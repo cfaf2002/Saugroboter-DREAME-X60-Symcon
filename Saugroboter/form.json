@@ -365,7 +365,81 @@
         {
           "type": "ValidationTextBox",
           "name": "AutoRooms",
-          "caption": "Räume (leer = alles; z. B. „Küche, Flur“)"
+          "caption": "Räume (leer = alles; z. B. „Küche, Flur“) – gilt, wenn der Raumplan für heute nichts vorgibt"
+        },
+        {
+          "type": "Label",
+          "caption": "Raumplan: je Tag andere Räume. Leer = alles, „-“ = an diesem Tag nicht reinigen. Ein bestimmter Tag geht vor Mo–Fr/Sa+So, das vor täglich."
+        },
+        {
+          "type": "List",
+          "name": "AutoPlan",
+          "caption": "Raumplan",
+          "rowCount": 5,
+          "add": true,
+          "delete": true,
+          "columns": [
+            {
+              "caption": "Tag",
+              "name": "day",
+              "width": "160px",
+              "add": 8,
+              "edit": {
+                "type": "Select",
+                "options": [
+                  {
+                    "caption": "täglich",
+                    "value": 0
+                  },
+                  {
+                    "caption": "Montag",
+                    "value": 1
+                  },
+                  {
+                    "caption": "Dienstag",
+                    "value": 2
+                  },
+                  {
+                    "caption": "Mittwoch",
+                    "value": 3
+                  },
+                  {
+                    "caption": "Donnerstag",
+                    "value": 4
+                  },
+                  {
+                    "caption": "Freitag",
+                    "value": 5
+                  },
+                  {
+                    "caption": "Samstag",
+                    "value": 6
+                  },
+                  {
+                    "caption": "Sonntag",
+                    "value": 7
+                  },
+                  {
+                    "caption": "Mo–Fr",
+                    "value": 8
+                  },
+                  {
+                    "caption": "Sa + So",
+                    "value": 9
+                  }
+                ]
+              }
+            },
+            {
+              "caption": "Räume",
+              "name": "rooms",
+              "width": "auto",
+              "add": "",
+              "edit": {
+                "type": "ValidationTextBox"
+              }
+            }
+          ]
         },
         {
           "type": "CheckBox",
