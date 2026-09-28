@@ -313,6 +313,7 @@ class X60Ultra extends IPSModule
                 if (intval($Value) > 0) $this->CleanRooms(strval(intval($Value)));
                 return;
             case 'Mode': case 'Route': case 'Suction': case 'Wetness': case 'Passes': case 'CleanGenius':
+                if (!$this->ValidPreset($Ident, $Value)) return;
                 $this->SetVal($Ident, intval($Value));
                 $this->RefreshViews();
                 return;
@@ -472,7 +473,16 @@ class X60Ultra extends IPSModule
     // Einstellung für diese Fahrt: Übersteuerung, sonst Vorwahl
     private function Setting($name, $over)
     {
-        return is_array($over) && isset($over[$name]) ? intval($over[$name]) : $this->GetValue($name);
+        $v = is_array($over) && isset($over[$name]) ? intval($over[$name]) : $this->GetValue($name);
+        return $this->ValidPreset($name, $v) ? $v : ($name == 'Passes' ? 1 : -1);
+    }
+
+    // Nur Werte, die das Profil der Vorwahl kennt (Kachel und Skripte können beliebige Zahlen schicken)
+    private function ValidPreset($name, $v)
+    {
+        $ok = ['Mode' => [-1, 0, 1, 2, 3], 'Route' => [-1, 1, 2, 3, 4], 'Suction' => [-1, 0, 1, 2, 3],
+            'Wetness' => [-1, 1, 2, 3], 'Passes' => [1, 2, 3], 'CleanGenius' => [-1, 0, 1, 2]];
+        return isset($ok[$name]) && in_array(intval($v), $ok[$name], true);
     }
 
     public function CleanSelection()
@@ -712,7 +722,7 @@ class X60Ultra extends IPSModule
                     'left' => $b['left'], 'top' => $b['top'], 'rooms' => $rooms
                 ];
                 // Bild der Etage schon jetzt, damit die Kachel nicht leer ist
-                if ($this->ReadPropertyBoolean('MapImage')) $this->StoreMapImage($b, $b['mapId'], 'MapFloor' . $b['mapId']);
+                if ($this->ReadPropertyBoolean('MapImage') && $b['mapId'] >= 0) $this->StoreMapImage($b, $b['mapId'], 'MapFloor' . $b['mapId']);
             }
             if (count($maps) == 0) {
                 if ($this->MapsFromLive()) return true;
@@ -1688,7 +1698,7 @@ class X60Ultra extends IPSModule
         $html = file_get_contents(__DIR__ . '/module.html');
         $html = str_replace('/*STYLE*/', file_get_contents(__DIR__ . '/tile.css'), $html);
         return str_replace('"__INIT__"', json_encode(['view' => $this->ViewModel(), 'map' => $this->MapDataUri(),
-            'mapLast' => $this->MapDataUri('MapLast')]), $html);
+            'mapLast' => $this->MapDataUri('MapLast')], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), $html);
     }
 
     // Kachel und HTML-Box auffrischen. Das Kartenbild geht nur nach einer Änderung mit.

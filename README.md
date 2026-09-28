@@ -27,9 +27,10 @@ Hersteller-Cloud – es läuft selbst aber vollständig in deiner Symcon-Instanz
 7. [Benachrichtigungen](#benachrichtigungen)
 8. [Skriptbefehle](#skriptbefehle)
 9. [Wie das Modul arbeitet](#wie-das-modul-arbeitet)
-10. [Datenschutz](#datenschutz)
-11. [Fehlersuche](#fehlersuche)
-12. [Lizenz, Marken und Dank](#lizenz-marken-und-dank)
+10. [Sicherheit](#sicherheit)
+11. [Datenschutz](#datenschutz)
+12. [Fehlersuche](#fehlersuche)
+13. [Lizenz, Marken und Dank](#lizenz-marken-und-dank)
 
 ---
 
@@ -108,7 +109,7 @@ auch mit X40/X50 und verwandten Modellen.
 
 **Live-Verbindung:** ist ab Werk eingeschaltet (*Konto & Gerät → Live-Verbindung*). Das Modul legt dafür beim ersten
 Mal selbst einen **Client Socket** als übergeordnete Instanz an („Saugroboter Live (…)“) und stellt ihn ein – Server,
-Port und TLS kommen aus der Cloud, dort ist nichts von Hand einzutragen. Die Variable **Live-Verbindung** zeigt, ob
+Port und TLS kommen aus der Cloud, dort ist nichts von Hand einzutragen. Das Zertifikat wird geprüft wie bei allen anderen Cloud-Zugriffen. Die Variable **Live-Verbindung** zeigt, ob
 gerade Echtzeitdaten ankommen. Wird die Instanz gelöscht, bleibt der Client Socket stehen und kann mit gelöscht werden.
 
 > **Tipp für neue Modelle:** *Gerät scannen (Diagnose)* listet alle Werte, die der Roboter liefert (auch im Debug-Fenster).
@@ -258,6 +259,21 @@ Alle Befehle geben `true`/`false` zurück; der Grund eines Fehlschlags steht in 
 
 ---
 
+## Sicherheit
+
+- **Verschlüsselt und geprüft**: Alle Verbindungen zur Cloud – auch die Live-Verbindung – laufen über TLS mit
+  Zertifikatsprüfung (*TLS-Zertifikate prüfen*, ab Werk an). Abschalten nur als letzten Ausweg: dann könnte jemand
+  im Netz das Zugangstoken mitlesen.
+- **Passwort**: gespeichert wird nur der Hash, den die Cloud zur Anmeldung erwartet. Das schützt das Klartext-Passwort
+  (wichtig, falls du es auch woanders nutzt) – der Hash selbst reicht aber zur Anmeldung bei Dreame. Einstellungen und
+  Backups von Symcon deshalb wie Zugangsdaten behandeln. Am sichersten: ein eigenes, nur hier genutztes Passwort.
+- **Token**: liegen nur in internen Attributen der Instanz, nie in Variablen, Meldungen oder im Debug der Instanz.
+  Das Debug-Fenster des *Client Sockets* zeigt allerdings die gesendeten Rohdaten – darin steht beim Verbindungsaufbau
+  das Token. Dieses Debug-Fenster nicht in Foren posten.
+- **Nur feste Server**: Zugangsdaten gehen nur an die bekannten Regionen der Dreame-Cloud, Dateien nur über HTTPS.
+- **Robust gegen kaputte Daten**: Kartendaten haben Obergrenzen (Größe, Zellen, Strecke); Nachrichten anderer Geräte
+  werden verworfen; Vorwahlen aus Kachel oder Skript werden auf gültige Werte geprüft.
+
 ## Datenschutz
 
 - Das Modul überträgt Daten ausschließlich zwischen deiner Symcon-Installation und der Hersteller-Cloud – an keinen
@@ -271,7 +287,7 @@ Alle Befehle geben `true`/`false` zurück; der Grund eines Fehlschlags steht in 
 | Problem | Lösung |
 |---|---|
 | „Anmeldung abgelehnt“ | E-Mail/Passwort der Dreamehome-App und Region prüfen. Bei Anmeldung per Google/Apple in der App ein Passwort vergeben. |
-| „Zertifikatsprüfung fehlgeschlagen“ | Dem System fehlen CA-Zertifikate – *TLS-Zertifikate prüfen* abschalten. |
+| „Zertifikatsprüfung fehlgeschlagen“ | Systemzeit und CA-Zertifikate des Symcon-Systems prüfen (Update). *TLS-Zertifikate prüfen* nur als letzten Ausweg abschalten. |
 | „Roboter antwortet nicht“ | Roboter im WLAN? In der App erreichbar? Die Cloud leitet Befehle nur an verbundene Geräte weiter. |
 | Keine Karte | Karte in der App gespeichert? *Karten & Räume einlesen* erneut ausführen. |
 | Karte gedreht/gespiegelt | Unter *Karte → Ausrichtung* anpassen. |

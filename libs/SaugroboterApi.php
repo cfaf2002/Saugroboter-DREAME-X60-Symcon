@@ -128,11 +128,16 @@ trait SaugroboterApi
             CURLOPT_TIMEOUT => $timeout,
             CURLOPT_CONNECTTIMEOUT => 8,
             CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_ENCODING => '',
             CURLOPT_SSL_VERIFYPEER => $verify,
             CURLOPT_SSL_VERIFYHOST => $verify ? 2 : 0
         ];
-        if ($method == 'POST') { $opt[CURLOPT_POST] = true; $opt[CURLOPT_POSTFIELDS] = $body; }
+        // Automatisches Entpacken nur für die Cloud-Schnittstelle, nicht für Dateien (Größenlimit greift sonst nicht)
+        if ($method == 'POST') { $opt[CURLOPT_POST] = true; $opt[CURLOPT_POSTFIELDS] = $body; $opt[CURLOPT_ENCODING] = ''; }
+        // Nur HTTPS (auch Download-Adressen kommen aus der Cloud) und höchstens 20 MB Antwort
+        if (defined('CURLOPT_PROTOCOLS')) { $opt[CURLOPT_PROTOCOLS] = CURLPROTO_HTTPS; $opt[CURLOPT_REDIR_PROTOCOLS] = CURLPROTO_HTTPS; }
+        $opt[CURLOPT_MAXFILESIZE] = 20971520;
+        $opt[CURLOPT_NOPROGRESS] = false;
+        $opt[CURLOPT_PROGRESSFUNCTION] = function ($ch, $dlTotal, $dl) { return $dl > 20971520 ? 1 : 0; };
         curl_setopt_array($ch, $opt);
         $res = curl_exec($ch);
         $code = intval(curl_getinfo($ch, CURLINFO_HTTP_CODE));
@@ -141,25 +146,25 @@ trait SaugroboterApi
         curl_close($ch);
         if ($res === false) {
             $this->dcLastError = in_array($errno, [35, 51, 58, 60, 77], true)
-                ? 'Zertifikatsprüfung fehlgeschlagen (' . $err . ') – ggf. „TLS-Zertifikate prüfen“ abschalten.'
+                ? 'Zertifikatsprüfung fehlgeschlagen (' . $err . ') – Systemzeit und CA-Zertifikate des Symcon-Systems prüfen. „TLS-Zertifikate prüfen“ nur als letzten Ausweg abschalten: dann sind Token und Passwort-Hash nicht mehr vor Mitlesern geschützt.'
                 : 'Netzwerkfehler: ' . $err;
-            $this->SendDebug('HTTP', $method . ' ' . $url . ' -> ' . $this->dcLastError, 0);
+            $this->SendDebug('HTTP', $method . ' ' . strtok($url, '?') . ' -> ' . $this->dcLastError, 0);
             return [0, ''];
         }
-        if ($code != 200) $this->SendDebug('HTTP', $method . ' ' . $url . ' -> ' . $code . ' ' . substr($res, 0, 200), 0);
+        if ($code != 200) $this->SendDebug('HTTP', $method . ' ' . strtok($url, '?') . ' -> ' . $code . ' ' . substr($res, 0, 200), 0);
         return [$code, $res];
     }
 
     private function CloudBase()
     {
-        $r = strtolower(trim($this->ReadPropertyString('Region')));
-        return 'https://' . ($r === '' ? 'eu' : $r) . '.iot.dreame.tech:' . self::$DC_PORT;
+        return 'https://' . $this->CloudRegion() . '.iot.dreame.tech:' . self::$DC_PORT;
     }
 
+    // Nur bekannte Regionen – Zugangsdaten gehen nie an einen frei eingetragenen Server
     private function CloudRegion()
     {
         $r = strtolower(trim($this->ReadPropertyString('Region')));
-        return $r === '' ? 'eu' : $r;
+        return in_array($r, ['eu', 'us', 'cn', 'sg', 'kr', 'ru'], true) ? $r : 'eu';
     }
 
     // ---- Geräte -------------------------------------------------------------

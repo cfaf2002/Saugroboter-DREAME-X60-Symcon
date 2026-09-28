@@ -18,6 +18,11 @@
 class SaugroboterKarte
 {
     const HEADER = 27;
+    // Obergrenzen gegen manipulierte oder kaputte Kartendaten (echte Karten liegen weit darunter)
+    const MAX_RAW = 8388608;      // entpackt höchstens 8 MB
+    const MAX_SIDE = 4000;        // Zellen je Seite
+    const MAX_CELLS = 6000000;    // Zellen gesamt
+    const MAX_TRACK = 400000;     // Zeichen der gefahrenen Strecke
 
     // Modelle mit Kartenformat 2 (u. a. alle X60-Varianten): Vollbilder im Format 'low5'.
     // Quelle: Geräteliste von Tasshack/dreame-vacuum (Fähigkeit MAP_V2).
@@ -53,8 +58,9 @@ class SaugroboterKarte
             if ($plain === false) return null;
             $bin = $plain;
         }
-        $raw = @gzuncompress($bin);
-        if ($raw === false) $raw = @gzinflate($bin);
+        if (strlen($bin) > self::MAX_RAW) return null;
+        $raw = @gzuncompress($bin, self::MAX_RAW);
+        if ($raw === false) $raw = @gzinflate($bin, self::MAX_RAW);
         if ($raw === false || strlen($raw) < self::HEADER) return null;
 
         $b = [
@@ -70,7 +76,9 @@ class SaugroboterKarte
             'top' => self::I16($raw, 25)
         ];
         $cells = $b['w'] * $b['h'];
-        if ($b['grid'] <= 0 || $b['w'] < 0 || $b['h'] < 0 || strlen($raw) < self::HEADER + $cells) return null;
+        if ($b['grid'] <= 0 || $b['grid'] > 1000 || ($b['type'] !== 'I' && $b['type'] !== 'P')) return null;
+        if ($b['w'] < 0 || $b['h'] < 0 || $b['w'] > self::MAX_SIDE || $b['h'] > self::MAX_SIDE || $cells > self::MAX_CELLS) return null;
+        if (strlen($raw) < self::HEADER + $cells) return null;
         $b['cells'] = substr($raw, self::HEADER, $cells);
         $json = json_decode(substr($raw, self::HEADER + $cells), true);
         $b['info'] = is_array($json) ? $json : [];
@@ -175,12 +183,15 @@ class SaugroboterKarte
     public static function Merge($base, $p, $v2)
     {
         $g = $base['grid'];
+        if ($p['grid'] != $g) return $base;
         $left = min($base['left'], $p['left']);
         $top = min($base['top'], $p['top']);
         $right = max($base['left'] + $base['w'] * $g, $p['left'] + $p['w'] * $g);
         $bottom = max($base['top'] + $base['h'] * $g, $p['top'] + $p['h'] * $g);
         $w = intval(($right - $left) / $g);
         $h = intval(($bottom - $top) / $g);
+        // Unplausibel großes Gesamtbild (Differenzbild weit außerhalb): verwerfen
+        if ($w > self::MAX_SIDE || $h > self::MAX_SIDE || $w * $h > self::MAX_CELLS) return $base;
         $cells = str_repeat("\0", $w * $h);
         $ox = intval(($base['left'] - $left) / $g); $oy = intval(($base['top'] - $top) / $g);
         for ($y = 0; $y < $base['h']; $y++) {
@@ -201,7 +212,10 @@ class SaugroboterKarte
             $info[$k] = $v;
         }
         // Strecke fortschreiben
-        if (!empty($p['info']['tr'])) $info['tr'] = (isset($base['info']['tr']) ? $base['info']['tr'] : '') . $p['info']['tr'];
+        if (!empty($p['info']['tr'])) {
+            $info['tr'] = (isset($base['info']['tr']) ? $base['info']['tr'] : '') . $p['info']['tr'];
+            if (strlen($info['tr']) > self::MAX_TRACK) $info['tr'] = substr($info['tr'], -self::MAX_TRACK);
+        }
         return array_merge($base, [
             'frameId' => $p['frameId'], 'robot' => $p['robot'], 'dock' => $p['dock'],
             'w' => $w, 'h' => $h, 'left' => $left, 'top' => $top, 'cells' => $cells, 'info' => $info, 'type' => 'I'

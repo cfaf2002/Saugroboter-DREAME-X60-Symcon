@@ -134,8 +134,10 @@ trait SaugroboterLive
         }
         list($host, $port) = explode(':', $dev['host'], 2);
         if ($this->CloudRegion() == 'kr') $host = str_replace('10100', '10000', $host);
+        // Zertifikat prüfen wie bei den übrigen Cloud-Zugriffen: sonst könnte ein Mitleser das Token abgreifen
+        $verify = $this->ReadPropertyBoolean('VerifyTLS');
         $this->LiveSocketConfig($pid, ['Host' => $host, 'Port' => intval($port), 'UseSSL' => true,
-            'VerifyPeer' => false, 'VerifyHost' => false, 'Open' => true]);
+            'VerifyPeer' => $verify, 'VerifyHost' => $verify, 'Open' => true]);
 
         if (IPS_GetInstance($pid)['InstanceStatus'] != 102) return false;   // Socket baut noch auf
         $state = $this->GetBuffer('MqttState');
@@ -359,6 +361,12 @@ trait SaugroboterLive
         $m = json_decode($payload, true);
         if (!is_array($m)) return;
         $data = isset($m['data']) && is_array($m['data']) ? $m['data'] : $m;
+        // Nur Nachrichten des eigenen Geräts
+        $dev = $this->CloudDevice();
+        if (!is_array($dev)) return;
+        foreach ([$m, $data] as $x) {
+            if (isset($x['did']) && strval($x['did']) !== strval($dev['did'])) return;
+        }
         if (!isset($data['method']) || $data['method'] !== 'properties_changed' || !isset($data['params']) || !is_array($data['params'])) return;
 
         $v = [];
