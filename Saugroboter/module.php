@@ -369,7 +369,28 @@ class X60Ultra extends IPSModule
     public function WashMop() { return $this->Send('Mopp waschen', 4, 4, [['piid' => 10, 'value' => '2,1']]); }
     public function DryMop($On) { return $this->Send($On ? 'Mopp trocknen' : 'Trocknen beenden', 4, 4, [['piid' => 10, 'value' => $On ? '3,1' : '3,0']]); }
     public function EmptyDustBin() { return $this->Send('Staub absaugen', 15, 1); }
-    public function AcknowledgeWarning() { return $this->Send('Hinweis quittieren', 4, 3); }
+    // Hinweis quittieren: das Gerät erwartet den Code des Hinweises (CLEANING_PROPERTIES = "[68]").
+    // Die Meldung "Frischwasser fast leer" wird stattdessen über 4/41 bestätigt.
+    public function AcknowledgeWarning()
+    {
+        $code = $this->GetValue('Error');
+        return $this->Locked(function () use ($code) {
+            if (in_array($code, SaugroboterTexte::ClearableCodes(), true)) {
+                $ok = $this->MiotAction(4, 3, [['piid' => 10, 'value' => '[' . $code . ']']]);
+            } else {
+                $v = $this->MiotGet([[4, 41]]);
+                $ok = isset($v['4.41']) && intval($v['4.41']) >= 2 ? $this->MiotSet([[4, 41, 1]]) : false;
+                if (!$ok && $this->dcLastError === '') $this->dcLastError = 'dieser Hinweis lässt sich nur am Gerät bzw. in der App beheben';
+            }
+            $this->Result($ok, 'Hinweis quittieren');
+            if ($ok) {
+                $this->SetVal('Error', 0);
+                $this->SetVal('ErrorHint', '');
+                $this->PollSoon();
+            }
+            return $ok;
+        });
+    }
 
     private function Send($label, $siid, $aiid, $in = [])
     {
@@ -764,7 +785,9 @@ class X60Ultra extends IPSModule
                 }
             }
         }
-        $r[] = 'Angefordertes Vollbild: ' . $this->BlockReport($this->RequestFreshMap());
+        $fresh = $this->RequestFreshMap();
+        $r[] = 'Anforderung (6/1): ' . $this->GetBuffer('MapRequest');
+        $r[] = 'Angefordertes Vollbild: ' . $this->BlockReport($fresh);
         foreach ($this->LiveMapObjects() as $o) {
             $r[] = 'Abgelegte Karte ' . preg_replace('#^.*/#', '…/', $o) . ': ' . $this->BlockReport($this->CloudFile($o));
         }
@@ -785,7 +808,9 @@ class X60Ultra extends IPSModule
         $top = [];
         foreach (array_slice($hist, 0, 8, true) as $v => $c) $top[] = $v . '×' . $c;
         $sc = SaugroboterKarte::FormatScores($b);
-        return 'Typ ' . $b['type'] . ', Karte ' . $b['mapId'] . ', ' . $b['w'] . '×' . $b['h'] . ', Raster ' . $b['grid']
+        $age = isset($b['info']['timestamp_ms']) ? ', Stand ' . date('H:i:s', intval($b['info']['timestamp_ms'] / 1000))
+            . ' (vor ' . max(0, time() - intval($b['info']['timestamp_ms'] / 1000)) . ' s)' : '';
+        return 'Typ ' . $b['type'] . $age . ', Karte ' . $b['mapId'] . ', ' . $b['w'] . '×' . $b['h'] . ', Raster ' . $b['grid']
             . ', fsm ' . (isset($b['info']['fsm']) ? $b['info']['fsm'] : '–') . ', Räume ' . $segs
             . "\n      Anhang: " . implode(', ', array_keys($b['info']))
             . "\n      Häufigste Bytes: " . implode(' ', $top)
@@ -1035,12 +1060,13 @@ class X60Ultra extends IPSModule
     private function RequestFreshMap()
     {
         $res = $this->MiotActionResult(6, 1, [['piid' => 2, 'value' => '{"req_type":1,"frame_type":"I","force_type":1}']]);
-        if ($res === null || !isset($res['out']) || !is_array($res['out'])) {
-            $this->SendDebug('Karte', 'Anforderung ohne Ergebnis: ' . $this->dcLastError, 0);
+        $this->SetBuffer('MapRequest', substr(json_encode($res === null ? ['Fehler' => $this->dcLastError] : $res), 0, 400));
+        if ($res === null) {
+            $this->SendDebug('Karte', 'Anforderung abgelehnt: ' . $this->dcLastError, 0);
             return null;
         }
         $object = null; $raw = null;
-        foreach ($res['out'] as $o) {
+        foreach ((isset($res['out']) && is_array($res['out']) ? $res['out'] : []) as $o) {
             $v = isset($o['value']) ? strval($o['value']) : '';
             $piid = isset($o['piid']) ? intval($o['piid']) : 0;
             if ($v === '') continue;
@@ -1053,7 +1079,14 @@ class X60Ultra extends IPSModule
             }
         }
         if ($raw !== null) return $raw;
-        if ($object === null) return null;
+        if ($object === null) {
+            // Der X60 nennt kein Objekt, legt das angeforderte Vollbild aber unter dem gemeldeten
+            // Kartenobjekt (6/3) ab – kurz warten, dann dort lesen
+            IPS_Sleep(2500);
+            $objs = $this->LiveMapObjects();
+            if (count($objs) == 0) return null;
+            $object = $objs[0];
+        }
         $parts = explode(',', $object);
         $text = $this->CloudFile($parts[0]);
         if ($text === null) return null;
@@ -1734,6 +1767,7 @@ class X60Ultra extends IPSModule
             'time' => $this->GetValue('CleanTime'), 'area' => $this->GetValue('CleanArea'),
             'error' => $err, 'errorText' => $err ? SaugroboterTexte::ErrorText($err) : '', 'errorHint' => SaugroboterTexte::ErrorHint($err),
             'warning' => in_array($err, SaugroboterTexte::WarningCodes(), true),
+            'clearable' => in_array($err, SaugroboterTexte::ClearableCodes(), true),
             'station' => [
                 ['Frischwasser', $this->GetValue('CleanWater'), GetValueFormatted($this->GetIDForIdent('CleanWater'))],
                 ['Schmutzwasser', $this->GetValue('DirtyWater'), GetValueFormatted($this->GetIDForIdent('DirtyWater'))],

@@ -206,6 +206,12 @@ class SaugroboterTexte
         return [9, 10, 20, 47, 51, 56, 68, 70, 71, 72, 75, 82, 85, 107, 114, 117, 121, 122, 123, 129, 213, 214];
     }
 
+    // Hinweise, die sich am Gerät quittieren lassen (wie in der App)
+    public static function ClearableCodes()
+    {
+        return [20, 68, 70, 75, 82, 84, 114, 117, 121, 123, 213, 214];
+    }
+
     public static function ErrorText($code)
     {
         $e = self::Errors();

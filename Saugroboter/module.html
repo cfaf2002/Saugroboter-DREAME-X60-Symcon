@@ -131,7 +131,7 @@
     if (v.error) {
       h += '<div class="alert ' + (v.warning ? 'warn' : 'bad') + '"><b>' + esc(v.errorText) + '</b>' +
         (v.errorHint ? '<div class="small">' + esc(v.errorHint) + '</div>' : '') +
-        (v.warning ? '<div style="margin-top:6px"><button class="btn sm" data-cmd="14">Quittieren</button></div>' : '') + '</div>';
+        (v.clearable ? '<div style="margin-top:6px"><button class="btn sm' + (isBusy('c14') ? ' pending' : '') + '" data-cmd="14">Quittieren</button></div>' : '') + '</div>';
     }
 
     h += mapBlock(v);
