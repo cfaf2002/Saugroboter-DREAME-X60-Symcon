@@ -442,6 +442,7 @@ class X60Ultra extends IPSModule
         foreach (SaugroboterTexte::Consumables() as $ident => $c) {
             if (strcasecmp($ident, $Part) != 0 && strcasecmp('Wear' . $ident, $Part) != 0 && strcasecmp($c[0], $Part) != 0) continue;
             $ok = $this->Send($c[0] . ' zurücksetzen', $c[1], 1);
+            if ($ok) $this->SetBuffer('SlowAt', '0');   // neuen Wert beim nächsten Abruf holen
             return $ok;
         }
         $this->Note('Unbekanntes Verschleißteil: ' . $Part);
@@ -795,10 +796,19 @@ class X60Ultra extends IPSModule
         $ok = $this->Locked(function () use (&$done) {
             if ($this->ReadAttributeString('Caps') === '') $this->ProbeCapabilities();
 
+            // Laufend nötig: Zustand, Fehler, Akku, Auftrag, Station. Verschleiß und Statistik ändern
+            // sich langsam – die nur alle 10 Minuten (spart während der Reinigung viel Zeit).
             $keys = [[2, 1], [2, 2], [3, 1], [4, 2], [4, 3], [4, 23], [4, 26], [4, 41], [4, 50], [27, 1], [27, 2], [27, 3]];
             $caps = $this->Caps();
-            foreach (SaugroboterTexte::Consumables() as $c) if ($this->HasCap($caps, $c[1], $c[2])) $keys[] = [$c[1], $c[2]];
-            foreach (self::EXTRAS as $x) if ($this->HasCap($caps, $x[1], $x[2])) $keys[] = [$x[1], $x[2]];
+            $slow = time() - intval($this->GetBuffer('SlowAt')) >= 600;
+            foreach (self::EXTRAS as $ident => $x) {
+                if (!$this->HasCap($caps, $x[1], $x[2])) continue;
+                if ($slow || in_array($ident, ['Charging', 'Progress'], true)) $keys[] = [$x[1], $x[2]];
+            }
+            if ($slow) {
+                foreach (SaugroboterTexte::Consumables() as $c) if ($this->HasCap($caps, $c[1], $c[2])) $keys[] = [$c[1], $c[2]];
+                $this->SetBuffer('SlowAt', strval(time()));
+            }
             $v = $this->MiotGet($keys);
             if ($v === null || !isset($v['2.1'])) { $this->Online(false); return false; }
             $this->Online(true);
@@ -867,7 +877,8 @@ class X60Ultra extends IPSModule
             $this->CheckError($err);
             $this->CheckMaintenance();
             return true;
-        });
+        }, true);
+        if ($ok === null) return false;   // übersprungen: anderer Zugriff läuft
         if ($done) {
             $this->JobFinished();
         }
@@ -1561,18 +1572,29 @@ class X60Ultra extends IPSModule
     // Hilfen
     // =========================================================================
 
-    private function Locked($fn)
+    /**
+     * Führt $fn unter der Instanzsperre aus (immer nur ein Cloud-Zugriff gleichzeitig).
+     * $background = true (Timer-Abruf): nicht warten, sondern überspringen, wenn gerade etwas läuft
+     * oder ein Bedienbefehl ansteht – Bedienung hat Vorrang vor dem Abruf.
+     */
+    private function Locked($fn, $background = false)
     {
         if (!$this->ReadPropertyBoolean('Active') || !$this->ReadPropertyBoolean('Consent')) { $this->Note('Instanz ist deaktiviert.'); return false; }
         $key = 'SAUG_' . $this->InstanceID;
-        $got = false;
-        for ($i = 0; $i < 80 && !$got; $i++) {
-            $got = IPS_SemaphoreEnter($key, 250);
-        }
-        if (!$got) {
-            $this->Note('Instanz beschäftigt – bitte erneut versuchen.');
-            echo 'Die Instanz fragt gerade den Roboter ab – bitte in ein paar Sekunden erneut versuchen.';
-            return false;
+        if ($background) {
+            if (intval($this->GetBuffer('UserWaiting')) > time() - 90) return null;
+            if (!IPS_SemaphoreEnter($key, 0)) return null;
+        } else {
+            // Abruf bitten, Platz zu machen, und bis zu 60 s auf ihn warten
+            $this->SetBuffer('UserWaiting', strval(time()));
+            $got = false;
+            for ($i = 0; $i < 240 && !$got; $i++) $got = IPS_SemaphoreEnter($key, 250);
+            $this->SetBuffer('UserWaiting', '0');
+            if (!$got) {
+                $this->Note('Instanz beschäftigt – bitte erneut versuchen.');
+                echo 'Der Roboter antwortet gerade sehr langsam – bitte gleich noch einmal versuchen.';
+                return false;
+            }
         }
         try {
             $this->dcLastError = '';
