@@ -930,6 +930,12 @@ class X60Ultra extends IPSModule
             }
 
             $this->TrackRoom($state, $group);
+            // Nach einem Update fehlt die Raumlage zum vorhandenen Kartenbild (Beschriftung/Antippen) –
+            // dann die Karte einmal frisch holen, auch wenn der Roboter an der Station steht
+            if ($this->ReadPropertyBoolean('MapImage') && $this->MapMeta('Map') === null && intval($this->GetBuffer('MetaTry')) < time() - 300) {
+                $this->SetBuffer('MetaTry', strval(time()));
+                $this->FetchLiveMap(true);
+            }
             if ($done) {
                 $this->FetchLiveMap(true);
                 $this->LoadHistory();

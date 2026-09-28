@@ -49,7 +49,8 @@
         '<button class="chip' + (last ? ' on' : '') + '" data-view="last">Letzte Reinigung</button></div>';
     }
     if (last && v.lastRun) h += '<div class="small mute" style="padding:0 10px 8px">' + esc(v.lastRun) + '</div>';
-    else if (v.rooms.length) h += '<div class="small mute" style="padding:0 10px 8px">Raum antippen, um ihn zu reinigen</div>';
+    else if (v.rooms.length && meta) h += '<div class="small mute" style="padding:0 10px 8px">Raum antippen, um ihn zu reinigen</div>';
+    else if (v.rooms.length) h += '<div class="small mute" style="padding:0 10px 8px">Karte wird vorbereitet – Antippen geht nach der nächsten Aktualisierung</div>';
     return h + '</div>';
   }
 
@@ -86,6 +87,13 @@
       '<div class="row" style="margin-top:8px"><button class="btn" data-dlg="select">' + (d.sel ? 'Aus Auswahl entfernen' : 'Nur auswählen') + '</button>' +
       '<button class="btn" data-dlg="close">Abbrechen</button></div></div></div>';
     return h;
+  }
+
+  function flash(t) {
+    var f = document.getElementById('flash');
+    if (!f) { f = document.createElement('div'); f.id = 'flash'; document.body.appendChild(f); }
+    f.textContent = t; f.className = 'show';
+    clearTimeout(flash.t); flash.t = setTimeout(function () { f.className = ''; }, 1600);
   }
 
   function openDialog(code) {
@@ -195,10 +203,11 @@
   }
 
   document.addEventListener('click', function (e) {
-    if (e.target.id === 'mapimg' || (e.target.classList && e.target.classList.contains('lbl'))) {
+    if (e.target.id === 'mapimg' || (e.target.classList && (e.target.classList.contains('lbl') || e.target.classList.contains('mapwrap')))) {
       if (showLast || !view) return;
       var code = roomAt(e, view.mapMeta);
-      if (code) openDialog(code);
+      if (code && view.rooms.some(function (r) { return r.code === code; })) openDialog(code);
+      else flash(view.mapMeta ? 'Kein Raum an dieser Stelle' : 'Karte wird noch vorbereitet');
       return;
     }
     var dl = e.target.closest('[data-dlg]');

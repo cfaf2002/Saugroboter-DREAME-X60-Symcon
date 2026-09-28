@@ -88,3 +88,6 @@ details > div { margin-top: 9px; }
 .dlg { width: 100%; max-width: 380px; background: #262b33; color: var(--fg); border: 1px solid var(--line); border-radius: 14px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
 @media (prefers-color-scheme: light) { .dlg { background: #fff; } }
 .dlg-title { font-size: 17px; font-weight: 650; }
+#flash { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: rgba(20,24,30,.9); color: #fff; padding: 7px 12px;
+  border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 20; }
+#flash.show { opacity: 1; }
