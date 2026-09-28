@@ -8,6 +8,7 @@
  *   libs/SaugroboterApi.php    Anmeldung, MiOT-Befehle, Dateien, Ereignisse (Trait)
  *   libs/SaugroboterKarte.php    Kartenblöcke dekodieren (inkl. AES) und als PNG zeichnen
  *   libs/SaugroboterTexte.php  Zustände, Fehler mit Kurzhilfe, Raumtypen, Verschleißteile
+ *   libs/SaugroboterLive.php   Live-Verbindung (MQTT über den Client Socket) wie in der App
  *   module.html                Kachel für die Kachel-Visualisierung (HTML-SDK)
  *
  * Grundsätze
@@ -21,10 +22,12 @@
 require_once __DIR__ . '/../libs/SaugroboterApi.php';
 require_once __DIR__ . '/../libs/SaugroboterKarte.php';
 require_once __DIR__ . '/../libs/SaugroboterTexte.php';
+require_once __DIR__ . '/../libs/SaugroboterLive.php';
 
 class X60Ultra extends IPSModule
 {
     use SaugroboterApi;
+    use SaugroboterLive;
 
     // AES-IV der Kartendaten aktueller Dreame-Modelle (X40/X50/X60)
     const MAP_IV = 'NRwnBj5FsNPgBNbT';
@@ -61,6 +64,7 @@ class X60Ultra extends IPSModule
         $this->RegisterPropertyBoolean('VerifyTLS', true);
         $this->RegisterPropertyInteger('Interval', 60);
         $this->RegisterPropertyInteger('IntervalBusy', 15);
+        $this->RegisterPropertyBoolean('Live', true);           // Echtzeit über MQTT (wie die App)
         $this->RegisterPropertyString('Rooms', '[]');
         $this->RegisterPropertyBoolean('MapImage', true);
         $this->RegisterPropertyInteger('MapRotate', -1);        // -1 = wie in der App
@@ -181,6 +185,8 @@ class X60Ultra extends IPSModule
 
         $this->RegisterTimer('Poll', 0, 'SAUG_Poll($_IPS["TARGET"]);');
         $this->RegisterTimer('Auto', 0, 'SAUG_AutoCheck($_IPS["TARGET"]);');
+        $this->RegisterTimer('LiveCheck', 0, 'SAUG_LiveCheck($_IPS["TARGET"]);');
+        $this->RegisterTimer('LiveWork', 0, 'SAUG_LiveWork($_IPS["TARGET"]);');
 
         if (method_exists($this, 'SetVisualizationType')) $this->SetVisualizationType(1);
     }
@@ -211,6 +217,11 @@ class X60Ultra extends IPSModule
             $this->UnregisterVariable('Dashboard');
         }
         $this->WatchPresence();
+        if ($this->ReadPropertyBoolean('Live')) {
+            $this->RegisterVariableBoolean('Live', 'Live-Verbindung', '~Switch', 199);
+        } elseif (@$this->GetIDForIdent('Live')) {
+            $this->UnregisterVariable('Live');
+        }
 
         // Passwort nie im Klartext speichern: die Cloud erwartet ohnehin nur einen Hash.
         // Einmalig umwandeln, danach steht in den Einstellungen (und Backups) nur noch "hash:...".
@@ -225,21 +236,25 @@ class X60Ultra extends IPSModule
             $this->SetStatus(202);
             $this->SetTimerInterval('Poll', 0);
             $this->SetTimerInterval('Auto', 0);
+            $this->LiveApply();
             return;
         }
         if (!$this->ReadPropertyBoolean('Active')) {
             $this->SetStatus(104);
             $this->SetTimerInterval('Poll', 0);
             $this->SetTimerInterval('Auto', 0);
+            $this->LiveApply();
             return;
         }
         if (trim($this->ReadPropertyString('Email')) === '' || $this->ReadPropertyString('Password') === '') {
             $this->SetStatus(201);
             $this->SetTimerInterval('Poll', 0);
             $this->SetTimerInterval('Auto', 0);
+            $this->LiveApply();
             return;
         }
         $this->SetStatus(102);
+        $this->LiveApply();
         $this->SetPollInterval();
         $this->UpdateAutoTimer();
         $this->RefreshViews();
@@ -247,6 +262,7 @@ class X60Ultra extends IPSModule
 
     public function MessageSink($TimeStamp, $SenderID, $Message, $Data)
     {
+        if ($this->LiveMessageSink($SenderID, $Message, $Data)) return;
         if ($Message == IPS_KERNELSTARTED) { $this->WatchPresence(); return; }
         if ($Message == VM_UPDATE && $SenderID == $this->ReadPropertyInteger('PresenceVariable') && !empty($Data[1])) {
             $this->PresenceChanged();
@@ -785,9 +801,6 @@ class X60Ultra extends IPSModule
                 }
             }
         }
-        $fresh = $this->RequestFreshMap();
-        $r[] = 'Anforderung (6/1): ' . $this->GetBuffer('MapRequest');
-        $r[] = 'Angefordertes Vollbild: ' . $this->BlockReport($fresh);
         foreach ($this->LiveMapObjects() as $o) {
             $r[] = 'Abgelegte Karte ' . preg_replace('#^.*/#', '…/', $o) . ': ' . $this->BlockReport($this->CloudFile($o));
         }
@@ -1010,7 +1023,14 @@ class X60Ultra extends IPSModule
         if ($group == 'station') { $this->SetVal('Room', 'Station'); return; }
         if (!in_array($group, ['working', 'paused', 'moving'], true)) { $this->SetVal('Room', '–'); return; }
         $b = $this->FetchLiveMap(false);
-        if ($b === null) return;
+        if ($b !== null) $this->RoomFromBlock($b, $group);
+    }
+
+    // Raum, in dem der Roboter laut Kartenbild steht
+    private function RoomFromBlock($b, $group = null)
+    {
+        if ($group === null) $group = SaugroboterTexte::StateGroup(intval($this->GetValue('State')));
+        if (!in_array($group, ['working', 'paused', 'moving'], true)) return;
         $maps = $this->Maps();
         $mapId = isset($maps[$b['mapId']]) ? $b['mapId'] : $this->ActiveFloor();
         $seg = SaugroboterKarte::RobotRoom($b, $this->CellFormat($b));
@@ -1023,74 +1043,35 @@ class X60Ultra extends IPSModule
     // werden auf das letzte Vollbild gelegt – sonst stünde die Karte während der Fahrt still.
     private function FetchLiveMap($force)
     {
+        // Live-Verbindung liefert die Karte laufend – dann keine Dateien abrufen
+        if (!$force && $this->LiveOk() && ($lb = $this->LiveBlock()) !== null) return $lb;
         $last = intval($this->GetBuffer('LiveAt'));
-        if (!$force && time() - $last < 20) return $this->LiveBlock();
+        if (!$force && time() - $last < 12) return $this->LiveBlock();
         $this->SetBuffer('LiveAt', strval(time()));
 
         $base = $this->LiveBlock();
         $got = null;
-        // 1. Aktuelles Vollbild beim Roboter anfordern (so macht es auch die App). Die im Cloud-Speicher
-        //    abgelegte Karte ist oft nur das Protokoll der letzten Fahrt und ändert sich währenddessen nicht.
-        $text = $this->RequestFreshMap();
-        if ($text !== null) {
-            $b = SaugroboterKarte::Decode($text, self::MAP_IV);
-            if ($b !== null && $b['type'] === 'I') $got = $b;
-        }
-        // 2. Rückfall: zuletzt abgelegte Kartendateien
-        if ($got === null) foreach ($this->LiveMapObjects() as $obj) {
+        $best = -1;
+        foreach ($this->LiveMapObjects() as $obj) {
             $text = $this->CloudFile($obj);
             $b = $text === null ? null : SaugroboterKarte::Decode($text, self::MAP_IV);
             if ($b === null) continue;
-            if ($b['type'] === 'I') { $got = $b; break; }
-            if ($b['type'] === 'P' && $base !== null && $b['mapId'] == $base['mapId']) {
-                if (strval($b['frameId']) === $this->GetBuffer('LiveFrame')) { $got = $base; break; }   // schon angewendet
+            if ($b['type'] === 'I') {
+                $ts = isset($b['info']['timestamp_ms']) ? floatval($b['info']['timestamp_ms']) : 0;
+                if ($ts > $best) { $best = $ts; $got = $b; }
+            } elseif ($b['type'] === 'P' && $got === null && $base !== null && $b['mapId'] == $base['mapId']
+                && strval($b['frameId']) !== $this->GetBuffer('LiveFrame')) {
                 $got = SaugroboterKarte::Merge($base, $b, $this->IsV2());
-                break;
             }
         }
+        // Nichts Neueres als das, was schon angezeigt wird? Dann nicht neu zeichnen.
+        if (!$force && $got !== null && $base !== null && $best > 0 && isset($base['info']['timestamp_ms'])
+            && $best <= floatval($base['info']['timestamp_ms'])) return $base;
         if ($got === null) return $base;
         $this->SetBuffer('LiveFrame', strval($got['frameId']));
         $this->SetBuffer('LiveBlock', base64_encode(gzcompress(serialize($got))));
         if ($this->ReadPropertyBoolean('MapImage')) $this->StoreMapImage($got, $got['mapId'], 'Map');
         return $got;
-    }
-
-    // Fordert beim Roboter ein Vollbild an (Action 6/1, FRAME_INFO). Antwort: Kartendaten direkt oder
-    // ein Objektname in der Cloud, ggf. mit Schlüssel. Rückgabe Kartentext (für Decode) oder null.
-    private function RequestFreshMap()
-    {
-        $res = $this->MiotActionResult(6, 1, [['piid' => 2, 'value' => '{"req_type":1,"frame_type":"I","force_type":1}']]);
-        $this->SetBuffer('MapRequest', substr(json_encode($res === null ? ['Fehler' => $this->dcLastError] : $res), 0, 400));
-        if ($res === null) {
-            $this->SendDebug('Karte', 'Anforderung abgelehnt: ' . $this->dcLastError, 0);
-            return null;
-        }
-        $object = null; $raw = null;
-        foreach ((isset($res['out']) && is_array($res['out']) ? $res['out'] : []) as $o) {
-            $v = isset($o['value']) ? strval($o['value']) : '';
-            $piid = isset($o['piid']) ? intval($o['piid']) : 0;
-            if ($v === '') continue;
-            if ($piid == 3) $object = $v;
-            elseif ($piid == 1) $raw = $v;
-            elseif ($piid == 13 && $object === null && $raw === null) {
-                $parts = explode(',', $v);
-                if ($parts[0] === '0') $raw = isset($parts[1]) ? $parts[1] : null;
-                elseif (isset($parts[1])) $object = $parts[1] . (isset($parts[2]) ? ',' . $parts[2] : '');
-            }
-        }
-        if ($raw !== null) return $raw;
-        if ($object === null) {
-            // Der X60 nennt kein Objekt, legt das angeforderte Vollbild aber unter dem gemeldeten
-            // Kartenobjekt (6/3) ab – kurz warten, dann dort lesen
-            IPS_Sleep(2500);
-            $objs = $this->LiveMapObjects();
-            if (count($objs) == 0) return null;
-            $object = $objs[0];
-        }
-        $parts = explode(',', $object);
-        $text = $this->CloudFile($parts[0]);
-        if ($text === null) return null;
-        return (isset($parts[1]) && strpos($text, ',') === false) ? $text . ',' . $parts[1] : $text;
     }
 
     private function LiveBlock()
@@ -1110,23 +1091,26 @@ class X60Ultra extends IPSModule
 
     // Kandidaten für die aktuelle Karte: gemeldeter Objektname (6/3), sonst die neueste Datei
     // im Kartenordner des Geräts.
+    // Kandidaten für die aktuelle Karte. Der X60 legt die laufende Karte abwechselnd als ".../0" und
+    // ".../1" im Kartenordner ab (etwa alle 30 s); 6/3 im Cloud-Speicher hinkt dabei oft eine Runde hinterher.
+    // Deshalb beide Dateien ansehen und die neuere nehmen.
     private function LiveMapObjects()
     {
         $out = [];
-        $v = $this->MapKeys();
-        if (isset($v['6.3'])) {
-            $o = $v['6.3'];
-            if (is_string($o) && is_array($j = json_decode($o, true))) $o = $j;
-            if (is_array($o)) $o = reset($o);
-            if (is_string($o) && $o !== '') $out[] = explode(',', $o)[0];
-        }
-        if (isset($v['6.8'])) {
-            $l = $this->Json($v['6.8']);
-            if (isset($l['object_name']) && ($p = strrpos($l['object_name'], '/')) !== false) {
-                $out[] = substr($l['object_name'], 0, $p + 1) . '0';
+        $dir = $this->GetBuffer('MapDir');
+        if ($dir === '') {
+            $v = $this->MapKeys();
+            foreach (['6.3', '6.8'] as $k) {
+                if (!isset($v[$k])) continue;
+                $o = $v[$k];
+                if (is_string($o) && is_array($j = json_decode($o, true))) $o = $j;
+                if (is_array($o)) $o = isset($o['object_name']) ? $o['object_name'] : (isset($o['obj_name']) ? $o['obj_name'] : reset($o));
+                if (is_string($o) && ($p = strrpos($o, '/')) !== false) { $dir = substr(explode(',', $o)[0], 0, $p + 1); break; }
             }
+            if ($dir !== '') $this->SetBuffer('MapDir', $dir);
         }
-        return array_values(array_unique($out));
+        if ($dir !== '') { $out[] = $dir . '0'; $out[] = $dir . '1'; }
+        return $out;
     }
 
     private function StoreMapImage($b, $mapId, $ident)
@@ -1757,6 +1741,7 @@ class X60Ultra extends IPSModule
         return [
             'name' => IPS_GetName($this->InstanceID),
             'online' => $this->GetValue('Online'),
+            'live' => $this->ReadPropertyBoolean('Live') ? $this->LiveOk() : null,
             'state' => $state, 'stateText' => GetValueFormatted($this->GetIDForIdent('State')),
             'group' => SaugroboterTexte::StateGroup($state),
             'job' => $this->ReadAttributeInteger('Job') == 1,
@@ -1883,8 +1868,9 @@ class X60Ultra extends IPSModule
         if (!$this->ReadPropertyBoolean('Active') || !$this->ReadPropertyBoolean('Consent')) { $this->SetTimerInterval('Poll', 0); return; }
         // Mindestabstände schonen die Cloud (und das Konto)
         $s = max(30, $this->ReadPropertyInteger('Interval'));
-        if ($this->ReadAttributeInteger('Job') == 1) $s = max(10, min($s, $this->ReadPropertyInteger('IntervalBusy')));
-        if (intval($this->GetBuffer('FastUntil')) > time()) $s = 10;
+        // Während eines Auftrags schneller abfragen – außer die Live-Verbindung liefert ohnehin alles sofort
+        if ($this->ReadAttributeInteger('Job') == 1) $s = $this->LiveOk() ? min($s, 60) : max(10, min($s, $this->ReadPropertyInteger('IntervalBusy')));
+        if (intval($this->GetBuffer('FastUntil')) > time() && !$this->LiveOk()) $s = 10;
         $this->SetTimerInterval('Poll', $s * 1000);
     }
 

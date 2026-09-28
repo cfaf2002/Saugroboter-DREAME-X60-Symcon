@@ -91,3 +91,4 @@ details > div { margin-top: 9px; }
 #flash { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: rgba(20,24,30,.9); color: #fff; padding: 7px 12px;
   border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 20; }
 #flash.show { opacity: 1; }
+.live{margin-left:8px;font-size:10px;font-weight:600;letter-spacing:.06em;padding:1px 6px;border-radius:8px;color:var(--ok);border:1px solid var(--ok);opacity:.85}

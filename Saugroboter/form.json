@@ -90,6 +90,15 @@
           "caption": "TLS-Zertifikate prüfen"
         },
         {
+          "type": "CheckBox",
+          "name": "Live",
+          "caption": "Live-Verbindung (Zustand, Position und Karte in Echtzeit wie in der App)"
+        },
+        {
+          "type": "Label",
+          "caption": "Nutzt dieselbe Push-Verbindung (MQTT) wie die App. Dafür legt das Modul automatisch einen Client Socket als übergeordnete Instanz an und stellt ihn selbst ein. Fällt die Verbindung aus, fragt das Modul wie gewohnt regelmäßig ab."
+        },
+        {
           "type": "RowLayout",
           "items": [
             {
@@ -123,6 +132,11 @@
               "caption": "Gerät scannen (Diagnose)",
               "onClick": "SAUG_ScanDevice($id);",
               "confirm": "Fragt rund 2.800 Kennungen ab (ca. 20–40 Sekunden). Fortfahren?"
+            },
+            {
+              "type": "Button",
+              "caption": "Live-Verbindung neu aufbauen",
+              "onClick": "SAUG_LiveRestart($id);"
             }
           ]
         }

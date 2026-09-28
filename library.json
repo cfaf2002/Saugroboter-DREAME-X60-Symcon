@@ -3,8 +3,8 @@
     "author": "Armin Frohwerk",
     "name": "Saugroboter",
     "url": "",
-    "version": "1.1",
-    "build": 17,
+    "version": "1.2",
+    "build": 19,
     "date": 20260928,
     "compatibility": {
         "version": "7.0"

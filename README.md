@@ -12,7 +12,7 @@ X60 Ultra, passend für die aktuellen Modelle der X-Serie (X40, X50, X60) und ve
 Die X-Modelle bieten keinen lokalen Zugang. Das Modul spricht deshalb wie die Dreamehome-App mit der
 Hersteller-Cloud – es läuft selbst aber vollständig in deiner Symcon-Instanz, ohne zusätzliche Dienste.
 
-**Version 1.1** · IP-Symcon ab 7.0 (Kachel ab 7.1) · Version und Build stehen unten in der Instanzkonfiguration
+**Version 1.2** · IP-Symcon ab 7.0 (Kachel ab 7.1) · Version und Build stehen unten in der Instanzkonfiguration
 
 ---
 
@@ -53,6 +53,12 @@ Hersteller-Cloud – es läuft selbst aber vollständig in deiner Symcon-Instanz
 - **Vormerken**: Räume während einer laufenden Fahrt auswählen – sie werden danach als eigener Durchgang gereinigt
 - **Vorwahlen** vor dem Start: Modus, Saugkraft, Wischfeuchte, Route, Durchgänge, CleanGenius
 - Zähler eines Verschleißteils zurücksetzen
+
+**Live-Verbindung (Echtzeit wie in der App)**
+- Zustand, Akku, Fortschritt, Position und Karte kommen **sofort**, sobald sich am Roboter etwas ändert –
+  über dieselbe Push-Verbindung, die auch die App nutzt
+- Die Karte folgt dem Roboter während der Fahrt (neu gezeichnet höchstens alle 3 s), die Kachel zeigt dann **LIVE**
+- Fällt die Verbindung aus, fragt das Modul automatisch wieder regelmäßig ab
 
 **Karte**
 - Kartenbild aller Etagen mit Räumen, Roboter (mit Blickrichtung), Station und gefahrener Strecke
@@ -99,6 +105,11 @@ auch mit X40/X50 und verwandten Modellen.
 6. In der Raumliste Räume abwählen, die es nicht gibt (Dreame erkennt gern Räume hinter Glastüren), oder unter
    *Eigener Name* umbenennen. *Änderungen übernehmen*.
 7. Optional: Automatik, Benachrichtigungen, Kartenausrichtung.
+
+**Live-Verbindung:** ist ab Werk eingeschaltet (*Konto & Gerät → Live-Verbindung*). Das Modul legt dafür beim ersten
+Mal selbst einen **Client Socket** als übergeordnete Instanz an („Saugroboter Live (…)“) und stellt ihn ein – Server,
+Port und TLS kommen aus der Cloud, dort ist nichts von Hand einzutragen. Die Variable **Live-Verbindung** zeigt, ob
+gerade Echtzeitdaten ankommen. Wird die Instanz gelöscht, bleibt der Client Socket stehen und kann mit gelöscht werden.
 
 > **Tipp für neue Modelle:** *Gerät scannen (Diagnose)* listet alle Werte, die der Roboter liefert (auch im Debug-Fenster).
 > Damit lässt sich prüfen, ob ein Wert fehlt oder anders heißt.
@@ -213,6 +224,7 @@ SAUG_Poll($id);                              // Status sofort abrufen
 SAUG_ReadMaps($id);                          // Karten neu einlesen
 SAUG_TestConnection($id);
 SAUG_ScanDevice($id);                        // Diagnose: alle Gerätewerte
+SAUG_LiveRestart($id);                       // Live-Verbindung neu aufbauen
 ```
 
 Alle Befehle geben `true`/`false` zurück; der Grund eines Fehlschlags steht in **Letzte Meldung**.
@@ -224,12 +236,19 @@ Alle Befehle geben `true`/`false` zurück; der Grund eines Fehlschlags steht in 
 - **Anmeldung**: Das Passwort wird beim Speichern in den Hash umgewandelt, den die Cloud erwartet – im Klartext
   steht es danach nirgends mehr. Angemeldet wird einmal damit, danach mit dem Refresh-Token der Cloud. Lehnt die Cloud ein Token ab,
   meldet sich das Modul sofort neu an.
+- **Live-Verbindung**: MQTT über TLS zum Server, an dem der Roboter hängt – angemeldet mit Konto-ID und Zugangstoken,
+  abonniert wird nur das eigene Gerät. Das Protokoll (Anmelden, Abonnieren, Empfangen, Keepalive) ist im Modul selbst
+  umgesetzt, es braucht keine Zusatzbibliothek und keinen eigenen MQTT-Server. Kartenbilder kommen als Voll- oder
+  Differenzbild direkt in der Nachricht; Differenzbilder werden auf das letzte Vollbild gelegt. Nach 150 s ohne Daten
+  baut das Modul die Verbindung neu auf; wird die Anmeldung dreimal abgelehnt, pausiert es 10 Minuten.
 - **Abfrage**: alle *n* Sekunden im Ruhezustand, schneller während einer Reinigung und kurz nach jedem Befehl.
+  Steht die Live-Verbindung, reicht eine ruhige Abfrage (höchstens jede Minute) für Station und Verschleiß, und
+  Kartendateien werden gar nicht mehr geladen.
   Abgefragt werden nur Werte, die das Modell kennt – in Paketen, wie die Cloud sie annimmt.
 - **Modellunabhängig**: Beim ersten Kontakt fragt das Modul alle bekannten Verschleiß- und Zusatzwerte ab und legt
   nur Variablen für die an, die der Roboter liefert. *Verbindung testen* ermittelt sie neu.
 - **Karten**: Die Kartenliste kommt als Datei aus der Cloud. Das Modul entschlüsselt sie bei Bedarf, erkennt das
-  Zellformat selbst und zeichnet die Karte mit PHP-GD. Während einer Fahrt wird die Live-Karte höchstens alle 30 s geladen.
+  Zellformat selbst und zeichnet die Karte mit PHP-GD. Ohne Live-Verbindung wird die laufende Karte während einer Fahrt als Datei geladen (etwa alle 30 s neu abgelegt).
 - **Vorwahlen**: werden vor jedem Start ans Gerät geschickt. Ist am Gerät *CleanGenius* aktiv und werden Saugkraft,
   Feuchte oder Route vorgewählt, schaltet das Modul CleanGenius aus – sonst würde der Roboter die Vorwahl ignorieren.
   Ist in der App *Individuelle Raumeinstellungen* aktiv, gelten die Werte je Raum aus der App
@@ -257,6 +276,7 @@ Alle Befehle geben `true`/`false` zurück; der Grund eines Fehlschlags steht in 
 | Keine Karte | Karte in der App gespeichert? *Karten & Räume einlesen* erneut ausführen. |
 | Karte gedreht/gespiegelt | Unter *Karte → Ausrichtung* anpassen. |
 | Vorwahlen wirken nicht | *Einstellungen am Gerät* prüfen: individuelle Raumeinstellungen überstimmen die Vorwahlen. |
+| Karte/Zustand hinken hinterher | Ist *Live-Verbindung* an und die gleichnamige Variable auf *An*? Sonst *Live-Verbindung neu aufbauen*; Details im Debug-Fenster (Einträge „Live“). Der Client Socket muss ins Internet dürfen (ausgehend, Port laut Cloud, z. B. 19973). |
 | Wert fehlt | *Gerät scannen (Diagnose)* und Debug-Fenster der Instanz prüfen. |
 
 ---

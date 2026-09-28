@@ -177,6 +177,7 @@ trait SaugroboterApi
             $out[] = [
                 'did' => strval($r['did']), 'model' => strval($r['model']), 'name' => strval($name),
                 'host' => isset($r['bindDomain']) ? strval($r['bindDomain']) : '',
+                'master' => isset($r['masterUid']) ? strval($r['masterUid']) : '',
                 'vacuum' => strpos($r['model'], '.vacuum.') !== false,
                 'online' => isset($r['online']) ? (bool)$r['online'] : null
             ];
