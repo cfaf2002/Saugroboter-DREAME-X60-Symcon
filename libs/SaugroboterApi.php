@@ -21,6 +21,8 @@ trait SaugroboterApi
     private static $DC_BATCH = 15;
 
     private $dcLastError = '';
+    // true, wenn die letzten Werte aus dem Cloud-Speicher statt direkt vom Roboter kamen
+    protected $dcFromCache = false;
 
     // ---- Anmeldung --------------------------------------------------------
 
@@ -175,7 +177,8 @@ trait SaugroboterApi
             $out[] = [
                 'did' => strval($r['did']), 'model' => strval($r['model']), 'name' => strval($name),
                 'host' => isset($r['bindDomain']) ? strval($r['bindDomain']) : '',
-                'vacuum' => strpos($r['model'], '.vacuum.') !== false
+                'vacuum' => strpos($r['model'], '.vacuum.') !== false,
+                'online' => isset($r['online']) ? (bool)$r['online'] : null
             ];
         }
         return $out;
@@ -191,14 +194,18 @@ trait SaugroboterApi
         $list = $this->CloudDevices();
         if ($list === null) return null;
         $filter = mb_strtolower(trim($this->ReadPropertyString('DeviceFilter')));
+        $hits = [];
         foreach ($list as $dev) {
             $hit = $filter === '' ? $dev['vacuum']
                 : ($dev['did'] === $filter || strpos(mb_strtolower($dev['model']), $filter) !== false
                     || strpos(mb_strtolower($dev['name']), $filter) !== false);
-            if ($hit) {
-                $this->WriteAttributeString('Device', json_encode($dev));
-                return $dev;
-            }
+            if ($hit) $hits[] = $dev;
+        }
+        // Mehrere Treffer (z. B. alter Roboter noch im Konto): den erreichbaren nehmen
+        usort($hits, function ($a, $b) { return intval($b['online'] === true) - intval($a['online'] === true); });
+        if (count($hits)) {
+            $this->WriteAttributeString('Device', json_encode($hits[0]));
+            return $hits[0];
         }
         $this->dcLastError = $filter === '' ? 'Kein Saugroboter im Konto gefunden.' : 'Kein Gerät passt zum Filter „' . $filter . '“.';
         return null;
@@ -216,17 +223,52 @@ trait SaugroboterApi
             foreach ($params as &$p) $p['did'] = $dev['did'];
             unset($p);
         }
-        $d = $this->CloudCall('dreame-iot-com' . $host . '/device/sendCommand', [
+        $payload = [
             'did' => $dev['did'], 'id' => mt_rand(1, 9999),
             'data' => ['did' => $dev['did'], 'id' => mt_rand(1, 9999), 'method' => $method, 'params' => $params]
-        ]);
-        if ($d === null) return null;
-        if (!isset($d['data']['result'])) {
-            // Gerät nicht erreichbar (schläft/offline): die Cloud meldet dann success=false
-            $this->dcLastError = 'Roboter antwortet nicht' . (isset($d['msg']) ? ' (' . $d['msg'] . ')' : '') . '.';
-            return null;
+        ];
+        // Ein Zeitüberschreiten kommt gelegentlich einmalig vor (Roboter wacht gerade auf) -> ein Wiederholungsversuch
+        for ($try = 0; $try < 2; $try++) {
+            $d = $this->CloudCall('dreame-iot-com' . $host . '/device/sendCommand', $payload);
+            if ($d === null) return null;
+            if (isset($d['data']['result'])) return $d['data']['result'];
+            $this->dcLastError = 'Roboter antwortet nicht direkt (' . $this->CloudMessage($d) . ').';
+            $this->SendDebug('MiOT', $method . ': ' . json_encode($d, JSON_UNESCAPED_UNICODE), 0);
+            if ($try == 0) IPS_Sleep(1500);
         }
-        return $d['data']['result'];
+        return null;
+    }
+
+    // Meldungen der Cloud kommen teils auf Chinesisch – die bekannten übersetzen
+    private function CloudMessage($d)
+    {
+        $m = isset($d['msg']) ? strval($d['msg']) : '';
+        if ($m === '') return 'keine Rückmeldung';
+        if (strpos($m, '不在线') !== false || strpos($m, 'offline') !== false) return 'Gerät laut Cloud offline oder Zeitüberschreitung';
+        if (strpos($m, '超时') !== false || stripos($m, 'timeout') !== false) return 'Zeitüberschreitung';
+        if (preg_match('/\p{Han}/u', $m)) return 'Cloud-Fehler ' . (isset($d['code']) ? $d['code'] : '');
+        return $m;
+    }
+
+    // Letzte vom Roboter gemeldete Werte aus dem Speicher der Cloud. Funktioniert auch, wenn der
+    // Roboter gerade nicht direkt antwortet (z. B. im Energiesparmodus an der Station).
+    protected function CloudCachedProps($keys)
+    {
+        $dev = $this->CloudDevice();
+        if ($dev === null) return null;
+        $list = [];
+        foreach ($keys as $k) $list[] = intval($k[0]) . '.' . intval($k[1]);
+        $d = $this->CloudCall('dreame-user-iot/iotstatus/props', ['did' => $dev['did'], 'keys' => implode(',', $list)]);
+        if (!isset($d['data']) || !is_array($d['data'])) return null;
+        $out = [];
+        foreach ($d['data'] as $k => $e) {
+            if (is_array($e) && isset($e['key'])) { $key = strval($e['key']); $val = isset($e['value']) ? $e['value'] : null; }
+            else { $key = strval($k); $val = $e; }
+            if ($val === null || !preg_match('/^\d+\.\d+$/', $key)) continue;
+            $out[$key] = $val;
+        }
+        $this->SendDebug('Cloud-Speicher', json_encode($out, JSON_UNESCAPED_UNICODE), 0);
+        return count($out) ? $out : null;
     }
 
     // ---- MiOT ---------------------------------------------------------------
@@ -236,11 +278,15 @@ trait SaugroboterApi
     {
         $out = [];
         $any = false;
-        foreach (array_chunk($keys, self::$DC_BATCH) as $chunk) {
+        $this->dcFromCache = false;
+        foreach (array_chunk($keys, self::$DC_BATCH) as $i => $chunk) {
             $params = [];
             foreach ($chunk as $k) $params[] = ['siid' => intval($k[0]), 'piid' => intval($k[1])];
             $res = $this->CloudCommand('get_properties', $params);
-            if (!is_array($res)) continue;
+            if (!is_array($res)) {
+                if ($i == 0) break;      // erstes Paket ohne Antwort: Roboter nicht erreichbar, Rest sparen
+                continue;
+            }
             $any = true;
             foreach ($res as $r) {
                 if (isset($r['code']) && intval($r['code']) == 0 && array_key_exists('value', $r)) {
@@ -248,7 +294,11 @@ trait SaugroboterApi
                 }
             }
         }
-        return $any ? $out : null;
+        if ($any) return $out;
+        // Rückfall: letzte bekannte Werte aus dem Cloud-Speicher
+        $cached = $this->CloudCachedProps($keys);
+        if ($cached !== null) $this->dcFromCache = true;
+        return $cached;
     }
 
     // $items = [[siid, piid, Wert], ...] -> true nur, wenn das Gerät jeden Wert angenommen hat

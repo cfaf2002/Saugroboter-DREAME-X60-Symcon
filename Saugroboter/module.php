@@ -22,7 +22,7 @@ require_once __DIR__ . '/../libs/SaugroboterApi.php';
 require_once __DIR__ . '/../libs/SaugroboterKarte.php';
 require_once __DIR__ . '/../libs/SaugroboterTexte.php';
 
-class Saugroboter extends IPSModule
+class X60Ultra extends IPSModule
 {
     use SaugroboterApi;
 
@@ -554,19 +554,33 @@ class Saugroboter extends IPSModule
                 return false;
             }
             $this->SetVal('Model', $dev['name'] . ' (' . $dev['model'] . ')');
-            $caps = $this->ProbeCapabilities();
-            echo "Verbindung OK\nGerät: " . $dev['name'] . ' – ' . $dev['model'];
-            $others = array_filter(is_array($all) ? $all : [], function ($d) use ($dev) { return $d['vacuum'] && $d['did'] != $dev['did']; });
+            $on = function ($d) { return $d['online'] === null ? '' : ($d['online'] ? ', online' : ', OFFLINE'); };
+            echo "Anmeldung OK\nGerät: " . $dev['name'] . ' – ' . $dev['model'] . $on($dev) . ' (did ' . $dev['did'] . ')';
+            $others = array_filter(is_array($all) ? $all : [], function ($d) use ($dev) { return $d['did'] != $dev['did']; });
             if (count($others)) {
-                echo "\n\nWeitere Roboter im Konto (Feld „Gerät“):";
-                foreach ($others as $d) echo "\n  • " . $d['name'] . ' (' . $d['model'] . ')';
+                echo "\n\nWeitere Geräte im Konto (Auswahl über Feld „Gerät“):";
+                foreach ($others as $d) echo "\n  • " . $d['name'] . ' (' . $d['model'] . $on($d) . ', did ' . $d['did'] . ')';
             }
+
+            // Direkter Draht zum Roboter?
+            $v = $this->MiotGet([[2, 1], [3, 1]]);
+            if ($v !== null && !$this->dcFromCache) {
+                echo "\n\nRoboter antwortet direkt: " . $this->StateName(isset($v['2.1']) ? $v['2.1'] : -1) . ', Akku ' . (isset($v['3.1']) ? intval($v['3.1']) : '?') . ' %';
+            } elseif ($v !== null) {
+                echo "\n\nDer Roboter antwortet nicht direkt – Status kommt aus dem Cloud-Speicher (Zustand: "
+                    . $this->StateName(isset($v['2.1']) ? $v['2.1'] : -1) . ').'
+                    . "\nBefehle brauchen den direkten Draht. Prüfen: Ist der Roboter in der App erreichbar? "
+                    . 'Stimmt das Gerät oben (bei mehreren Geräten das Feld „Gerät“ setzen)?';
+            } else {
+                echo "\n\nDer Roboter antwortet nicht: " . $this->dcLastError
+                    . "\nPrüfen: Ist der Roboter in der App erreichbar? Stimmt das Gerät oben?";
+            }
+
+            $caps = $this->ProbeCapabilities();
             if (is_array($caps)) {
                 $parts = [];
                 foreach (SaugroboterTexte::Consumables() as $c) if (!empty($caps[$c[1] . '.' . $c[2]])) $parts[] = $c[0];
                 echo "\n\nVerschleißteile: " . (count($parts) ? implode(', ', $parts) : 'keine gemeldet');
-            } else {
-                echo "\n\nDer Roboter hat nicht geantwortet (schläft er?). Werte werden beim nächsten Abruf ermittelt.";
             }
             $this->Online(true);
             return true;
@@ -667,6 +681,7 @@ class Saugroboter extends IPSModule
             $v = $this->MiotGet($keys);
             if ($v === null || !isset($v['2.1'])) { $this->Online(false); return false; }
             $this->Online(true);
+            if ($this->dcFromCache) $this->Note('Roboter antwortet nicht direkt – Werte aus dem Cloud-Speicher.');
 
             $state = intval($v['2.1']);
             $this->SetVal('State', $state);
@@ -1491,6 +1506,12 @@ class Saugroboter extends IPSModule
         if (!$id) return false;
         if (GetValue($id) !== $Value) $this->SetValue($Ident, $Value);
         return true;
+    }
+
+    private function StateName($code)
+    {
+        $s = SaugroboterTexte::States();
+        return isset($s[intval($code)]) ? $s[intval($code)] : ('Zustand ' . intval($code));
     }
 
     private function FloorProfile() { return 'SAUG.Floors.' . $this->InstanceID; }

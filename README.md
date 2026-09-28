@@ -80,7 +80,8 @@ Hersteller-Cloud – es läuft selbst aber vollständig in deiner Symcon-Instanz
    (z. B. `/var/lib/symcon/modules/` bzw. `C:\ProgramData\Symcon\modules\`).
 2. In der Verwaltungskonsole *Kern Instanzen → Modules* das Modulverzeichnis neu laden.
 
-Anschließend über *Instanz hinzufügen* die Instanz **Saugroboter** anlegen.
+Anschließend über *Instanz hinzufügen* unter Hersteller **Dreame** das Gerät **X60 Ultra** anlegen. Die Instanz funktioniert
+auch mit X40/X50 und verwandten Modellen.
 
 ---
 
