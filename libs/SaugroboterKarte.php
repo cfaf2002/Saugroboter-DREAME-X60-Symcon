@@ -340,7 +340,14 @@ class SaugroboterKarte
                 $grid .= ($c > 0 && $c < 63) ? chr(48 + $c) : '.';
             }
         }
-        return ['mapId' => $b['mapId'], 'rot' => $rot, 'rooms' => $rooms, 'gw' => $gw, 'gh' => $gh, 'grid' => $grid];
+        // Roboter und Station als Anteil der Bildbreite/-höhe, Blickrichtung in Bildgrad (0 = rechts, im Uhrzeigersinn)
+        $pos = function ($mx, $my) use ($b, $x0, $y1, $cw, $ch, $rot) {
+            return self::Rotate((($mx - $b['left']) / $b['grid'] - $x0) / $cw, ($y1 - ($my - $b['top']) / $b['grid']) / $ch, $rot);
+        };
+        $robot = $pos($b['robot'][0], $b['robot'][1]);
+        $robot[] = round(-$b['robot'][2] + $rot, 1);
+        return ['mapId' => $b['mapId'], 'rot' => $rot, 'rooms' => $rooms, 'gw' => $gw, 'gh' => $gh, 'grid' => $grid,
+            'robot' => $robot, 'dock' => $pos($b['dock'][0], $b['dock'][1])];
     }
 
     // Anteilskoordinaten im Uhrzeigersinn drehen (passend zu Render)
@@ -355,15 +362,18 @@ class SaugroboterKarte
     public static function Render($b, $format, $opt = [])
     {
         if (!function_exists('imagecreatetruecolor') || $b['w'] <= 0 || $b['h'] <= 0) return null;
-        $w = $b['w']; $h = $b['h']; $cells = $b['cells'];
+        $w = $b['w']; $cells = $b['cells'];
 
         list($x0, $y0, $x1, $y1) = self::Bounds($b, $format);
         if ($x1 < 0) return null;
         $cw = $x1 - $x0 + 1; $ch = $y1 - $y0 + 1;
         $size = isset($opt['size']) ? intval($opt['size']) : 560;
         $k = max(1, min(10, intval(floor($size / max($cw, $ch)))));
+        // Doppelt so groß zeichnen und danach verkleinern: glatte Kanten statt Treppen
+        $ss = ($cw * $ch * $k * $k * 4 <= 6000000) ? 2 : 1;
+        $K = $k * $ss;
 
-        $img = imagecreatetruecolor($cw * $k, $ch * $k);
+        $img = imagecreatetruecolor($cw * $K, $ch * $K);
         imagealphablending($img, false);
         imagesavealpha($img, true);
         imagefill($img, 0, 0, imagecolorallocatealpha($img, 0, 0, 0, 127));
@@ -375,13 +385,12 @@ class SaugroboterKarte
         ];
         $hl  = isset($opt['highlight']) ? intval($opt['highlight']) : 0;
         $sel = isset($opt['selected']) && is_array($opt['selected']) ? $opt['selected'] : [];
-        $col = [];
-        $wall = imagecolorallocate($img, 0x5B, 0x64, 0x72);
-        $floor = imagecolorallocate($img, 0xC4, 0xCB, 0xD4);
-        $edge = [];          // etwas dunklere Randfarbe je Raum
+        $col = []; $edge = [];
+        $wall = imagecolorallocate($img, 0x6E, 0x78, 0x87);
+        $floor = imagecolorallocate($img, 0xCF, 0xD5, 0xDD);
         for ($y = $y0; $y <= $y1; $y++) {
             $row = $y * $w;
-            $py = ($y1 - $y) * $k;                 // Kartenachse zeigt nach oben
+            $py = ($y1 - $y) * $K;                 // Kartenachse zeigt nach oben
             for ($x = $x0; $x <= $x1; $x++) {
                 $c = self::Cell(ord($cells[$row + $x]), $format);
                 if ($c == 0) continue;
@@ -390,44 +399,43 @@ class SaugroboterKarte
                 else {
                     if (!isset($col[$c])) {
                         $p = $palette[($c - 1) % count($palette)];
-                        $on = ($c == $hl || in_array($c, $sel, true));
-                        // ausgewählte Räume kräftiger (Richtung Akzentblau), sonst Pastell
-                        if ($on) $p = [intval($p[0] * .55 + 0x4C * .45), intval($p[1] * .55 + 0x8D * .45), intval($p[2] * .55 + 0xFF * .45)];
+                        // ausgewählte Räume kräftiger (Richtung Akzentblau)
+                        if ($c == $hl || in_array($c, $sel, true)) $p = [intval($p[0] * .55 + 0x4C * .45), intval($p[1] * .55 + 0x8D * .45), intval($p[2] * .55 + 0xFF * .45)];
                         $col[$c] = imagecolorallocate($img, $p[0], $p[1], $p[2]);
-                        $edge[$c] = imagecolorallocate($img, intval($p[0] * .78), intval($p[1] * .78), intval($p[2] * .78));
+                        $edge[$c] = imagecolorallocate($img, intval($p[0] * .8), intval($p[1] * .8), intval($p[2] * .8));
                     }
                     $color = $col[$c];
                 }
-                $px = ($x - $x0) * $k;
-                if ($k == 1) imagesetpixel($img, $px, $py, $color);
-                else imagefilledrectangle($img, $px, $py, $px + $k - 1, $py + $k - 1, $color);
+                $px = ($x - $x0) * $K;
+                imagefilledrectangle($img, $px, $py, $px + $K - 1, $py + $K - 1, $color);
             }
         }
         // Feine Linien zwischen Räumen bzw. zur Außenkante (erst ab lesbarer Größe)
         if ($k >= 3) {
+            $t = $ss;                              // Linienstärke im großen Bild
             for ($y = $y0; $y <= $y1; $y++) {
-                $py = ($y1 - $y) * $k;
+                $py = ($y1 - $y) * $K;
                 for ($x = $x0; $x <= $x1; $x++) {
                     $c = self::Cell(ord($cells[$y * $w + $x]), $format);
                     if (!isset($edge[$c])) continue;
-                    $px = ($x - $x0) * $k;
+                    $px = ($x - $x0) * $K;
                     $r = $x < $x1 ? self::Cell(ord($cells[$y * $w + $x + 1]), $format) : 0;
                     $u = $y < $y1 ? self::Cell(ord($cells[($y + 1) * $w + $x]), $format) : 0;
                     $l = $x > $x0 ? self::Cell(ord($cells[$y * $w + $x - 1]), $format) : 0;
                     $d = $y > $y0 ? self::Cell(ord($cells[($y - 1) * $w + $x]), $format) : 0;
-                    if ($r != $c && $r != self::WALL) imageline($img, $px + $k - 1, $py, $px + $k - 1, $py + $k - 1, $edge[$c]);
-                    if ($l != $c && $l != self::WALL && !isset($edge[$l])) imageline($img, $px, $py, $px, $py + $k - 1, $edge[$c]);
-                    if ($u != $c && $u != self::WALL) imageline($img, $px, $py, $px + $k - 1, $py, $edge[$c]);
-                    if ($d != $c && $d != self::WALL && !isset($edge[$d])) imageline($img, $px, $py + $k - 1, $px + $k - 1, $py + $k - 1, $edge[$c]);
+                    if ($r != $c && $r != self::WALL) imagefilledrectangle($img, $px + $K - $t, $py, $px + $K - 1, $py + $K - 1, $edge[$c]);
+                    if ($l != $c && $l != self::WALL && !isset($edge[$l])) imagefilledrectangle($img, $px, $py, $px + $t - 1, $py + $K - 1, $edge[$c]);
+                    if ($u != $c && $u != self::WALL) imagefilledrectangle($img, $px, $py, $px + $K - 1, $py + $t - 1, $edge[$c]);
+                    if ($d != $c && $d != self::WALL && !isset($edge[$d])) imagefilledrectangle($img, $px, $py + $K - $t, $px + $K - 1, $py + $K - 1, $edge[$c]);
                 }
             }
         }
         imagealphablending($img, true);
 
-        $toPx = function ($mx, $my) use ($b, $x0, $y1, $k) {
+        $toPx = function ($mx, $my) use ($b, $x0, $y1, $K) {
             return [
-                intval((($mx - $b['left']) / $b['grid'] - $x0) * $k),
-                intval(($y1 - ($my - $b['top']) / $b['grid']) * $k)
+                intval((($mx - $b['left']) / $b['grid'] - $x0) * $K),
+                intval(($y1 - ($my - $b['top']) / $b['grid']) * $K)
             ];
         };
 
@@ -435,8 +443,8 @@ class SaugroboterKarte
         // L = Linie relativ zum letzten Punkt, l = Linie zu einem absoluten Punkt.
         if (!empty($opt['path']) && isset($b['info']['tr']) && is_string($b['info']['tr'])
             && preg_match_all('/([MWSLl])(-?\d+),(-?\d+)/', $b['info']['tr'], $m, PREG_SET_ORDER)) {
-            $pc = imagecolorallocatealpha($img, 0xFF, 0xFF, 0xFF, 45);
-            imagesetthickness($img, max(1, intval($k / 2)));
+            $pc = imagecolorallocatealpha($img, 0xFF, 0xFF, 0xFF, 40);
+            imagesetthickness($img, max(2, intval($K / 3)));
             $cx = 0; $cy = 0; $last = null;
             foreach ($m as $seg) {
                 if ($seg[1] == 'L') { $cx += intval($seg[2]); $cy += intval($seg[3]); }
@@ -448,30 +456,55 @@ class SaugroboterKarte
             imagesetthickness($img, 1);
         }
 
-        $r = max(10, $k * 4);
+        $rot = isset($opt['rotate']) ? (intval($opt['rotate']) % 360 + 360) % 360 : 0;
+        $both = !empty($opt['both']);
+        $clean = $both ? self::Finish(self::CopyImg($img), $cw * $k, $ch * $k, $rot) : null;
+
+        // Station und Roboter ins Bild (für Anzeigen ohne eigene Symbole, z. B. Medienobjekt/WebFront)
+        $r = max(10, $k * 4) * $ss;
         $white = imagecolorallocate($img, 0xFF, 0xFF, 0xFF);
         $shadow = imagecolorallocatealpha($img, 0x10, 0x14, 0x1A, 85);
         $blue = imagecolorallocate($img, 0x4C, 0x8D, 0xFF);
-
-        // Station: grüner, abgerundeter Sockel mit weißem Rand
         list($sx, $sy) = $toPx($b['dock'][0], $b['dock'][1]);
-        imagefilledellipse($img, $sx, $sy + 2, $r + 8, $r + 8, $shadow);
-        imagefilledellipse($img, $sx, $sy, $r + 6, $r + 6, $white);
-        imagefilledellipse($img, $sx, $sy, $r + 1, $r + 1, imagecolorallocate($img, 0x34, 0xC7, 0x7B));
-        imagefilledrectangle($img, $sx - intval($r / 5), $sy - intval($r / 5), $sx + intval($r / 5), $sy + intval($r / 5), $white);
-
-        // Roboter: Schatten, weißer Körper, blauer Ring, Blickrichtung als Punkt
+        imagefilledellipse($img, $sx, $sy + 2 * $ss, $r + 8 * $ss, $r + 8 * $ss, $shadow);
+        imagefilledellipse($img, $sx, $sy, $r + 6 * $ss, $r + 6 * $ss, $white);
+        imagefilledellipse($img, $sx, $sy, $r + $ss, $r + $ss, imagecolorallocate($img, 0x34, 0xC7, 0x7B));
         list($rx, $ry) = $toPx($b['robot'][0], $b['robot'][1]);
-        $rr = $r + 8;
-        imagefilledellipse($img, $rx, $ry + 3, $rr + 4, $rr + 4, $shadow);
-        imagefilledellipse($img, $rx, $ry, $rr + 2, $rr + 2, $blue);
-        imagefilledellipse($img, $rx, $ry, $rr - 3, $rr - 3, $white);
+        $rr = $r + 8 * $ss;
+        imagefilledellipse($img, $rx, $ry + 3 * $ss, $rr + 4 * $ss, $rr + 4 * $ss, $shadow);
+        imagefilledellipse($img, $rx, $ry, $rr + 2 * $ss, $rr + 2 * $ss, $blue);
+        imagefilledellipse($img, $rx, $ry, $rr - 3 * $ss, $rr - 3 * $ss, $white);
         $a = deg2rad(-$b['robot'][2]);
         $d = $rr / 2 - max(3, intval($rr / 5));
         $dot = max(3, intval($rr / 4));
         imagefilledellipse($img, intval($rx + cos($a) * $d), intval($ry + sin($a) * $d), $dot, $dot, $blue);
 
-        $rot = isset($opt['rotate']) ? (intval($opt['rotate']) % 360 + 360) % 360 : 0;
+        $marked = self::Finish($img, $cw * $k, $ch * $k, $rot);
+        return $both ? [$marked, $clean] : $marked;
+    }
+
+    private static function CopyImg($src)
+    {
+        $w = imagesx($src); $h = imagesy($src);
+        $dst = imagecreatetruecolor($w, $h);
+        imagealphablending($dst, false);
+        imagesavealpha($dst, true);
+        imagecopy($dst, $src, 0, 0, 0, 0, $w, $h);
+        return $dst;
+    }
+
+    // Verkleinern (Kantenglättung), drehen, als PNG ausgeben
+    private static function Finish($img, $w, $h, $rot)
+    {
+        if (imagesx($img) != $w) {
+            $small = imagecreatetruecolor($w, $h);
+            imagealphablending($small, false);
+            imagesavealpha($small, true);
+            imagefill($small, 0, 0, imagecolorallocatealpha($small, 0, 0, 0, 127));
+            imagecopyresampled($small, $img, 0, 0, 0, 0, $w, $h, imagesx($img), imagesy($img));
+            imagedestroy($img);
+            $img = $small;
+        }
         if ($rot != 0) {
             $t = imagecolorallocatealpha($img, 0, 0, 0, 127);
             $img2 = imagerotate($img, -$rot, $t);   // imagerotate dreht gegen den Uhrzeigersinn
@@ -479,7 +512,6 @@ class SaugroboterKarte
             $img = $img2;
             imagesavealpha($img, true);
         }
-
         ob_start();
         imagepng($img, null, 6);
         $png = ob_get_clean();

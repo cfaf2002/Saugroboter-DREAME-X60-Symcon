@@ -152,16 +152,18 @@ gerade Echtzeitdaten ankommen. Wird die Instanz gelöscht, bleibt der Client Soc
 
 In der **Kachel-Visualisierung** die Instanz direkt als Kachel hinzufügen. Die Kachel zeigt:
 
-- Zustand, Raum, Fortschritt und Akku
+- Zustand, Raum, Fortschritt und Akku; bei aktiver Live-Verbindung das Zeichen **LIVE**
 - Störungen mit Kurzhilfe (Hinweise lassen sich quittieren)
-- die Karte mit Roboter, Station, Strecke und Raumnamen – **Raum antippen** öffnet die Nachfrage *Wie soll gereinigt werden?*
-  mit *Jetzt reinigen* (während einer Fahrt: *Nach der laufenden Fahrt*), *Nur auswählen* und *Abbrechen*.
-  Die Einstellungen gelten nur für diese Fahrt, die Vorwahlen bleiben unverändert.
-- Umschalter *Aktuell* / *Letzte Reinigung*
-- passende Knöpfe je nach Lage (in Ruhe: *Alles reinigen*; während der Fahrt: *Pause*, *Stopp*, *Zur Station*)
-- Etagen- und Raumwahl – während einer Fahrt wird aus *Auswahl reinigen* automatisch *Danach reinigen*
+- die Karte mit Raumnamen, Strecke, Station und dem Roboter, der in Echtzeit über die Karte gleitet.
+  **Raum antippen** öffnet die Nachfrage *Wie soll gereinigt werden?* mit *Jetzt reinigen* (während einer Fahrt:
+  *Nach der laufenden Fahrt*) und *Nur auswählen*. Die Einstellungen gelten nur für diese Fahrt.
+- Umschalter *Live* / *Letzte* (Karte der letzten Reinigung) und Etagenwahl direkt über der Karte
+- passende Knöpfe je nach Lage (in Ruhe: *Alles reinigen*; während der Fahrt: *Pause*, *Stopp*, *Station*)
+- **Räume** zum Anhaken, darunter die **Einstellungen** (Vorwahlen) als eine Zeile – antippen zum Ändern.
+  *Auswahl reinigen* fragt ebenfalls nach, wie gereinigt werden soll (während einer Fahrt: *Danach reinigen*).
 - Station mit Mopp waschen, Trocknen, Absaugen
-- Vorwahlen, Verschleiß (mit Zurücksetzen), Verlauf und den Schalter für die Automatik
+- Verschleiß (mit Zurücksetzen), Verlauf und den Schalter für die Automatik
+- **Rückmeldung** nach jedem Befehl: grün „… gesendet“, rot mit dem Grund, wenn etwas nicht geklappt hat
 
 Für **WebFront/IPSView** gibt es unter *Visualisierung* die HTML-Box „Übersicht“ (nur Anzeige) sowie das Medienobjekt „Karte“.
 

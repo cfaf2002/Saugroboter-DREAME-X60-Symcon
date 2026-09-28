@@ -419,6 +419,14 @@ class X60Ultra extends IPSModule
                 $this->CleanRoomsWith([$code], json_encode($d));
                 $this->RefreshViews();
                 return;
+            case 'TileCleanSel':
+                // Kachel: ausgewählte Räume mit Einstellungen aus der Nachfrage reinigen
+                $d = $this->Json($Value);
+                $sel = $this->SelectedRooms();
+                if (count($sel) == 0) { $this->Note('Es ist kein Raum ausgewählt.', 'err'); $this->RefreshViews(); return; }
+                $this->CleanRoomsWith($sel, json_encode(is_array($d) ? $d : []));
+                $this->RefreshViews();
+                return;
             case 'TileRoom':
                 // Kachel: Raum in der Auswahl umschalten (Wert = Raumcode)
                 $id = @$this->GetIDForIdent('Sel' . intval($Value));
@@ -428,7 +436,7 @@ class X60Ultra extends IPSModule
         if (strpos($Ident, 'Sel') === 0) {
             $code = intval(substr($Ident, 3));
             if ((bool)$Value && intdiv($code, 100) != $this->ActiveFloor()) {
-                $this->Note('Der Raum liegt auf einer anderen Etage – erst die Etage wechseln.');
+                $this->Note('Der Raum liegt auf einer anderen Etage – erst die Etage wechseln.', 'err');
                 return;
             }
             $this->SetVal($Ident, (bool)$Value);
@@ -538,15 +546,15 @@ class X60Ultra extends IPSModule
         $over = $this->Json($Settings);
         if (!is_array($over)) $over = [];
         $codes = $this->ResolveRooms($Rooms);
-        if (count($codes) == 0) { $this->Note('Keine passenden Räume gefunden.'); return false; }
+        if (count($codes) == 0) { $this->Note('Keine passenden Räume gefunden.', 'err'); return false; }
         $floors = array_unique(array_map(function ($c) { return intdiv($c, 100); }, $codes));
-        if (count($floors) > 1) { $this->Note('Ein Durchgang kann nur Räume einer Etage reinigen.'); return false; }
+        if (count($floors) > 1) { $this->Note('Ein Durchgang kann nur Räume einer Etage reinigen.', 'err'); return false; }
         if ($this->ReadAttributeInteger('Job') == 1 && count($over)) {
             $q = $this->ReadQueue();
             foreach ($codes as $c) if (!in_array($c, $q, true)) $q[] = $c;
             $this->WriteAttributeString('QueueSettings', json_encode($over));
             $this->WriteQueue($q);
-            $this->Note('Vorgemerkt: ' . $this->RoomNames($q));
+            $this->Note('Vorgemerkt: ' . $this->RoomNames($q), 'ok');
             $this->RefreshViews();
             return true;
         }
@@ -573,7 +581,7 @@ class X60Ultra extends IPSModule
     public function CleanSelection()
     {
         $sel = $this->SelectedRooms();
-        if (count($sel) == 0) { $this->Note('Es ist kein Raum ausgewählt.'); return false; }
+        if (count($sel) == 0) { $this->Note('Es ist kein Raum ausgewählt.', 'err'); return false; }
         return $this->CleanRooms($sel);
     }
 
@@ -591,13 +599,13 @@ class X60Ultra extends IPSModule
     public function QueueSelection()
     {
         $sel = $this->SelectedRooms();
-        if (count($sel) == 0) { $this->Note('Es ist kein Raum ausgewählt.'); return false; }
+        if (count($sel) == 0) { $this->Note('Es ist kein Raum ausgewählt.', 'err'); return false; }
         if ($this->ReadAttributeInteger('Job') == 0) return $this->CleanSelection();
         $q = $this->ReadQueue();
         foreach ($sel as $c) if (!in_array($c, $q, true)) $q[] = $c;
         $this->WriteQueue($q);
         $this->ClearSelection();
-        $this->Note('Vorgemerkt: ' . $this->RoomNames($q));
+        $this->Note('Vorgemerkt: ' . $this->RoomNames($q), 'ok');
         return true;
     }
 
@@ -606,13 +614,13 @@ class X60Ultra extends IPSModule
     public function SelectFloor($MapID)
     {
         $maps = $this->Maps();
-        if (!isset($maps[$MapID])) { $this->Note('Unbekannte Etage ' . $MapID . '.'); return false; }
+        if (!isset($maps[$MapID])) { $this->Note('Unbekannte Etage ' . $MapID . '.', 'err'); return false; }
         $this->WriteAttributeInteger('Floor', intval($MapID));
         $this->ShowFloor();
         if ($this->ReadAttributeInteger('Job') == 0 && $this->ReadPropertyBoolean('Active')) {
             $this->Locked(function () use ($MapID) { return $this->PrepareFloor(intval($MapID)); });
         } else {
-            $this->Note('Etage in der Anzeige gewechselt – das Gerät folgt beim nächsten Start.');
+            $this->Note('Etage in der Anzeige gewechselt – das Gerät folgt beim nächsten Start.', 'info');
         }
         return true;
     }
@@ -1217,11 +1225,15 @@ class X60Ultra extends IPSModule
             $rot = isset($maps[$mapId]) ? $maps[$mapId]['angle'] : 0;
         }
         $format = $this->CellFormat($b);
-        $png = SaugroboterKarte::Render($b, $format, [
+        // Zwei Fassungen: mit Roboter/Station (Medienobjekt, WebFront, HTML-Box) und ohne
+        // (Kachel – dort liegen Roboter und Station als eigene, animierte Symbole darüber)
+        $out = SaugroboterKarte::Render($b, $format, [
             'rotate' => $rot, 'path' => $this->ReadPropertyBoolean('MapPath') || $ident == 'MapLast',
-            'selected' => array_map(function ($c) { return $c % 100; }, $this->SelectedRooms())
+            'selected' => array_map(function ($c) { return $c % 100; }, $this->SelectedRooms()), 'both' => true
         ]);
-        if ($png === null) return;
+        if ($out === null) return;
+        list($png, $clean) = $out;
+        $this->SetBuffer('Clean' . $ident, base64_encode($clean));
         $names = ['Map' => 'Karte', 'MapLast' => 'Karte letzte Reinigung'];
         $mid = @IPS_GetObjectIDByIdent($ident, $this->InstanceID);
         if (!$mid) {
@@ -1256,13 +1268,29 @@ class X60Ultra extends IPSModule
         return '';
     }
 
-    private function MapDataUri($ident = null)
+    private function MapDataUri($ident = null, $clean = false)
     {
         if ($ident === null) $ident = $this->MapIdent();
         if ($ident === '') return '';
+        if ($clean && ($c = $this->GetBuffer('Clean' . $ident)) !== '') return 'data:image/png;base64,' . $c;
         $mid = @IPS_GetObjectIDByIdent($ident, $this->InstanceID);
         $c = $mid ? @IPS_GetMediaContent($mid) : '';
         return $c ? 'data:image/png;base64,' . $c : '';
+    }
+
+    // Letzte Rückmeldung für die Kachel (id, Text, Art, Alter in Sekunden)
+    private function ToastView()
+    {
+        $t = json_decode($this->GetBuffer('Toast'), true);
+        if (!is_array($t)) return null;
+        return ['id' => $t['id'], 'text' => $t['text'], 'kind' => $t['kind'], 'age' => time() - intval($t['at'])];
+    }
+
+    // Modellname für die Anzeige, z. B. "X60 Ultra" aus der Geräteliste
+    private function ModelShort()
+    {
+        $dev = json_decode($this->ReadAttributeString('Device'), true);
+        return is_array($dev) && !empty($dev['model']) ? strval($dev['model']) : '';
     }
 
     private function MapMeta($ident)
@@ -1796,8 +1824,8 @@ class X60Ultra extends IPSModule
     {
         $html = file_get_contents(__DIR__ . '/module.html');
         $html = str_replace('/*STYLE*/', file_get_contents(__DIR__ . '/tile.css'), $html);
-        return str_replace('"__INIT__"', json_encode(['view' => $this->ViewModel(), 'map' => $this->MapDataUri(),
-            'mapLast' => $this->MapDataUri('MapLast')], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), $html);
+        return str_replace('"__INIT__"', json_encode(['view' => $this->ViewModel(), 'map' => $this->MapDataUri(null, true),
+            'mapLast' => $this->MapDataUri('MapLast', true)], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), $html);
     }
 
     // Kachel und HTML-Box auffrischen. Das Kartenbild geht nur nach einer Änderung mit.
@@ -1809,12 +1837,12 @@ class X60Ultra extends IPSModule
             $msg = ['view' => $vm];
             $last = $this->GetBuffer('LastStamp');
             if ($last !== $this->GetBuffer('LastSent')) {
-                $msg['mapLast'] = $this->MapDataUri('MapLast');
+                $msg['mapLast'] = $this->MapDataUri('MapLast', true);
                 $this->SetBuffer('LastSent', $last);
             }
             $stamp = $this->GetBuffer('MapStamp');
             if ($stamp !== $this->GetBuffer('MapSent')) {
-                $msg['map'] = $this->MapDataUri();
+                $msg['map'] = $this->MapDataUri(null, true);
                 $this->SetBuffer('MapSent', $stamp);
             }
             $this->UpdateVisualizationValue(json_encode($msg));
@@ -1879,6 +1907,11 @@ class X60Ultra extends IPSModule
             'message' => $this->GetValue('Message'),
             'mapMeta' => $this->MapMeta($this->MapIdent()),
             'lastMeta' => $this->MapMeta('MapLast'),
+            // Roboter/Station als Symbole über die Karte legen, wenn es die Kartenfassung ohne sie gibt
+            'overlay' => $this->GetBuffer('Clean' . $this->MapIdent()) !== '',
+            'toast' => $this->ToastView(),
+            'overlayLast' => $this->GetBuffer('CleanMapLast') !== '',
+            'model' => $this->ModelShort(),
             'lastRun' => $this->GetValue('LastRun'),
             'roomNames' => $this->RoomNameMap()
         ];
@@ -1915,7 +1948,7 @@ class X60Ultra extends IPSModule
      */
     private function Locked($fn, $background = false)
     {
-        if (!$this->ReadPropertyBoolean('Active') || !$this->ReadPropertyBoolean('Consent')) { $this->Note('Instanz ist deaktiviert.'); return false; }
+        if (!$this->ReadPropertyBoolean('Active') || !$this->ReadPropertyBoolean('Consent')) { $this->Note('Instanz ist deaktiviert.', 'err'); return false; }
         $key = 'SAUG_' . $this->InstanceID;
         if ($background) {
             if (intval($this->GetBuffer('UserWaiting')) > time() - 90) return null;
@@ -1927,7 +1960,7 @@ class X60Ultra extends IPSModule
             for ($i = 0; $i < 240 && !$got; $i++) $got = IPS_SemaphoreEnter($key, 250);
             $this->SetBuffer('UserWaiting', '0');
             if (!$got) {
-                $this->Note('Instanz beschäftigt – bitte erneut versuchen.');
+                $this->Note('Instanz beschäftigt – bitte erneut versuchen.', 'err');
                 echo 'Der Roboter antwortet gerade sehr langsam – bitte gleich noch einmal versuchen.';
                 return false;
             }
@@ -1942,8 +1975,8 @@ class X60Ultra extends IPSModule
 
     private function Result($ok, $label)
     {
-        if ($ok) { $this->Online(true); $this->Note($label . ' – gesendet.'); }
-        else $this->Note($label . ' fehlgeschlagen: ' . ($this->dcLastError !== '' ? $this->dcLastError : 'unbekannter Fehler'));
+        if ($ok) { $this->Online(true); $this->Note($label . ' – gesendet.', 'ok'); }
+        else $this->Note($label . ' fehlgeschlagen: ' . ($this->dcLastError !== '' ? $this->dcLastError : 'unbekannter Fehler'), 'err');
     }
 
     // Kurzzeitige Aussetzer der Cloud nicht sofort als "getrennt" melden (erst ab dem 3. Fehlversuch)
@@ -1960,9 +1993,11 @@ class X60Ultra extends IPSModule
         if ($this->dcLastError !== '') $this->Note($this->dcLastError);
     }
 
-    private function Note($text)
+    // $kind: null = nur "Letzte Meldung"; ok/err/info = zusätzlich als Rückmeldung in der Kachel
+    private function Note($text, $kind = null)
     {
         $this->SetVal('Message', date('H:i') . ' ' . $text);
+        if ($kind !== null) $this->SetBuffer('Toast', json_encode(['id' => uniqid(), 'at' => time(), 'text' => $text, 'kind' => $kind]));
         $this->SendDebug('Meldung', $text, 0);
         $this->UpdateStatusForm();
     }
