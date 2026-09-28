@@ -318,6 +318,14 @@ trait SaugroboterApi
         return true;
     }
 
+    // Wie MiotAction, liefert aber die Antwort des Geräts (u. a. "out") oder null
+    protected function MiotActionResult($siid, $aiid, $in = [])
+    {
+        $res = $this->CloudCommand('action', ['siid' => $siid, 'aiid' => $aiid, 'in' => $in]);
+        if (!is_array($res) || (isset($res['code']) && intval($res['code']) != 0)) return null;
+        return $res;
+    }
+
     protected function MiotAction($siid, $aiid, $in = [])
     {
         $res = $this->CloudCommand('action', ['siid' => $siid, 'aiid' => $aiid, 'in' => $in]);

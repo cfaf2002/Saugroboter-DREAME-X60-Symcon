@@ -764,8 +764,9 @@ class X60Ultra extends IPSModule
                 }
             }
         }
+        $r[] = 'Angefordertes Vollbild: ' . $this->BlockReport($this->RequestFreshMap());
         foreach ($this->LiveMapObjects() as $o) {
-            $r[] = 'Live-Karte ' . preg_replace('#^.*/#', '…/', $o) . ': ' . $this->BlockReport($this->CloudFile($o));
+            $r[] = 'Abgelegte Karte ' . preg_replace('#^.*/#', '…/', $o) . ': ' . $this->BlockReport($this->CloudFile($o));
         }
         $out = implode("\n", $r);
         $this->SendDebug('Kartendiagnose', $out, 0);
@@ -1003,7 +1004,15 @@ class X60Ultra extends IPSModule
 
         $base = $this->LiveBlock();
         $got = null;
-        foreach ($this->LiveMapObjects() as $obj) {
+        // 1. Aktuelles Vollbild beim Roboter anfordern (so macht es auch die App). Die im Cloud-Speicher
+        //    abgelegte Karte ist oft nur das Protokoll der letzten Fahrt und ändert sich währenddessen nicht.
+        $text = $this->RequestFreshMap();
+        if ($text !== null) {
+            $b = SaugroboterKarte::Decode($text, self::MAP_IV);
+            if ($b !== null && $b['type'] === 'I') $got = $b;
+        }
+        // 2. Rückfall: zuletzt abgelegte Kartendateien
+        if ($got === null) foreach ($this->LiveMapObjects() as $obj) {
             $text = $this->CloudFile($obj);
             $b = $text === null ? null : SaugroboterKarte::Decode($text, self::MAP_IV);
             if ($b === null) continue;
@@ -1019,6 +1028,36 @@ class X60Ultra extends IPSModule
         $this->SetBuffer('LiveBlock', base64_encode(gzcompress(serialize($got))));
         if ($this->ReadPropertyBoolean('MapImage')) $this->StoreMapImage($got, $got['mapId'], 'Map');
         return $got;
+    }
+
+    // Fordert beim Roboter ein Vollbild an (Action 6/1, FRAME_INFO). Antwort: Kartendaten direkt oder
+    // ein Objektname in der Cloud, ggf. mit Schlüssel. Rückgabe Kartentext (für Decode) oder null.
+    private function RequestFreshMap()
+    {
+        $res = $this->MiotActionResult(6, 1, [['piid' => 2, 'value' => '{"req_type":1,"frame_type":"I","force_type":1}']]);
+        if ($res === null || !isset($res['out']) || !is_array($res['out'])) {
+            $this->SendDebug('Karte', 'Anforderung ohne Ergebnis: ' . $this->dcLastError, 0);
+            return null;
+        }
+        $object = null; $raw = null;
+        foreach ($res['out'] as $o) {
+            $v = isset($o['value']) ? strval($o['value']) : '';
+            $piid = isset($o['piid']) ? intval($o['piid']) : 0;
+            if ($v === '') continue;
+            if ($piid == 3) $object = $v;
+            elseif ($piid == 1) $raw = $v;
+            elseif ($piid == 13 && $object === null && $raw === null) {
+                $parts = explode(',', $v);
+                if ($parts[0] === '0') $raw = isset($parts[1]) ? $parts[1] : null;
+                elseif (isset($parts[1])) $object = $parts[1] . (isset($parts[2]) ? ',' . $parts[2] : '');
+            }
+        }
+        if ($raw !== null) return $raw;
+        if ($object === null) return null;
+        $parts = explode(',', $object);
+        $text = $this->CloudFile($parts[0]);
+        if ($text === null) return null;
+        return (isset($parts[1]) && strpos($text, ',') === false) ? $text . ',' . $parts[1] : $text;
     }
 
     private function LiveBlock()
