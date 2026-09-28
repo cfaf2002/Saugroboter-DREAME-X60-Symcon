@@ -1,0 +1,154 @@
+<!-- Saugroboter – Kachel für die Kachel-Visualisierung (HTML-SDK).
+     Das Modul schickt ein Datenpaket {view, map}; gezeichnet wird hier.
+     Bedienung läuft über requestAction(Ident, Wert) zurück an das Modul. -->
+<style>/*STYLE*/</style>
+<div id="app"></div>
+<script>
+(function () {
+  var view = null, map = '', busy = {}, open = { settings: false, wear: false, hist: false };
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function act(ident, value, key) {
+    busy[key || ident] = Date.now();
+    render();
+    requestAction(ident, value);
+  }
+  function isBusy(key) { return busy[key] && Date.now() - busy[key] < 8000; }
+
+  function battery(v, charging) {
+    var r = 18, c = 2 * Math.PI * r, p = Math.max(0, Math.min(100, v)) / 100;
+    var col = v <= 20 ? 'var(--bad)' : (charging ? 'var(--acc)' : 'var(--ok)');
+    return '<div class="bat" title="Akku"><svg width="44" height="44"><circle cx="22" cy="22" r="' + r + '" fill="none" stroke="var(--line)" stroke-width="4"/>' +
+      '<circle cx="22" cy="22" r="' + r + '" fill="none" stroke="' + col + '" stroke-width="4" stroke-linecap="round" stroke-dasharray="' +
+      (c * p) + ' ' + c + '"/></svg><b>' + (charging ? '⚡' : '') + v + '</b></div>';
+  }
+
+  function controls(v) {
+    var b = function (cmd, label, main) {
+      return '<button class="btn' + (main ? ' main' : '') + (isBusy('c' + cmd) ? ' pending' : '') + '" data-cmd="' + cmd + '">' + label + '</button>';
+    };
+    if (v.group === 'working' || v.group === 'moving') return b(2, 'Pause', true) + b(4, 'Stopp') + b(5, 'Zur Station');
+    if (v.group === 'paused') return b(3, 'Fortsetzen', true) + b(4, 'Stopp') + b(5, 'Zur Station');
+    return b(1, 'Alles reinigen', true) + b(5, 'Zur Station') + b(15, 'Orten');
+  }
+
+  function render() {
+    var v = view, el = document.getElementById('app');
+    if (!v) { el.innerHTML = '<div class="mute">Noch keine Daten …</div>'; return; }
+    var h = '';
+    var dot = !v.online ? 'off' : (v.group === 'working' ? 'work' : '');
+    h += '<div class="row between"><div><div class="row"><span class="dot ' + dot + '"></span><span class="state">' + esc(v.stateText) + '</span></div>';
+    var sub = [];
+    if (v.job) {
+      if (v.room && v.room !== '–') sub.push(esc(v.room));
+      sub.push(v.time + ' min', v.area + ' m²');
+    } else if (!v.online) sub.push('keine Verbindung');
+    h += '<div class="mute small">' + (sub.length ? sub.join(' · ') : esc(v.name)) + '</div></div>' + battery(v.battery, v.charging) + '</div>';
+    if (v.job && v.progress !== null) h += '<div class="bar" style="margin-top:8px"><i style="width:' + v.progress + '%"></i></div>';
+
+    if (v.error) {
+      h += '<div class="alert ' + (v.warning ? 'warn' : 'bad') + '"><b>' + esc(v.errorText) + '</b>' +
+        (v.errorHint ? '<div class="small">' + esc(v.errorHint) + '</div>' : '') +
+        (v.warning ? '<div style="margin-top:6px"><button class="btn sm" data-cmd="14">Quittieren</button></div>' : '') + '</div>';
+    }
+
+    h += '<div class="map">' + (map ? '<img src="' + map + '" alt="Karte">' : '<div class="empty">Keine Karte – in der Instanz „Karten &amp; Räume einlesen“.</div>') + '</div>';
+    h += '<div class="row" style="margin-top:12px">' + controls(v) + '</div>';
+
+    // Etage und Räume
+    if (v.floors.length > 1) {
+      h += '<section><h3>Etage</h3><div class="row wrap">';
+      v.floors.forEach(function (f) {
+        h += '<button class="chip' + (f.id === v.floor ? ' on' : '') + '" data-floor="' + f.id + '">' + esc(f.name) + '</button>';
+      });
+      h += '</div></section>';
+    }
+    if (v.rooms.length) {
+      var any = v.rooms.some(function (r) { return r.sel; });
+      h += '<section><h3>Räume</h3><div class="row wrap">';
+      v.rooms.forEach(function (r) {
+        h += '<button class="chip' + (r.sel ? ' on' : '') + (isBusy('r' + r.code) ? ' pending' : '') + '" data-room="' + r.code + '">' + esc(r.name) + '</button>';
+      });
+      h += '</div><div class="row" style="margin-top:8px">' +
+        '<button class="btn sm main"' + (any ? '' : ' disabled') + ' data-cmd="' + (v.job ? 7 : 6) + '">' + (v.job ? 'Danach reinigen' : 'Auswahl reinigen') + '</button>' +
+        '<button class="btn sm"' + (any ? '' : ' disabled') + ' data-cmd="8">Leeren</button></div>';
+      if (v.queue && v.queue !== '–') h += '<div class="small mute" style="margin-top:6px">Vorgemerkt: ' + esc(v.queue) + ' <button class="icon" data-cmd="9" title="verwerfen">✕</button></div>';
+      h += '</section>';
+    }
+
+    // Station
+    h += '<section><h3>Station</h3><div class="row wrap">';
+    v.station.forEach(function (s) { h += '<span class="tag' + (s[1] > 0 ? ' warn' : '') + '">' + esc(s[0]) + ': ' + esc(s[2]) + '</span>'; });
+    h += '</div><div class="row" style="margin-top:8px"><button class="btn sm" data-cmd="10">Mopp waschen</button>' +
+      '<button class="btn sm" data-cmd="11">Trocknen</button><button class="btn sm" data-cmd="13">Absaugen</button></div></section>';
+
+    if (v.maintenance && v.maintenance !== '–') h += '<div class="alert warn small">🔧 ' + esc(v.maintenance) + '</div>';
+
+    // Automatik
+    if (v.autoConfigured) {
+      h += '<section class="row between"><div><div>Reinigen bei Abwesenheit</div><div class="small mute">' + esc(v.autoStatus) + '</div></div>' +
+        '<button class="switch' + (v.auto ? ' on' : '') + '" data-auto="' + (v.auto ? 0 : 1) + '" aria-label="Automatik"></button></section>';
+    }
+
+    // Vorwahlen
+    var names = { Mode: 'Modus', Suction: 'Saugkraft', Wetness: 'Wischfeuchte', Route: 'Route', Passes: 'Durchgänge', CleanGenius: 'CleanGenius' };
+    h += '<details data-k="settings"' + (open.settings ? ' open' : '') + '><summary>Vorwahlen</summary><div class="grid2">';
+    Object.keys(names).forEach(function (k) {
+      var p = v.presets[k];
+      h += '<label class="sel">' + names[k] + '<select data-preset="' + k + '">';
+      p.o.forEach(function (o) { h += '<option value="' + o[0] + '"' + (o[0] === p.v ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; });
+      h += '</select></label>';
+    });
+    h += '</div></details>';
+
+    if (v.wear.length) {
+      h += '<details data-k="wear"' + (open.wear ? ' open' : '') + '><summary>Verschleiß</summary><div>';
+      v.wear.forEach(function (w) {
+        var low = w.v <= v.wearWarn;
+        h += '<div class="wear' + (low ? ' low' : '') + '"><span>' + esc(w.name) + '</span><div class="bar"><i style="width:' + w.v + '%"></i></div>' +
+          '<em>' + w.v + ' %</em><button class="icon" data-reset="' + w.id + '" data-name="' + esc(w.name) + '" title="Zähler zurücksetzen">↺</button></div>';
+      });
+      h += '</div></details>';
+    }
+    if (v.history.length) {
+      h += '<details data-k="hist"' + (open.hist ? ' open' : '') + '><summary>Verlauf</summary><div>';
+      v.history.forEach(function (l) { h += '<div class="hist">' + esc(l) + '</div>'; });
+      h += '</div></details>';
+    }
+    if (v.message) h += '<div class="msg">' + esc(v.message) + '</div>';
+    el.innerHTML = h;
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('button');
+    if (!t || t.disabled) return;
+    if (t.dataset.cmd) act('Command', parseInt(t.dataset.cmd, 10), 'c' + t.dataset.cmd);
+    else if (t.dataset.floor) act('Floor', parseInt(t.dataset.floor, 10));
+    else if (t.dataset.room) act('TileRoom', parseInt(t.dataset.room, 10), 'r' + t.dataset.room);
+    else if (t.dataset.auto) act('AutoAway', t.dataset.auto === '1');
+    else if (t.dataset.reset) {
+      if (typeof confirm !== 'function' || confirm(t.dataset.name + ': Zähler zurücksetzen?')) act('TileReset', t.dataset.reset);
+    }
+  });
+  document.addEventListener('change', function (e) {
+    if (e.target.dataset.preset) act(e.target.dataset.preset, parseInt(e.target.value, 10));
+  });
+  document.addEventListener('toggle', function (e) {
+    if (e.target.dataset && e.target.dataset.k) open[e.target.dataset.k] = e.target.open;
+  }, true);
+
+  // Pflichtfunktion des HTML-SDK
+  window.handleMessage = function (data) {
+    var d = typeof data === 'string' ? JSON.parse(data) : data;
+    if (d.map) map = d.map;
+    if (d.view) { view = d.view; busy = {}; }
+    render();
+  };
+
+  window.handleMessage("__INIT__");
+})();
+</script>

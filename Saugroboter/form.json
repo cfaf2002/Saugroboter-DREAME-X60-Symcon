@@ -1,0 +1,535 @@
+{
+  "elements": [
+    {
+      "type": "ExpansionPanel",
+      "caption": "Nutzungshinweis – bitte lesen",
+      "expanded": true,
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Dieses Modul ist ein privates, inoffizielles Projekt. Es ist nicht mit Dreame verbunden und wird von Dreame weder unterstützt noch geprüft."
+        },
+        {
+          "type": "Label",
+          "caption": "Es nutzt die nicht dokumentierte Cloud-Schnittstelle der Dreamehome-App mit deinem eigenen Konto für dein eigenes Gerät. Dreame kann die Schnittstelle jederzeit ändern oder die Nutzung untersagen; ob das mit den Nutzungsbedingungen von Dreame vereinbar ist, liegt in deiner Verantwortung."
+        },
+        {
+          "type": "Label",
+          "caption": "Das Passwort wird nicht im Klartext gespeichert. Daten fließen nur zwischen dieser Symcon-Installation und der Dreame-Cloud."
+        },
+        {
+          "type": "CheckBox",
+          "name": "Consent",
+          "caption": "Gelesen – ich nutze das Modul mit meinem eigenen Konto und auf eigene Verantwortung"
+        }
+      ]
+    },
+    {
+      "type": "CheckBox",
+      "name": "Active",
+      "caption": "Instanz aktiv"
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Konto & Gerät",
+      "expanded": true,
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Zugangsdaten der Dreamehome-App. Das Passwort wird beim Übernehmen in einen Hash umgewandelt und nicht im Klartext gespeichert."
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "Email",
+          "caption": "E-Mail"
+        },
+        {
+          "type": "PasswordTextBox",
+          "name": "Password",
+          "caption": "Passwort"
+        },
+        {
+          "type": "Select",
+          "name": "Region",
+          "caption": "Region",
+          "options": [
+            {
+              "caption": "Europa",
+              "value": "eu"
+            },
+            {
+              "caption": "USA",
+              "value": "us"
+            },
+            {
+              "caption": "China",
+              "value": "cn"
+            },
+            {
+              "caption": "Singapur",
+              "value": "sg"
+            },
+            {
+              "caption": "Korea",
+              "value": "kr"
+            },
+            {
+              "caption": "Russland",
+              "value": "ru"
+            }
+          ]
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "DeviceFilter",
+          "caption": "Gerät (nur bei mehreren Robotern: Name, Modell oder did)"
+        },
+        {
+          "type": "CheckBox",
+          "name": "VerifyTLS",
+          "caption": "TLS-Zertifikate prüfen"
+        },
+        {
+          "type": "RowLayout",
+          "items": [
+            {
+              "type": "NumberSpinner",
+              "name": "Interval",
+              "caption": "Abfrage im Ruhezustand",
+              "suffix": "s",
+              "minimum": 30,
+              "maximum": 3600
+            },
+            {
+              "type": "NumberSpinner",
+              "name": "IntervalBusy",
+              "caption": "während der Reinigung",
+              "suffix": "s",
+              "minimum": 10,
+              "maximum": 300
+            }
+          ]
+        },
+        {
+          "type": "RowLayout",
+          "items": [
+            {
+              "type": "Button",
+              "caption": "Verbindung testen",
+              "onClick": "SAUG_TestConnection($id);"
+            },
+            {
+              "type": "Button",
+              "caption": "Gerät scannen (Diagnose)",
+              "onClick": "SAUG_ScanDevice($id);",
+              "confirm": "Fragt rund 2.800 Kennungen ab (ca. 20–40 Sekunden). Fortfahren?"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Etagen & Räume",
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Liest die in der App gespeicherten Karten mit allen Räumen. Nach Umbau oder Neukartierung erneut einlesen."
+        },
+        {
+          "type": "Button",
+          "caption": "Karten & Räume einlesen",
+          "onClick": "SAUG_ReadMaps($id);"
+        },
+        {
+          "type": "Label",
+          "caption": "„Verwenden“ abwählen blendet Räume aus (z. B. Phantomräume hinter Glastüren). Unter „Eigener Name“ lässt sich ein Raum für Symcon umbenennen."
+        },
+        {
+          "type": "List",
+          "name": "Rooms",
+          "caption": "Räume",
+          "rowCount": 12,
+          "add": false,
+          "delete": false,
+          "columns": [
+            {
+              "caption": "Verwenden",
+              "name": "use",
+              "width": "100px",
+              "edit": {
+                "type": "CheckBox"
+              }
+            },
+            {
+              "caption": "Etage",
+              "name": "floor",
+              "width": "120px",
+              "save": true
+            },
+            {
+              "caption": "Karte",
+              "name": "map",
+              "width": "60px",
+              "save": true
+            },
+            {
+              "caption": "Nr.",
+              "name": "seg",
+              "width": "50px",
+              "save": true
+            },
+            {
+              "caption": "Name in der App",
+              "name": "app",
+              "width": "180px",
+              "save": true
+            },
+            {
+              "caption": "Eigener Name",
+              "name": "alias",
+              "width": "auto",
+              "edit": {
+                "type": "ValidationTextBox"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Karte",
+      "items": [
+        {
+          "type": "CheckBox",
+          "name": "MapImage",
+          "caption": "Kartenbild erzeugen (Medienobjekt „Karte“, für Kachel und WebFront)"
+        },
+        {
+          "type": "Select",
+          "name": "MapRotate",
+          "caption": "Ausrichtung",
+          "options": [
+            {
+              "caption": "wie in der App",
+              "value": -1
+            },
+            {
+              "caption": "nicht drehen",
+              "value": 0
+            },
+            {
+              "caption": "90° rechts",
+              "value": 90
+            },
+            {
+              "caption": "180°",
+              "value": 180
+            },
+            {
+              "caption": "90° links",
+              "value": 270
+            }
+          ]
+        },
+        {
+          "type": "CheckBox",
+          "name": "MapPath",
+          "caption": "Gefahrene Strecke einzeichnen"
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Wartung & Verlauf",
+      "items": [
+        {
+          "type": "NumberSpinner",
+          "name": "WearWarn",
+          "caption": "Verschleißteil melden ab Restlaufzeit",
+          "suffix": "%",
+          "minimum": 0,
+          "maximum": 50
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "HistoryCount",
+          "caption": "Einträge im Verlauf",
+          "minimum": 1,
+          "maximum": 20
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Automatik: reinigen, wenn niemand zu Hause ist",
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Einschalten über die Variable „Reinigen bei Abwesenheit“ (auch in der Kachel)."
+        },
+        {
+          "type": "SelectVariable",
+          "name": "PresenceVariable",
+          "caption": "Anwesenheit (true = jemand zu Hause)"
+        },
+        {
+          "type": "CheckBox",
+          "name": "PresenceInverted",
+          "caption": "Variable umkehren (true = niemand zu Hause)"
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "AutoDelay",
+          "caption": "Start frühestens nach",
+          "suffix": "min Abwesenheit",
+          "minimum": 0,
+          "maximum": 240
+        },
+        {
+          "type": "RowLayout",
+          "items": [
+            {
+              "type": "NumberSpinner",
+              "name": "AutoFrom",
+              "caption": "zwischen",
+              "suffix": "Uhr",
+              "minimum": 0,
+              "maximum": 23
+            },
+            {
+              "type": "NumberSpinner",
+              "name": "AutoTo",
+              "caption": "und",
+              "suffix": "Uhr",
+              "minimum": 0,
+              "maximum": 24
+            }
+          ]
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "AutoDays",
+          "caption": "an Tagen (1 = Mo … 7 = So)"
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "AutoGap",
+          "caption": "höchstens einmal in",
+          "suffix": "Stunden",
+          "minimum": 0,
+          "maximum": 168
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "AutoBattery",
+          "caption": "Akku mindestens",
+          "suffix": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "AutoRooms",
+          "caption": "Räume (leer = alles; z. B. „Küche, Flur“)"
+        },
+        {
+          "type": "CheckBox",
+          "name": "AutoReturn",
+          "caption": "Kommt jemand heim: Automatik-Fahrt beenden, zurück zur Station"
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Benachrichtigungen",
+      "items": [
+        {
+          "type": "SelectInstance",
+          "name": "NotifyTarget",
+          "caption": "Push an (Kachel-Visualisierung oder WebFront)"
+        },
+        {
+          "type": "CheckBox",
+          "name": "NotifyDone",
+          "caption": "Reinigung fertig"
+        },
+        {
+          "type": "CheckBox",
+          "name": "NotifyError",
+          "caption": "Störungen und Hinweise"
+        },
+        {
+          "type": "CheckBox",
+          "name": "NotifyMaintenance",
+          "caption": "Wartung fällig"
+        },
+        {
+          "type": "CheckBox",
+          "name": "NotifyAuto",
+          "caption": "Start durch die Automatik"
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Visualisierung",
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Kachel-Visualisierung: die Instanz direkt als Kachel hinzufügen."
+        },
+        {
+          "type": "CheckBox",
+          "name": "DashboardBox",
+          "caption": "Zusätzlich HTML-Box „Übersicht“ für WebFront/IPSView"
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "type": "RowLayout",
+      "items": [
+        {
+          "type": "Button",
+          "caption": "Alles reinigen",
+          "onClick": "SAUG_CleanAll($id);"
+        },
+        {
+          "type": "Button",
+          "caption": "Pause",
+          "onClick": "SAUG_Pause($id);"
+        },
+        {
+          "type": "Button",
+          "caption": "Zur Station",
+          "onClick": "SAUG_Dock($id);"
+        },
+        {
+          "type": "Button",
+          "caption": "Orten",
+          "onClick": "SAUG_Locate($id);"
+        },
+        {
+          "type": "Button",
+          "caption": "Status abrufen",
+          "onClick": "SAUG_Poll($id);"
+        }
+      ]
+    },
+    {
+      "type": "RowLayout",
+      "items": [
+        {
+          "type": "Select",
+          "name": "Part",
+          "caption": "Verschleißteil",
+          "options": [
+            {
+              "caption": "Hauptbürste",
+              "value": "MainBrush"
+            },
+            {
+              "caption": "Seitenbürste",
+              "value": "SideBrush"
+            },
+            {
+              "caption": "Filter",
+              "value": "Filter"
+            },
+            {
+              "caption": "Sensoren",
+              "value": "Sensors"
+            },
+            {
+              "caption": "Mopp-Pads",
+              "value": "MopPad"
+            },
+            {
+              "caption": "Wassertankfilter",
+              "value": "TankFilter"
+            },
+            {
+              "caption": "Silberionen",
+              "value": "SilverIon"
+            },
+            {
+              "caption": "Reinigungsmittel",
+              "value": "Detergent"
+            },
+            {
+              "caption": "Abstreifer",
+              "value": "Squeegee"
+            },
+            {
+              "caption": "Schmutzwasserkanal",
+              "value": "DirtyChannel"
+            },
+            {
+              "caption": "Geruchsneutralisierer",
+              "value": "Deodorizer"
+            },
+            {
+              "caption": "Antriebsräder",
+              "value": "Wheels"
+            },
+            {
+              "caption": "Entkalker",
+              "value": "ScaleInhibitor"
+            },
+            {
+              "caption": "Aufplusterwalze",
+              "value": "FluffRoller"
+            },
+            {
+              "caption": "Walzenmopp-Filter",
+              "value": "RollerFilter"
+            },
+            {
+              "caption": "Wasserauslassfilter",
+              "value": "OutletFilter"
+            },
+            {
+              "caption": "Waschbrett",
+              "value": "Washboard"
+            },
+            {
+              "caption": "Filterreinigung",
+              "value": "FilterClean"
+            }
+          ]
+        },
+        {
+          "type": "Button",
+          "caption": "Zähler zurücksetzen",
+          "onClick": "SAUG_ResetConsumable($id, $Part);",
+          "confirm": "Zähler wirklich zurücksetzen?"
+        }
+      ]
+    }
+  ],
+  "status": [
+    {
+      "code": 102,
+      "icon": "active",
+      "caption": "Verbunden"
+    },
+    {
+      "code": 104,
+      "icon": "inactive",
+      "caption": "Instanz ist deaktiviert"
+    },
+    {
+      "code": 202,
+      "icon": "inactive",
+      "caption": "Nutzungshinweis noch nicht bestätigt"
+    },
+    {
+      "code": 201,
+      "icon": "error",
+      "caption": "E-Mail oder Passwort fehlt"
+    }
+  ]
+}

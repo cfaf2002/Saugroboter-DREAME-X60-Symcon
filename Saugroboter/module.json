@@ -1,0 +1,18 @@
+{
+    "id": "{CE310E73-9EC1-43E8-AE03-79902A08D30F}",
+    "name": "Saugroboter",
+    "type": 3,
+    "vendor": "Armin Frohwerk",
+    "aliases": [
+        "Saugroboter",
+        "Robot Vacuum",
+        "Saugroboter kompatibel mit Dreame",
+        "X50",
+        "X60"
+    ],
+    "parentRequirements": [],
+    "childRequirements": [],
+    "implemented": [],
+    "prefix": "SAUG",
+    "url": ""
+}

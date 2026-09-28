@@ -1,0 +1,12 @@
+{
+    "id": "{60EC4CA3-FD0A-41F6-B8F5-D6E1AEC789F7}",
+    "author": "Armin Frohwerk",
+    "name": "Saugroboter",
+    "url": "",
+    "version": "1.0",
+    "build": 1,
+    "date": 20260927,
+    "compatibility": {
+        "version": "7.0"
+    }
+}
