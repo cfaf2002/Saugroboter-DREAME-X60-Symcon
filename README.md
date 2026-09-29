@@ -12,7 +12,7 @@ X60 Ultra, passend für die aktuellen Modelle der X-Serie (X40, X50, X60) und ve
 Die X-Modelle bieten keinen lokalen Zugang. Das Modul spricht deshalb wie die Dreamehome-App mit der
 Hersteller-Cloud – es läuft selbst aber vollständig in deiner Symcon-Instanz, ohne zusätzliche Dienste.
 
-**Version 1.2** · IP-Symcon ab 7.0 (Kachel ab 7.1) · Version und Build stehen unten in der Instanzkonfiguration
+**Version 1.3** · IP-Symcon ab 7.0 (Kachel ab 7.1) · Version und Build stehen unten in der Instanzkonfiguration
 
 ---
 
@@ -159,43 +159,88 @@ In der **Kachel-Visualisierung** die Instanz direkt als Kachel hinzufügen. Die 
   *Nach der laufenden Fahrt*) und *Nur auswählen*. Die Einstellungen gelten nur für diese Fahrt.
 - Umschalter *Live* / *Letzte* (Karte der letzten Reinigung) und Etagenwahl direkt über der Karte
 - passende Knöpfe je nach Lage (in Ruhe: *Alles reinigen*; während der Fahrt: *Pause*, *Stopp*, *Station*)
-- **Räume** zum Anhaken, darunter die **Einstellungen** (Vorwahlen) als eine Zeile – antippen zum Ändern.
-  *Auswahl reinigen* fragt ebenfalls nach, wie gereinigt werden soll (während einer Fahrt: *Danach reinigen*).
+- **Reinigen**: Räume antippen (oder keinen = alles) und darunter das **Programm** wählen (Untermenü mit allen Programmen;
+  *Eigene Einstellungen* = deine Vorwahlen, über das Regler-Symbol anpassbar). Der große Startknopf zeigt, was passiert:
+  „Küche reinigen · Schnell saugen“ bzw. „Alles reinigen · …“. Während einer Fahrt: *Danach reinigen*.
 - Station mit Mopp waschen, Trocknen, Absaugen
-- Verschleiß (mit Zurücksetzen), Verlauf und den Schalter für die Automatik
+- **Automatik** kompakt: Ein/Aus, *Bei Abwesenheit* oder *Zur Uhrzeit*, Standard-Uhrzeit, Programm und Zeitpläne
+- **Verlauf** und **Verschleiß** (mit Zurücksetzen) als Zeilen in der Karte *Reinigen*, Details per Tipp
 - **Rückmeldung** nach jedem Befehl: grün „… gesendet“, rot mit dem Grund, wenn etwas nicht geklappt hat
+
+**Hintergrundbild:** Unter *Visualisierung → Hintergrundbild der Kachel* ein Foto hochladen (JPG, PNG, WebP). Das Modul
+verkleinert es auf höchstens 1600 Pixel, legt es als verstecktes Medienobjekt „Kachel-Hintergrund“ ab und leert das
+Upload-Feld wieder – das Bild landet also nicht in den Einstellungen oder Backups. Die Felder liegen wie Milchglas darüber: ringsum bleibt
+das Bild scharf, hinter den Feldern wird es weichgezeichnet. *Hintergrund abdunkeln* (Standard 25 %) und *Hintergrund
+weichzeichnen* (Standard 0 = scharf) passen das Bild an, *Deckkraft der Felder* (Standard 62 %, weniger = durchsichtiger)
+und *Milchglas-Stärke* (Standard 18 px, 0 = klares Glas) die Felder darüber; *Hintergrund entfernen* nimmt es wieder heraus.
+
+**Design:** Unter *Visualisierung → Design* steht standardmäßig *Dunkel* – so sieht die Kachel auf Handy, Tablet und
+PC gleich aus. *Wie Gerät* folgt der Hell-/Dunkel-Einstellung des jeweiligen Geräts, *Hell* erzwingt das helle Design.
 
 Für **WebFront/IPSView** gibt es unter *Visualisierung* die HTML-Box „Übersicht“ (nur Anzeige) sowie das Medienobjekt „Karte“.
 
 ---
 
-## Automatik: reinigen, wenn niemand zu Hause ist
+## Automatik: reinigen, wenn niemand zu Hause ist – oder zur festen Uhrzeit
 
-Voraussetzung ist eine Anwesenheitsvariable (Boolean, *true* = jemand zu Hause; umkehrbar).
-Eingeschaltet wird über die Variable **Reinigen bei Abwesenheit** – auch direkt in der Kachel.
+Zwei Arten, wählbar in der Kachel oder über die Variable **Automatik startet**:
+
+- **Bei Abwesenheit**: startet, sobald niemand zu Hause ist. Dafür braucht es eine Anwesenheitsvariable
+  (Boolean, *true* = jemand zu Hause; umkehrbar). Kommt jemand heim, fährt der Roboter auf Wunsch zurück.
+- **Zur Uhrzeit**: startet einmal am Tag zur eingestellten Uhrzeit (Variable **Automatik-Uhrzeit**, z. B. 10:00) an den
+  gewählten Tagen – auch wenn jemand zu Hause ist, ganz ohne Anwesenheitsvariable. Ist der Roboter gerade beschäftigt,
+  offline oder der Akku zu leer, wird der Start bis zu 3 Stunden nachgeholt.
+
+Eingeschaltet wird über die Variable **Reinigen bei Abwesenheit** (in der Kachel: Schalter *Automatik*).
 
 Gestartet wird, wenn **alle** Bedingungen erfüllt sind:
 
-- niemand ist seit mindestens *n* Minuten zu Hause
+- *Bei Abwesenheit*: niemand ist seit mindestens *n* Minuten zu Hause
 - die Uhrzeit liegt im Zeitfenster, der Wochentag ist freigegeben
 - die letzte Automatik-Fahrt liegt mindestens *n* Stunden zurück
 - der Akku hat mindestens *n* %, der Roboter ist erreichbar, frei und ohne Störung
 - der Raumplan sieht heute eine Reinigung vor
 
-Gereinigt wird alles oder die unter *Räume* eingetragenen Räume („Küche, Flur“) – mit den aktuellen Vorwahlen.
+Gereinigt wird alles oder die unter *Räume* eingetragenen Räume („Küche, Flur“) – mit dem gewählten **Programm**:
 
-**Raumplan:** Im Raumplan hat jeder Raum eine eigene Spalte zum Anhaken (sobald die Räume eingelesen sind).
-Nichts angehakt = alles, *frei* = an diesem Tag nicht reinigen. Ein bestimmter Tag geht vor *Mo–Fr* bzw. *Sa + So*,
+| Programm | Einstellungen |
+|---|---|
+| Eigene Einstellungen | deine Vorwahlen (in der Kachel über das Regler-Symbol anpassbar) |
+| Schnell saugen | Saugen, Standard, Route *Schnell* |
+| Gründlich saugen | Saugen, Turbo, 2 Durchgänge, Route *Intensiv* |
+| Saugen und wischen | beides gleichzeitig, Standard, feucht |
+| Erst saugen, dann wischen | nacheinander, stark, feucht |
+| Nur wischen | Wischen, feucht |
+| Leise (Nachtruhe) | Saugen, leise, Route *Standard* |
+| CleanGenius Routine / Tiefenreinigung | Roboter entscheidet selbst (Saugen und wischen) |
+
+Nicht genannte Werte bleiben wie am Gerät eingestellt. Die Vorwahlen selbst werden dabei nicht verändert.
+
+Auch der **Raumplan** lässt sich in der Kachel ansehen und bearbeiten (Karte *Automatik → Zeitpläne*):
+je Zeile Tag, Programm und Räume antippen, *frei* für Tage ohne Automatik, *Speichern*. Er ist derselbe wie in der Instanz.
+
+Das **Programm der Automatik** wählst du direkt in der Kachel (Karte *Automatik → Programm*)
+oder über die Variable **Automatik-Programm**. Dieselben Programme wählst du in der Kachel auch fürs manuelle Reinigen (Karte *Reinigen → Programm*).
+
+**Zeitpläne (mehrere Automatik-Einträge):** Jeder Eintrag hat Tag, **Uhrzeit**, Programm und Räume – z. B.
+*Mo–Fr 10:00 Küche · Schnell saugen* und *Sa 14:30 alles · Gründlich saugen*; auch mehrere Einträge am selben Tag.
+Bei *Zur Uhrzeit* startet jeder Eintrag einmal zu seiner Uhrzeit (leer = Standard-Uhrzeit), verpasste Starts werden bis zu
+3 Stunden nachgeholt; ein Eintrag *frei* sperrt den ganzen Tag. Ohne Einträge gilt täglich die Standard-Uhrzeit mit dem
+Standard-Programm. Bei *Bei Abwesenheit* zählen Tag, Räume und Programm, die Uhrzeit nicht. Bearbeiten in der Instanz
+(Liste *Zeitpläne*, Spalte *Uhrzeit*) oder in der Kachel (*Automatik → Zeitpläne*).
+
+**Raumplan:** Im Raumplan hat jeder Raum eine eigene Spalte zum Anhaken (sobald die Räume eingelesen sind), dazu
+je Zeile ein eigenes *Programm* (oder *Standard* = Programm der Automatik). Nichts angehakt = alles, *frei* = an diesem Tag nicht reinigen. Ein bestimmter Tag geht vor *Mo–Fr* bzw. *Sa + So*,
 das vor *täglich*. Gibt der Plan für heute nichts vor, gilt *Räume*. Die Räume einer Zeile müssen auf derselben Etage liegen.
 
-| Tag | Wohnzimmer | Küche | Flur | frei |
-|---|---|---|---|---|
-| Mo–Fr |  | ✓ |  |  |
-| Samstag |  |  |  |  |
-| Sonntag |  |  |  | ✓ |
+| Tag | Programm | Wohnzimmer | Küche | Flur | frei |
+|---|---|---|---|---|---|
+| Mo–Fr | Schnell saugen |  | ✓ |  |  |
+| Samstag | Gründlich saugen |  |  |  |  |
+| Sonntag | Standard |  |  |  | ✓ |
 
 Kommt jemand heim, fährt der Roboter auf Wunsch zurück zur Station. Die Variable **Automatik** zeigt jederzeit,
-worauf die Automatik gerade wartet.
+worauf die Automatik gerade wartet; die Kachel zeigt zusätzlich, was heute geplant ist („Heute: Küche · Schnell saugen“).
 
 ---
 
@@ -249,8 +294,11 @@ Alle Befehle geben `true`/`false` zurück; der Grund eines Fehlschlags steht in 
 - **Live-Verbindung**: MQTT über TLS zum Server, an dem der Roboter hängt – angemeldet mit Konto-ID und Zugangstoken,
   abonniert wird nur das eigene Gerät. Das Protokoll (Anmelden, Abonnieren, Empfangen, Keepalive) ist im Modul selbst
   umgesetzt, es braucht keine Zusatzbibliothek und keinen eigenen MQTT-Server. Kartenbilder kommen als Voll- oder
-  Differenzbild direkt in der Nachricht; Differenzbilder werden auf das letzte Vollbild gelegt. Nach 150 s ohne Daten
-  baut das Modul die Verbindung neu auf; wird die Anmeldung dreimal abgelehnt, pausiert es 10 Minuten.
+  Differenzbild direkt in der Nachricht; Differenzbilder werden auf das letzte Vollbild gelegt. Enthalten die Live-Bilder keine Wände/Möbel/Strecke,
+  liefern sie nur Position und Zeit; die Details kommen aus der Kartendatei, die während der Reinigung alle 2 Minuten
+  nachgeladen wird. Die Verbindung heilt sich selbst: nach 150 s ohne Daten, bei getrenntem Socket (nach 60 s, dann in
+  wachsenden Abständen bis 10 min), bei 3 Minuten ohne Meldung während einer Reinigung und kurz vor Ablauf des Zugangstokens
+  baut das Modul sie neu auf. Der Status-Block zeigt, wie oft das heute nötig war und warum; wird die Anmeldung dreimal abgelehnt, pausiert es 10 Minuten.
 - **Abfrage**: alle *n* Sekunden im Ruhezustand, schneller während einer Reinigung und kurz nach jedem Befehl.
   Steht die Live-Verbindung, reicht eine ruhige Abfrage (höchstens jede Minute) für Station und Verschleiß, und
   Kartendateien werden gar nicht mehr geladen.

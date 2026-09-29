@@ -1,4 +1,4 @@
-/* Saugroboter – Kachel. Helles und dunkles Design über prefers-color-scheme. */
+/* Saugroboter – Kachel. Dunkles Design als Grundlage, helles über die Klasse body.light (Einstellung „Design“). */
 :root {
   --fg: #eef1f5; --mute: rgba(238,241,245,.58); --faint: rgba(238,241,245,.36);
   --card: rgba(255,255,255,.055); --card2: rgba(255,255,255,.09); --line: rgba(255,255,255,.09);
@@ -8,21 +8,28 @@
   --dlg: #20252d; --shadow: 0 12px 40px rgba(0,0,0,.45);
   --r: 18px;
 }
-@media (prefers-color-scheme: light) {
-  :root {
+body.light {
     --fg: #16202c; --mute: rgba(22,32,44,.58); --faint: rgba(22,32,44,.38);
     --card: rgba(255,255,255,.78); --card2: rgba(22,32,44,.06); --line: rgba(22,32,44,.08);
     --acc: #2f74f0; --acc-soft: rgba(47,116,240,.12);
     --ok-soft: rgba(52,199,123,.14); --warn-soft: rgba(240,169,59,.16); --bad-soft: rgba(240,97,90,.13);
     --dlg: #ffffff; --shadow: 0 12px 40px rgba(22,32,44,.18);
-  }
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; background: transparent; color: var(--fg);
   font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
 /* oben Platz für Titel und Vollbild-Knopf der Kachel-Visualisierung */
-body { padding: 44px 14px 18px; height: 100vh; overflow-y: auto; scrollbar-width: thin; }
+body { padding: 52px 14px 18px; height: 100vh; overflow-y: auto; scrollbar-width: thin; }
 #app { display: flex; flex-direction: column; gap: 12px; max-width: 560px; margin: 0 auto; }
+.cols, .col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* Breite Kachel (Vollbild, Tablet, PC): Karte groß links, Bedienung rechts */
+@media (min-width: 760px) {
+  #app { max-width: 1280px; }
+  .cols { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr); align-items: start; gap: 16px; }
+
+  .mapwrap img { max-height: calc(100vh - 290px); min-height: 280px; }
+  .mapbox { padding: 6px 0; }
+}
 .row { display: flex; align-items: center; gap: 10px; }
 .between { justify-content: space-between; }
 .grow { flex: 1 1 auto; min-width: 0; }
@@ -177,7 +184,7 @@ details[open] .chev { transform: rotate(225deg); margin: 4px 4px 0; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---- Nachfrage ---- */
-.dlg-back { position: fixed; inset: 0; background: rgba(8,10,14,.55); display: flex; align-items: flex-end; justify-content: center; padding: 12px; z-index: 10;
+.dlg-back { position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: rgba(8,10,14,.55); display: flex; align-items: flex-end; justify-content: center; padding: 12px; z-index: 10;
   -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); animation: fade .15s; }
 .dlg { width: 100%; max-width: 420px; max-height: calc(100vh - 24px); overflow-y: auto; background: var(--dlg); color: var(--fg);
   border-radius: 22px; padding: 18px; box-shadow: var(--shadow); animation: up .2s ease-out; }
@@ -206,7 +213,7 @@ details[open] .chev { transform: rotate(225deg); margin: 4px 4px 0; }
   transition: left 1.6s cubic-bezier(.4,0,.2,1), top 1.6s cubic-bezier(.4,0,.2,1), transform 1s ease;
   filter: drop-shadow(0 3px 5px rgba(0,0,0,.35)); }
 .robot .rb { width: 100%; height: 100%; display: block; }
-.robot.busy::before { content: ""; position: absolute; inset: -7px; border-radius: 50%; border: 2px solid var(--acc); opacity: 0;
+.robot.busy::before { content: ""; position: absolute; top: -7px; right: -7px; bottom: -7px; left: -7px; border-radius: 50%; border: 2px solid var(--acc); opacity: 0;
   animation: ring 2s ease-out infinite; }
 @keyframes ring { 0% { transform: scale(.7); opacity: .8; } 100% { transform: scale(1.35); opacity: 0; } }
 /* Roboter im Kopf */
@@ -224,3 +231,121 @@ details[open] .chev { transform: rotate(225deg); margin: 4px 4px 0; }
 .setrow:hover { border-color: var(--acc); }
 .chev.r { transform: rotate(-45deg); margin: 0 4px; }
 .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: spin 1s linear infinite; }
+
+/* Eigenes Hintergrundbild (in der Instanz hochgeladen), abgedunkelt für gute Lesbarkeit */
+#bg { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: -1; background: center / cover no-repeat; display: none; filter: blur(var(--blur, 0px)); }
+body.hasbg #bg { transform: scale(1.03); }
+body.hasbg #bg { display: block; }
+#bg::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(10,13,18,var(--dim, .45)); }
+body.light #bg::after { background: rgba(238,241,245,var(--dim, .45)); }
+/* Milchglas: Bild bleibt ringsum scharf, hinter den Feldern weichgezeichnet */
+body.hasbg .card { background: var(--cardbg, rgba(32,37,45,.62)); border-color: rgba(255,255,255,.14);
+  -webkit-backdrop-filter: blur(var(--glass, 18px)) saturate(1.3); backdrop-filter: blur(var(--glass, 18px)) saturate(1.3); box-shadow: 0 8px 30px rgba(0,0,0,.22); }
+body.hasbg .round, body.hasbg .batt, body.hasbg .avatar { background: var(--cardbg, rgba(32,37,45,.62));
+  -webkit-backdrop-filter: blur(var(--glass, 18px)); backdrop-filter: blur(var(--glass, 18px)); }
+body.hasbg .head .name, body.hasbg .head .state { text-shadow: 0 1px 8px rgba(0,0,0,.35); }
+body.light.hasbg .head .name, body.light.hasbg .head .state { text-shadow: 0 1px 8px rgba(255,255,255,.6); }
+/* Kopfzeile auf Bildhintergrund ebenfalls als Milchglas, damit Name und Zustand lesbar bleiben */
+body.hasbg .head { padding: 10px 12px; border-radius: var(--r); border: 1px solid rgba(255,255,255,.14);
+  background: var(--cardbg, rgba(32,37,45,.62)); -webkit-backdrop-filter: blur(var(--glass, 18px)) saturate(1.3); backdrop-filter: blur(var(--glass, 18px)) saturate(1.3);
+  box-shadow: 0 8px 30px rgba(0,0,0,.22); }
+body.hasbg .head .name, body.hasbg .head .state { text-shadow: none; }
+body.hasbg .head .batt, body.hasbg .head .avatar { background: var(--card2); -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* Sehr durchsichtige Felder: Schrift mit leichtem Schatten, damit sie lesbar bleibt */
+body.hasbg .card, body.hasbg .head { text-shadow: var(--tshadow, none); }
+
+/* Programme */
+.progs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 8px; }
+.prog { display: flex; align-items: center; gap: 9px; padding: 11px 12px; border-radius: 14px; border: 1px solid var(--line);
+  background: var(--card2); cursor: pointer; text-align: left; font-size: 13px; font-weight: 600; line-height: 1.25; min-width: 0; }
+.prog .ic { color: var(--acc); }
+.prog span { overflow: hidden; text-overflow: ellipsis; }
+.prog:hover { border-color: var(--acc); }
+.prog:active { transform: scale(.97); }
+.plist { display: flex; flex-direction: column; gap: 6px; }
+.pitem { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line);
+  background: var(--card2); cursor: pointer; text-align: left; font-weight: 600; font-size: 14px; }
+.pitem .ic:first-child { color: var(--acc); }
+.pitem.on { border-color: var(--acc); background: var(--acc-soft); }
+
+/* Raumplan */
+.setrow.plan { align-items: flex-start; }
+.pline { display: block; font-weight: 500; font-size: 13px; margin-top: 3px; }
+.pline b { font-weight: 700; margin-right: 4px; }
+.prow { border: 1px solid var(--line); border-radius: 14px; padding: 10px; margin-bottom: 10px; background: var(--card2); }
+.prow-top { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.prow select { flex: 1 1 0; min-width: 0; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--dlg); color: var(--fg); font: inherit; font-size: 13.5px; }
+
+.prow .chips { margin-bottom: 6px; }
+.chip.dim { opacity: .4; }
+.chip.off.on { background: var(--warn-soft); color: var(--warn); }
+.prow select[data-pday] { flex: 0 0 34%; }
+.prow select[data-pprog] { flex: 1 1 auto; }
+
+/* Startknopf mit Programm */
+.btn.start { justify-content: center; }
+.btn.start .st { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; min-width: 0; }
+.btn.start .st b { font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.btn.start .st small { font-size: 11.5px; font-weight: 600; opacity: .85; }
+/* Automatik kompakt */
+.ctitle { font-weight: 650; font-size: 15px; }
+.amode { margin-top: 12px; }
+.rows { margin-top: 10px; border-top: 1px solid var(--line); }
+.lrow { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 2px; background: none; border: 0; border-bottom: 1px solid var(--line);
+  cursor: pointer; text-align: left; font-size: 13.5px; }
+.lrow:last-child { border-bottom: 0; }
+.lrow .lk { color: var(--mute); flex: none; width: 82px; }
+.lrow .lv { flex: 1 1 auto; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Programmliste */
+.pitem { padding: 0; gap: 0; }
+.pitem .pmain { display: flex; align-items: center; gap: 12px; flex: 1 1 auto; min-width: 0; padding: 11px 14px; background: none; border: 0; cursor: pointer; text-align: left; color: inherit; }
+.pitem .pmain .ic:first-child { color: var(--acc); }
+.pitem .pmain b { display: block; font-size: 14px; }
+.pitem .pmain .small { display: block; font-weight: 500; }
+.pitem .iconbtn { margin-right: 8px; }
+
+/* Station kompakt */
+.spills { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.spill { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 12px; background: var(--card2); min-width: 0; font-size: 11.5px; color: var(--mute); }
+.spill .ic { margin-bottom: 2px; }
+.spill span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spill b { color: var(--fg); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spill.ok .ic { color: var(--ok); } .spill.warn { background: var(--warn-soft); } .spill.warn .ic, .spill.warn b { color: var(--warn); } .spill.unk .ic { color: var(--faint); }
+.sacts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+.sact { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 4px; border-radius: 10px; border: 1px solid var(--line);
+  background: none; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--fg); white-space: nowrap; }
+.sact:hover { border-color: var(--acc); }
+/* Uhrzeit */
+.timein { width: 100%; font: inherit; font-size: 28px; font-weight: 700; text-align: center; padding: 12px; border-radius: 14px;
+  border: 1px solid var(--line); background: var(--card2); color: var(--fg); color-scheme: dark light; }
+.tquick { margin-top: 10px; justify-content: center; }
+
+.ptime { flex: 0 0 92px; padding: 7px 6px; border-radius: 10px; border: 1px solid var(--line); background: var(--dlg); color: var(--fg); font: inherit; font-size: 13.5px; color-scheme: dark light; }
+.prow select[data-pday] { flex: 0 0 30%; }
+.lrow .badge { font-size: 11px; }
+
+.prow select[data-pday] { flex: 1 1 auto; }
+.ptime { flex: 0 0 110px; }
+.prow select.pprog { display: block; width: 100%; margin-bottom: 10px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--dlg); color: var(--fg); font: inherit; font-size: 13.5px; }
+
+/* Auswahllisten: Einträge im Stil der Kachel (sonst schwarz auf dunklem Grund) */
+select { color-scheme: dark; }
+select option, select optgroup { background: #262b33; color: #eef1f5; }
+body.light select { color-scheme: light; }
+body.light select option, body.light select optgroup { background: #ffffff; color: #16202c; }
+
+.stale { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--warn); }
+
+/* Kopf: Zustand passt sich der Breite an und bricht nicht um */
+.state { font-size: clamp(16px, 4.6vw, 23px); white-space: nowrap; min-width: 0; }
+.state { overflow: hidden; text-overflow: ellipsis; }
+.hl { min-width: 0; }
+.head .name { margin-bottom: 2px; }
+@media (max-width: 420px) {
+  .avatar { width: 44px; height: 44px; border-radius: 14px; }
+  .avatar .av { width: 32px; height: 32px; }
+  .batt { padding: 6px 9px; gap: 4px; }
+  .batt .cell { display: none; }
+  .batt b { font-size: 12.5px; }
+}

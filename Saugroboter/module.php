@@ -26,8 +26,13 @@ require_once __DIR__ . '/../libs/SaugroboterLive.php';
 
 class X60Ultra extends IPSModule
 {
+    // true, wenn ApplyChanges geänderte Zugangsdaten/Verbindungseinstellungen erkannt hat
+    protected $credChanged = true;
     use SaugroboterApi;
     use SaugroboterLive;
+
+    // Stand der Kartendarstellung: ändert sich die Zeichnung, wird die Karte nach dem Update neu gezeichnet
+    const RENDER_VERSION = 5;
 
     // AES-IV der Kartendaten aktueller Dreame-Modelle (X40/X50/X60)
     const MAP_IV = 'NRwnBj5FsNPgBNbT';
@@ -38,6 +43,19 @@ class X60Ultra extends IPSModule
         6 => 'Auswahl reinigen', 7 => 'Auswahl anhängen', 8 => 'Auswahl leeren', 9 => 'Vormerkung verwerfen',
         10 => 'Mopp waschen', 11 => 'Mopp trocknen', 12 => 'Trocknen beenden', 13 => 'Staub absaugen',
         14 => 'Hinweis quittieren', 15 => 'Orten'
+    ];
+
+    // Reinigungsprogramme für die Automatik: Name => Einstellungen (fehlende Werte = wie am Gerät)
+    const PROGRAMS = [
+        0 => ['Eigene Einstellungen', null],
+        1 => ['Schnell saugen', ['Mode' => 0, 'Suction' => 1, 'Route' => 4]],
+        2 => ['Gründlich saugen', ['Mode' => 0, 'Suction' => 3, 'Passes' => 2, 'Route' => 2]],
+        3 => ['Saugen und wischen', ['Mode' => 2, 'Suction' => 1, 'Wetness' => 2]],
+        4 => ['Erst saugen, dann wischen', ['Mode' => 3, 'Suction' => 2, 'Wetness' => 2]],
+        5 => ['Nur wischen', ['Mode' => 1, 'Wetness' => 2]],
+        6 => ['Leise (Nachtruhe)', ['Mode' => 0, 'Suction' => 0, 'Route' => 1]],
+        7 => ['CleanGenius Routine', ['Mode' => 2, 'CleanGenius' => 1]],
+        8 => ['CleanGenius Tiefenreinigung', ['Mode' => 2, 'CleanGenius' => 2]]
     ];
 
     // Zusatzwerte je nach Modell: Ident => [Name, siid, piid, Typ, Profil, Position]
@@ -73,6 +91,12 @@ class X60Ultra extends IPSModule
         $this->RegisterPropertyInteger('WearWarn', 10);
         $this->RegisterPropertyInteger('HistoryCount', 5);
         $this->RegisterPropertyBoolean('DashboardBox', false);
+        $this->RegisterPropertyString('BgUpload', '');           // Hintergrundbild der Kachel (Upload, wird sofort übernommen)
+        $this->RegisterPropertyInteger('BgDim', 25);             // Abdunkeln des Hintergrunds in %
+        $this->RegisterPropertyInteger('BgBlur', 0);             // Weichzeichnen des Hintergrunds in px
+        $this->RegisterPropertyInteger('CardOpacity', 62);       // Deckkraft der Felder über dem Hintergrund in %
+        $this->RegisterPropertyInteger('Theme', 0);              // Design der Kachel: 0 dunkel, 1 wie Gerät, 2 hell
+        $this->RegisterPropertyInteger('CardGlass', 18);         // Milchglas-Stärke hinter den Feldern in px
         // Automatik
         $this->RegisterPropertyInteger('PresenceVariable', 0);
         $this->RegisterPropertyBoolean('PresenceInverted', false);
@@ -84,6 +108,7 @@ class X60Ultra extends IPSModule
         $this->RegisterPropertyInteger('AutoBattery', 60);
         $this->RegisterPropertyString('AutoRooms', '');
         $this->RegisterPropertyBoolean('AutoReturn', true);
+        $this->RegisterPropertyInteger('AutoProgram', 0);        // Reinigungsprogramm der Automatik (siehe PROGRAMS)
         $this->RegisterPropertyString('AutoPlan', '[]');         // [{day, rooms}] – Räume je Wochentag
         // Benachrichtigungen
         $this->RegisterPropertyInteger('NotifyTarget', 0);
@@ -112,7 +137,11 @@ class X60Ultra extends IPSModule
         $this->RegisterAttributeInteger('PresenceWatched', 0);
         $this->RegisterAttributeString('MapMeta', '{}');    // Lage der Räume je Kartenbild (Beschriftung/Antippen)
         $this->RegisterAttributeString('LastLog', '');
-        $this->RegisterAttributeString('LivePin', '');     // gemerktes Zertifikat des Live-Servers      // Startzeit der Fahrt hinter "Letzte Reinigung"
+        $this->RegisterAttributeString('LivePin', '');
+        $this->RegisterAttributeString('BgType', 'jpeg');
+        $this->RegisterAttributeString('CredKey', '');
+        $this->RegisterAttributeInteger('RenderVersion', 0);
+        $this->RegisterAttributeString('AutoDone', '{}');   // Zeitplan-Einträge, die heute schon gelaufen sind      // Prüfsumme der Zugangsdaten (Neuanmeldung nur bei Änderung)     // gemerktes Zertifikat des Live-Servers      // Startzeit der Fahrt hinter "Letzte Reinigung"
 
         // ---- Profile ----
         $this->Profile('SAUG.State', 1, 'Robot', '', '', SaugroboterTexte::States());
@@ -174,6 +203,23 @@ class X60Ultra extends IPSModule
         $this->RegisterVariableBoolean('AutoAway', 'Reinigen bei Abwesenheit', '~Switch', 50);
         $this->EnableAction('AutoAway');
         $this->RegisterVariableString('AutoStatus', 'Automatik', '', 51);
+        $progs = [];
+        foreach (self::PROGRAMS as $id => $pr) $progs[$id] = $pr[0];
+        $this->Profile('SAUG.Program', 1, 'Robot', '', '', $progs);
+        $newProg = @$this->GetIDForIdent('AutoProgram') === false;
+        $this->RegisterVariableInteger('AutoProgram', 'Automatik-Programm', 'SAUG.Program', 52);
+        $this->EnableAction('AutoProgram');
+        $this->Profile('SAUG.AutoMode', 1, 'Clock', '', '', [0 => 'bei Abwesenheit', 1 => 'zur Uhrzeit']);
+        $this->RegisterVariableInteger('AutoMode', 'Automatik startet', 'SAUG.AutoMode', 53);
+        $newTime = @$this->GetIDForIdent('AutoTime') === false;
+        $this->RegisterVariableString('AutoTime', 'Automatik-Uhrzeit', '', 54);
+        $this->EnableAction('AutoTime');
+        if ($newTime) $this->SetVal('AutoTime', '10:00');
+        $this->EnableAction('AutoMode');
+        $this->RegisterVariableInteger('CleanProgram', 'Programm', 'SAUG.Program', 39);
+        $this->EnableAction('CleanProgram');
+        // bisher als Instanz-Einstellung gespeichert: einmalig übernehmen
+        if ($newProg) $this->SetVal('AutoProgram', $this->ReadPropertyInteger('AutoProgram'));
 
         // ---- Wartung, Historie, Diagnose ----
         $this->RegisterVariableString('Maintenance', 'Wartung fällig', '', 150);
@@ -206,9 +252,17 @@ class X60Ultra extends IPSModule
     {
         parent::ApplyChanges();
 
-        // Anmeldung und Gerät nach Konfigurationsänderung frisch ermitteln
-        $this->WriteAttributeString('Token', '');
-        $this->WriteAttributeString('Device', '');
+        // Anmeldung und Gerät nur frisch ermitteln, wenn sich Zugangsdaten/Verbindung geändert haben
+        // (Änderungen am Raumplan o. Ä. – auch aus der Kachel – lassen Anmeldung und Live-Verbindung in Ruhe)
+        $cred = md5(implode('|', [$this->ReadPropertyString('Email'), $this->ReadPropertyString('Password'), $this->ReadPropertyString('Region'),
+            $this->ReadPropertyString('DeviceFilter'), intval($this->ReadPropertyBoolean('VerifyTLS')), intval($this->ReadPropertyBoolean('Live')),
+            intval($this->ReadPropertyBoolean('Active')), intval($this->ReadPropertyBoolean('Consent'))]));
+        $this->credChanged = $cred !== $this->ReadAttributeString('CredKey');
+        if ($this->credChanged) {
+            $this->WriteAttributeString('Token', '');
+            $this->WriteAttributeString('Device', '');
+            $this->WriteAttributeString('CredKey', $cred);
+        }
 
         $this->SyncCapabilities();
         $this->SyncRooms();
@@ -226,6 +280,15 @@ class X60Ultra extends IPSModule
 
         // Passwort nie im Klartext speichern: die Cloud erwartet ohnehin nur einen Hash.
         // Einmalig umwandeln, danach steht in den Einstellungen (und Backups) nur noch "hash:...".
+        // Hochgeladenes Hintergrundbild verkleinert als Medienobjekt ablegen und das Upload-Feld leeren
+        // (sonst stünde das ganze Bild in den Einstellungen und jedem Backup)
+        if ($this->ReadPropertyString('BgUpload') !== '') {
+            $this->StoreBackground($this->ReadPropertyString('BgUpload'));
+            IPS_SetProperty($this->InstanceID, 'BgUpload', '');
+            IPS_ApplyChanges($this->InstanceID);
+            return;
+        }
+
         $pw = $this->ReadPropertyString('Password');
         if ($pw !== '' && strpos($pw, 'hash:') !== 0) {
             IPS_SetProperty($this->InstanceID, 'Password', 'hash:' . $this->PasswordHash($pw));
@@ -281,6 +344,7 @@ class X60Ultra extends IPSModule
         $this->FormSetValues($form['elements'], 'Rooms', $rows);
         $this->FormRoomPlan($form['elements']);
         $this->FormStatus($form['elements']);
+        $this->FormCustomDays($form['elements']);
         // Versionszeile ganz unten
         $lib = json_decode(@file_get_contents(__DIR__ . '/../library.json'), true);
         if (is_array($lib)) {
@@ -289,6 +353,20 @@ class X60Ultra extends IPSModule
                 . substr(strval($lib['date']), 0, 4) . ' · © ' . $lib['author']];
         }
         return json_encode($form);
+    }
+
+    // Tage-Auswahl: eigene, ältere Angaben (z. B. "1357") als zusätzliche Option erhalten
+    private function FormCustomDays(&$elements)
+    {
+        $cur = preg_replace('/[^1-7]/', '', $this->ReadPropertyString('AutoDays'));
+        foreach ($elements as &$e) {
+            if (isset($e['items'])) $this->FormCustomDays($e['items']);
+            if (!isset($e['name']) || $e['name'] !== 'AutoDays') continue;
+            if ($cur === '' || in_array($cur, array_column($e['options'], 'value'), true)) continue;
+            $names = [1 => 'Mo', 2 => 'Di', 3 => 'Mi', 4 => 'Do', 5 => 'Fr', 6 => 'Sa', 7 => 'So'];
+            $e['options'][] = ['caption' => implode(', ', array_map(function ($d) use ($names) { return $names[intval($d)]; }, str_split($cur))), 'value' => $cur];
+        }
+        unset($e);
     }
 
     // Statusblock oben in der Instanz: Texte je Zeile
@@ -348,13 +426,22 @@ class X60Ultra extends IPSModule
             $vals = [];
             $plan = json_decode($this->ReadPropertyString('AutoPlan'), true);
             if (is_array($plan)) foreach ($plan as $row) {
-                $v = ['day' => isset($row['day']) ? intval($row['day']) : 0, 'off' => false];
+                $v = ['day' => isset($row['day']) ? intval($row['day']) : 0, 'time' => strval($row['time'] ?? ''), 'prog' => isset($row['prog']) ? intval($row['prog']) : -1, 'off' => false];
                 $codes = $this->PlanCodes($row);
                 if ($codes === '-') $v['off'] = true;
                 foreach ($rooms as $r) $v['r' . $r['code']] = is_array($codes) && in_array($r['code'], $codes, true);
                 $vals[] = $v;
             }
             $e['values'] = $vals;
+            // Uhrzeiten außerhalb des Viertelstunden-Rasters (z. B. aus der Kachel) als Auswahl erhalten
+            foreach ($e['columns'] as &$c) {
+                if ($c['name'] !== 'time' || !isset($c['edit']['options'])) continue;
+                $have = array_column($c['edit']['options'], 'value');
+                foreach ($vals as $vv) {
+                    if (!empty($vv['time']) && !in_array($vv['time'], $have, true)) { $c['edit']['options'][] = ['caption' => $vv['time'], 'value' => $vv['time']]; $have[] = $vv['time']; }
+                }
+            }
+            unset($c);
         }
         unset($e);
     }
@@ -400,6 +487,72 @@ class X60Ultra extends IPSModule
             case 'Mode': case 'Route': case 'Suction': case 'Wetness': case 'Passes': case 'CleanGenius':
                 if (!$this->ValidPreset($Ident, $Value)) return;
                 $this->SetVal($Ident, intval($Value));
+                $this->RefreshViews();
+                return;
+            case 'AutoTime':
+                if (!preg_match('/^(\d{1,2}):(\d{2})$/', trim(strval($Value)), $t) || intval($t[1]) > 23 || intval($t[2]) > 59) {
+                    $this->Note('Uhrzeit bitte als HH:MM angeben.', 'err'); $this->RefreshViews(); return;
+                }
+                $this->SetVal('AutoTime', sprintf('%02d:%02d', intval($t[1]), intval($t[2])));
+                $this->UpdateAutoTimer();
+                $this->Note('Automatik startet um ' . $this->GetValue('AutoTime') . ' Uhr.', 'ok');
+                $this->RefreshViews();
+                return;
+            case 'AutoMode':
+                $this->SetVal('AutoMode', intval($Value) == 1 ? 1 : 0);
+                $this->UpdateAutoTimer();
+                $this->RefreshViews();
+                return;
+            case 'CleanProgram':
+                if (!isset(self::PROGRAMS[intval($Value)])) return;
+                $this->SetVal('CleanProgram', intval($Value));
+                $this->RefreshViews();
+                return;
+            case 'TileStart':
+                // Kachel: Hauptknopf – ausgewählte Räume, sonst alles; mit dem gewählten Programm
+                $over = $this->ProgramSettings(intval($this->GetValue('CleanProgram')));
+                if ($over === null) $over = $this->PresetValues();
+                $sel = $this->SelectedRooms();
+                if (count($sel)) $this->CleanRoomsWith($sel, json_encode($over));
+                elseif ($this->ReadAttributeInteger('Job') == 1) $this->Note('Es läuft bereits eine Reinigung.', 'err');
+                else $this->Locked(function () use ($over) { return $this->StartAll($over); });
+                $this->RefreshViews();
+                return;
+            case 'AutoProgram':
+                if (!isset(self::PROGRAMS[intval($Value)])) return;
+                $this->SetVal('AutoProgram', intval($Value));
+                $this->Note('Automatik-Programm: ' . self::PROGRAMS[intval($Value)][0], 'ok');
+                $this->RefreshViews();
+                return;
+            case 'TilePlan':
+                // Kachel: Raumplan speichern (gleiche Form wie in der Instanz)
+                $rows = $this->Json($Value);
+                if (!is_array($rows)) return;
+                $clean = [];
+                foreach ($rows as $r) {
+                    if (!is_array($r)) continue;
+                    $day = intval($r['day'] ?? 0);
+                    if ($day < 0 || $day > 9) continue;
+                    $prog = intval($r['prog'] ?? -1);
+                    $tm = isset($r['time']) && preg_match('/^(\d{1,2}):(\d{2})$/', trim(strval($r['time'])), $mm) && intval($mm[1]) < 24 && intval($mm[2]) < 60
+                        ? sprintf('%02d:%02d', intval($mm[1]), intval($mm[2])) : '';
+                    $row = ['day' => $day, 'time' => $tm, 'prog' => ($prog >= 0 && isset(self::PROGRAMS[$prog])) ? $prog : -1, 'off' => !empty($r['off'])];
+                    foreach ($r as $k => $v) if (preg_match('/^r\d{1,5}$/', $k)) $row[$k] = (bool)$v;
+                    $clean[] = $row;
+                    if (count($clean) >= 20) break;
+                }
+                IPS_SetProperty($this->InstanceID, 'AutoPlan', json_encode($clean));
+                IPS_ApplyChanges($this->InstanceID);
+                $this->Note('Raumplan gespeichert.', 'ok');
+                $this->RefreshViews();
+                return;
+            case 'TileProgram':
+                // Kachel: Programm jetzt starten – für die ausgewählten Räume, sonst alles
+                $d = $this->Json($Value);
+                $over = is_array($d) ? $d : [];
+                $sel = $this->SelectedRooms();
+                if (count($sel)) $this->CleanRoomsWith($sel, json_encode($over));
+                else $this->Locked(function () use ($over) { return $this->StartAll($over); });
                 $this->RefreshViews();
                 return;
             case 'AutoAway':
@@ -515,14 +668,18 @@ class X60Ultra extends IPSModule
     // Alles reinigen (auf der gewählten Etage)
     public function CleanAll()
     {
-        return $this->Locked(function () {
-            if (!$this->PrepareFloor($this->ActiveFloor())) return false;
-            $this->ApplyPresets();
-            $ok = $this->MiotAction(2, 1);
-            $this->Result($ok, 'Alles reinigen');
-            if ($ok) { $this->WriteAttributeInteger('JobRooms', 0); $this->PollSoon(); }
-            return $ok;
-        });
+        return $this->Locked(function () { return $this->StartAll([]); });
+    }
+
+    // Alles reinigen; $over = Einstellungen nur für diese Fahrt (leer = Vorwahlen)
+    private function StartAll($over)
+    {
+        if (!$this->PrepareFloor($this->ActiveFloor())) return false;
+        $this->ApplyPresets($over);
+        $ok = $this->MiotAction(2, 1);
+        $this->Result($ok, 'Alles reinigen');
+        if ($ok) { $this->WriteAttributeInteger('JobRooms', 0); $this->PollSoon(); }
+        return $ok;
     }
 
     /**
@@ -946,16 +1103,27 @@ class X60Ultra extends IPSModule
         foreach ($this->LiveMapObjects() as $o) {
             $r[] = 'Abgelegte Karte ' . preg_replace('#^.*/#', '…/', $o) . ': ' . $this->BlockReport($this->CloudFile($o));
         }
+        // Live-Verbindung: zuletzt empfangene Bilder und das daraus zusammengesetzte
+        $r[] = 'Live empfangen: ' . intval($this->GetBuffer('LiveCntI')) . ' Vollbilder, ' . intval($this->GetBuffer('LiveCntP')) . ' Teilbilder, '
+            . intval($this->GetBuffer('LiveCntX')) . ' verworfen';
+        foreach (['LiveRawI' => 'Live-Vollbild', 'LiveRawP' => 'Live-Teilbild'] as $buf => $label) {
+            $raw = $this->GetBuffer($buf);
+            if ($raw !== '') $r[] = $label . ': ' . $this->BlockReport(gzuncompress(base64_decode($raw)));
+        }
+        $lb = $this->LiveBlock();
+        if ($lb !== null) $r[] = 'Live-Karte (zusammengesetzt): ' . $this->BlockReport(null, $lb);
         $out = implode("\n", $r);
         $this->SendDebug('Kartendiagnose', $out, 0);
         return $out;
     }
 
-    private function BlockReport($text)
+    private function BlockReport($text, $b = null)
     {
-        if ($text === null) return 'nicht ladbar';
-        $b = SaugroboterKarte::Decode($text, self::MAP_IV);
-        if ($b === null) return 'nicht dekodierbar (' . strlen($text) . ' Zeichen, ' . (strpos($text, ',') !== false ? 'mit' : 'ohne') . ' Schlüssel)';
+        if ($b === null) {
+            if ($text === null) return 'nicht ladbar';
+            $b = SaugroboterKarte::Decode($text, self::MAP_IV);
+            if ($b === null) return 'nicht dekodierbar (' . strlen($text) . ' Zeichen, ' . (strpos($text, ',') !== false ? 'mit' : 'ohne') . ' Schlüssel)';
+        }
         $segs = isset($b['info']['seg_inf']) && is_array($b['info']['seg_inf']) ? implode(',', array_keys($b['info']['seg_inf'])) : '–';
         $hist = [];
         for ($i = 0; $i < strlen($b['cells']); $i++) { $c = ord($b['cells'][$i]); if ($c) $hist[$c] = (isset($hist[$c]) ? $hist[$c] : 0) + 1; }
@@ -1036,7 +1204,28 @@ class X60Ultra extends IPSModule
     // Abruf
     // =========================================================================
 
+    // Button "Status abrufen": mit Rückmeldung, wartet notfalls auf einen laufenden Abruf
+    public function Refresh()
+    {
+        $this->SetBuffer('SlowAt', '0');
+        $ok = $this->DoPoll(true);
+        $fresh = intval($this->GetBuffer('FreshAt'));
+        if ($ok && time() - $fresh < 30) $msg = 'Status aktualisiert – Werte direkt vom Roboter.';
+        elseif ($ok) $msg = 'Roboter antwortet nicht – ' . ($fresh > 0 ? 'letzter frischer Stand ' . date('d.m. H:i', $fresh) . '. ' : '')
+            . 'Angezeigt werden Werte aus dem Cloud-Speicher; die können veraltet sein. Ist der Roboter im WLAN und in der App erreichbar?';
+        else $msg = 'Kein Abruf möglich: ' . ($this->dcLastError !== '' ? $this->dcLastError : 'Instanz beschäftigt oder Roboter nicht erreichbar.');
+        $this->Note($msg, $ok && time() - $fresh < 30 ? 'ok' : 'err');
+        echo $msg;
+        return $ok;
+    }
+
     public function Poll()
+    {
+        return $this->DoPoll(false);
+    }
+
+    // $User = true: vom Button – wartet auf einen laufenden Abruf statt ihn zu überspringen
+    private function DoPoll($User)
     {
         if (!$this->ReadPropertyBoolean('Active')) return false;
         $done = false;
@@ -1058,9 +1247,18 @@ class X60Ultra extends IPSModule
                 $this->SetBuffer('SlowAt', strval(time()));
             }
             $v = $this->MiotGet($keys);
-            if ($v === null || !isset($v['2.1'])) { $this->Online(false); return false; }
-            $this->Online(true);
-            if ($this->dcFromCache) $this->Note('Roboter antwortet nicht direkt – Werte aus dem Cloud-Speicher.');
+            $partial = false;
+            if ($v === null || !isset($v['2.1'])) {
+                // Roboter antwortet nicht (z. B. beim Trocknen in der Station). Steht die Live-Verbindung,
+                // kennen wir Zustand, Fehler und Akku trotzdem – dann Auftrag und Karte weiter verfolgen.
+                if (!$this->LiveOk()) { $this->Online(false); return false; }
+                $v = ['2.1' => $this->GetValue('State'), '2.2' => $this->GetValue('Error'), '3.1' => $this->GetValue('Battery')];
+                $partial = true;
+            } else {
+                $this->Online(true);
+                if ($this->dcFromCache) $this->Note('Roboter antwortet nicht direkt – Werte aus dem Cloud-Speicher.');
+                else $this->SetBuffer('FreshAt', strval(time()));     // Werte direkt vom Roboter
+            }
 
             $state = intval($v['2.1']);
             $this->SetVal('State', $state);
@@ -1072,12 +1270,14 @@ class X60Ultra extends IPSModule
             if (isset($v['4.3'])) $this->SetVal('CleanArea', intval($v['4.3']));
 
             // Station: 27/1 meldet nur "Tank steckt", leer steht in 4/41
-            $cw = isset($v['27.1']) ? intval($v['27.1']) : -1;
-            $low = isset($v['4.41']) ? intval($v['4.41']) : 0;
-            if ($cw == 0 && $low >= 2) $cw = 3;
-            $this->SetVal('CleanWater', $cw);
-            $this->SetVal('DirtyWater', isset($v['27.2']) ? intval($v['27.2']) : -1);
-            $this->SetVal('DustBag', isset($v['27.3']) ? intval($v['27.3']) : -1);
+            if (!$partial) {
+                $cw = isset($v['27.1']) ? intval($v['27.1']) : -1;
+                $low = isset($v['4.41']) ? intval($v['4.41']) : 0;
+                if ($cw == 0 && $low >= 2) $cw = 3;
+                $this->SetVal('CleanWater', $cw);
+                $this->SetVal('DirtyWater', isset($v['27.2']) ? intval($v['27.2']) : -1);
+                $this->SetVal('DustBag', isset($v['27.3']) ? intval($v['27.3']) : -1);
+            }
 
             foreach (SaugroboterTexte::Consumables() as $ident => $c) {
                 $k = $c[1] . '.' . $c[2];
@@ -1091,8 +1291,8 @@ class X60Ultra extends IPSModule
                 else $this->SetVal($ident, intval($v[$k]));
             }
 
-            $this->SetVal('DeviceSettings', $this->DescribeSettings($v));
-            if (!$this->dcFromCache) $this->DevCfg(array_intersect_key($v, array_flip(['4.4', '4.5', '4.23', '4.50'])));
+            if (!$partial) $this->SetVal('DeviceSettings', $this->DescribeSettings($v));
+            if (!$partial && !$this->dcFromCache) $this->DevCfg(array_intersect_key($v, array_flip(['4.4', '4.5', '4.23', '4.50'])));
 
             // Auftrag verfolgen
             $group = SaugroboterTexte::StateGroup($state);
@@ -1105,7 +1305,13 @@ class X60Ultra extends IPSModule
                 $this->WriteAttributeString('JobInfo', json_encode([
                     'min' => $this->GetValue('CleanTime'), 'area' => $this->GetValue('CleanArea')
                 ]));
-                $ended = $group == 'docked' || in_array($state, [8, 22, 35, 104], true);
+                // Ende: angedockt bzw. typische Abschluss-Zustände – oder seit über 10 Minuten durchgehend an der Station
+                // (Zwischenstopps zum Mopp-Waschen während der Fahrt dauern kürzer)
+                $atStation = in_array($group, ['docked', 'station'], true);
+                if (!$atStation) $this->SetBuffer('AtStationSince', '0');
+                elseif (intval($this->GetBuffer('AtStationSince')) == 0) $this->SetBuffer('AtStationSince', strval(time()));
+                $ended = $group == 'docked' || in_array($state, [8, 22, 35, 104], true)
+                    || ($atStation && time() - intval($this->GetBuffer('AtStationSince')) > 600);
                 if ($ended) {
                     $this->WriteAttributeInteger('Job', 0);
                     $done = true;
@@ -1115,11 +1321,14 @@ class X60Ultra extends IPSModule
             $this->TrackRoom($state, $group);
             // Nach einem Update fehlt die Raumlage zum vorhandenen Kartenbild (Beschriftung/Antippen) –
             // dann die Karte einmal frisch holen, auch wenn der Roboter an der Station steht
-            if ($this->ReadPropertyBoolean('MapImage') && $this->MapMeta('Map') === null && intval($this->GetBuffer('MetaTry')) < time() - 300) {
+            $stale = $this->ReadAttributeInteger('RenderVersion') != self::RENDER_VERSION;
+            if ($this->ReadPropertyBoolean('MapImage') && ($this->MapMeta('Map') === null || $stale) && intval($this->GetBuffer('MetaTry')) < time() - 300) {
+                $this->WriteAttributeInteger('RenderVersion', self::RENDER_VERSION);
                 $this->SetBuffer('MetaTry', strval(time()));
                 $this->FetchLiveMap(true);
             }
             if ($done) {
+                $this->SetBuffer('AtStationSince', '0');
                 $this->FetchLiveMap(true);
                 $this->LoadHistory();
                 if ($this->ReadAttributeInteger('JobRooms') == 1) {
@@ -1132,7 +1341,7 @@ class X60Ultra extends IPSModule
             $this->CheckError($err);
             $this->CheckMaintenance();
             return true;
-        }, true);
+        }, !$User);
         if ($ok === null) return false;   // übersprungen: anderer Zugriff läuft
         if ($done) {
             $this->JobFinished();
@@ -1213,8 +1422,10 @@ class X60Ultra extends IPSModule
         if (!$force && $got !== null && $base !== null && $best > 0 && isset($base['info']['timestamp_ms'])
             && $best <= floatval($base['info']['timestamp_ms'])) return $base;
         if ($got === null) return $base;
-        $this->SetBuffer('LiveFrame', strval($got['frameId']));
-        $this->SetBuffer('LiveBlock', base64_encode(gzcompress(serialize($got))));
+        // gemeinsame Übernahme mit den Live-Bildern (Details und Position richtig zusammenführen)
+        $got['type'] = 'I';
+        if (!$this->LiveTakeBlock($got)) return $base;
+        $got = $this->LiveBlock();
         if ($this->ReadPropertyBoolean('MapImage')) $this->StoreMapImage($got, $got['mapId'], 'Map');
         return $got;
     }
@@ -1748,6 +1959,84 @@ class X60Ultra extends IPSModule
         if (IPS_GetKernelRunlevel() != KR_READY) $this->RegisterMessage(0, IPS_KERNELSTARTED);
     }
 
+    /**
+     * Zeitplan-Einträge für heute ("zur Uhrzeit"): jeder Eintrag mit Tag, Uhrzeit, Räumen, Programm.
+     * Ohne Einträge gilt ein täglicher Standard-Eintrag (Standard-Uhrzeit, Räume/Programm der Automatik).
+     * Rückgabe: [['key','ts','time','rooms','prog','done'], …] nach Uhrzeit sortiert; null = heute frei.
+     */
+    private function EntriesToday()
+    {
+        $rows = json_decode($this->ReadPropertyString('AutoPlan'), true);
+        $dow = intval(date('N'));
+        $done = json_decode($this->ReadAttributeString('AutoDone'), true);
+        if (!is_array($done)) $done = [];
+        $std = $this->AutoStartToday();
+        $out = [];
+        if (!is_array($rows) || !count($rows)) {
+            $days = preg_replace('/[^1-7]/', '', $this->ReadPropertyString('AutoDays'));
+            if ($days !== '' && strpos($days, strval($dow)) === false) return [];
+            $text = trim($this->ReadPropertyString('AutoRooms'));
+            $rows = [['day' => 0, 'time' => '', 'prog' => -1, 'rooms' => $text]];
+        }
+        foreach ($rows as $i => $r) {
+            $d = intval($r['day'] ?? 0);
+            if (!($d == 0 || $d == $dow || ($d == 8 && $dow <= 5) || ($d == 9 && $dow >= 6))) continue;
+            $codes = $this->PlanCodes($r);
+            if ($codes === '-') return null;          // "frei" an diesem Tag schlägt alles
+            $t = isset($r['time']) && preg_match('/^(\d{1,2}):(\d{2})$/', trim(strval($r['time'])), $m) ? mktime(intval($m[1]), intval($m[2]), 0) : $std;
+            $p = intval($r['prog'] ?? -1);
+            if ($p < 0 || !isset(self::PROGRAMS[$p])) $p = intval($this->GetValue('AutoProgram'));
+            $key = md5($i . '|' . $d . '|' . date('H:i', $t));
+            $out[] = ['key' => $key, 'ts' => $t, 'time' => date('H:i', $t), 'rooms' => $codes, 'prog' => $p, 'done' => ($done[$key] ?? '') === date('Ymd')];
+        }
+        usort($out, function ($a, $b) { return $a['ts'] - $b['ts']; });
+        return $out;
+    }
+
+    // Fälliger Eintrag: Uhrzeit erreicht, heute noch nicht gelaufen, höchstens 3 Stunden her
+    private function DueEntry()
+    {
+        $list = $this->EntriesToday();
+        if (!is_array($list)) return null;
+        foreach ($list as $e) {
+            if (!$e['done'] && $e['ts'] <= time() && time() <= $e['ts'] + 3 * 3600) return $e;
+        }
+        return null;
+    }
+
+    // Automatik "zur Uhrzeit": '' = jetzt starten, sonst der Grund
+    private function AutoTimeBlocker()
+    {
+        $list = $this->EntriesToday();
+        if ($list === null) return 'heute frei';
+        if (!count($list)) return 'heute kein Zeitplan';
+        $due = $this->DueEntry();
+        if ($due === null) {
+            foreach ($list as $e) if (!$e['done'] && $e['ts'] > time()) return 'nächster Start heute um ' . $e['time'];
+            $doneAny = count(array_filter($list, function ($e) { return $e['done']; }));
+            return $doneAny ? 'heute erledigt' : 'heute verpasst';
+        }
+        if (!$this->GetValue('Online')) return 'Roboter nicht erreichbar';
+        if ($this->ReadAttributeInteger('Job') == 1) return 'Roboter ist unterwegs – Start ' . $due['time'] . ' folgt danach';
+        if ($this->GetValue('Battery') < $this->ReadPropertyInteger('AutoBattery')) return 'wartet auf Akku (' . $this->GetValue('Battery') . ' %)';
+        if ($this->GetValue('Error') != 0 && !in_array($this->GetValue('Error'), SaugroboterTexte::WarningCodes(), true)) return 'Störung am Gerät';
+        if (intval($this->GetBuffer('AutoRetry')) > time()) return 'neuer Versuch ' . date('H:i', intval($this->GetBuffer('AutoRetry')));
+        return '';
+    }
+
+    // Heutiger Startzeitpunkt der Automatik "zur Uhrzeit"
+    private function AutoStartToday()
+    {
+        $t = @$this->GetIDForIdent('AutoTime') ? strval($this->GetValue('AutoTime')) : '10:00';
+        if (!preg_match('/^(\d{1,2}):(\d{2})$/', $t, $m)) $m = [0, 10, 0];
+        return mktime(intval($m[1]), intval($m[2]), 0);
+    }
+
+    private function AutoByPlan()
+    {
+        return @$this->GetIDForIdent('AutoMode') && intval($this->GetValue('AutoMode')) == 1;
+    }
+
     private function Home()
     {
         $vid = $this->ReadPropertyInteger('PresenceVariable');
@@ -1758,7 +2047,7 @@ class X60Ultra extends IPSModule
 
     private function PresenceChanged()
     {
-        if ($this->Home() === true && $this->ReadAttributeInteger('JobByAuto') == 1
+        if (!$this->AutoByPlan() && $this->Home() === true && $this->ReadAttributeInteger('JobByAuto') == 1
             && $this->ReadAttributeInteger('Job') == 1 && $this->ReadPropertyBoolean('AutoReturn')) {
             $this->Dock();
             $this->WriteAttributeInteger('JobByAuto', 0);
@@ -1769,7 +2058,7 @@ class X60Ultra extends IPSModule
 
     private function UpdateAutoTimer()
     {
-        $on = $this->GetValue('AutoAway') && $this->ReadPropertyBoolean('Active') && $this->Home() !== null;
+        $on = $this->GetValue('AutoAway') && $this->ReadPropertyBoolean('Active') && ($this->AutoByPlan() || $this->Home() !== null);
         $this->SetTimerInterval('Auto', $on ? 60000 : 0);
         $why = $this->AutoBlocker();
         $this->SetVal('AutoStatus', $why === '' ? 'startet bei der nächsten Prüfung' : $why);
@@ -1782,14 +2071,32 @@ class X60Ultra extends IPSModule
         $this->SetVal('AutoStatus', $why === '' ? 'startet …' : $why);
         if ($why !== '') return false;
 
-        $rooms = $this->AutoRoomsToday();
-        $ok = !count($rooms) ? $this->CleanAll() : $this->CleanRooms($rooms);
+        $entry = null;
+        if ($this->AutoByPlan()) {
+            // "zur Uhrzeit": der fällige Zeitplan-Eintrag bestimmt Räume und Programm
+            $entry = $this->DueEntry();
+            if ($entry === null) return false;
+            $rooms = $entry['rooms'];
+            $prog = $entry['prog'];
+        } else {
+            $rooms = $this->AutoRoomsToday();
+            $prog = $this->AutoProgramToday();
+        }
+        $over = $this->ProgramSettings($prog);
+        if (!count($rooms)) $ok = $over === null ? $this->CleanAll() : $this->Locked(function () use ($over) { return $this->StartAll($over); });
+        else $ok = $this->CleanRoomsWith($rooms, json_encode($over === null ? [] : $over));
         if ($ok) {
             $this->WriteAttributeInteger('LastAuto', time());
             $this->WriteAttributeInteger('JobByAuto', 1);
-            $what = !count($rooms) ? 'alles' : $this->RoomNames($rooms);
+            if ($entry !== null) {
+                $done = json_decode($this->ReadAttributeString('AutoDone'), true);
+                if (!is_array($done)) $done = [];
+                $done[$entry['key']] = date('Ymd');
+                $this->WriteAttributeString('AutoDone', json_encode($done));
+            }
+            $what = (!count($rooms) ? 'alles' : $this->RoomNames($rooms)) . ($prog > 0 ? ', ' . self::PROGRAMS[$prog][0] : '');
             $this->SetVal('AutoStatus', 'gestartet ' . date('H:i') . ' (' . $what . ')');
-            if ($this->ReadPropertyBoolean('NotifyAuto')) $this->Push('Automatik', 'Niemand zu Hause – Reinigung gestartet: ' . $what . '.');
+            if ($this->ReadPropertyBoolean('NotifyAuto')) $this->Push('Automatik', ($entry !== null ? 'Zeitplan ' . $entry['time'] : 'Niemand zu Hause') . ' – Reinigung gestartet: ' . $what . '.');
         } else {
             $this->SetBuffer('AutoRetry', strval(time() + 1800));
             $this->SetVal('AutoStatus', 'Start fehlgeschlagen, neuer Versuch ' . date('H:i', time() + 1800));
@@ -1802,7 +2109,39 @@ class X60Ultra extends IPSModule
      * Räume für heute laut Raumplan: [] = alles, '-' = heute nicht, sonst Raumcodes.
      * Genaueste Zeile gewinnt: bestimmter Tag vor Mo–Fr/Sa+So vor täglich. Ohne passende Zeile gilt "Räume".
      */
-    private function AutoRoomsToday()
+    // Raumplan für die Kachel: Zeilen in Häkchenform (alte Textzeilen umgesetzt)
+    private function PlanView()
+    {
+        $rows = json_decode($this->ReadPropertyString('AutoPlan'), true);
+        $out = [];
+        if (is_array($rows)) foreach ($rows as $r) {
+            $codes = $this->PlanCodes($r);
+            $v = ['day' => intval($r['day'] ?? 0), 'time' => strval($r['time'] ?? ''), 'prog' => intval($r['prog'] ?? -1), 'off' => $codes === '-'];
+            if (is_array($codes)) foreach ($codes as $c) $v['r' . $c] = true;
+            $out[] = $v;
+        }
+        return $out;
+    }
+
+    // "Heute: Küche, Bad · Gründlich saugen" für die Kachel
+    private function AutoTodayText()
+    {
+        if ($this->AutoByPlan()) {
+            $list = $this->EntriesToday();
+            if ($list === null) return 'Heute frei';
+            if (!count($list)) return 'Heute kein Zeitplan';
+            return 'Heute: ' . implode(', ', array_map(function ($e) {
+                return $e['time'] . ' ' . (count($e['rooms']) ? $this->RoomNames($e['rooms']) : 'alles') . ($e['done'] ? ' ✓' : '');
+            }, $list));
+        }
+        $rooms = $this->AutoRoomsToday();
+        if ($rooms === '-') return 'Heute frei';
+        $p = $this->AutoProgramToday();
+        return 'Heute: ' . (count($rooms) ? $this->RoomNames($rooms) : 'alles') . ' · ' . self::PROGRAMS[$p][0];
+    }
+
+    // Passende Zeile des Raumplans für heute (genaueste gewinnt) oder null
+    private function PlanRowToday()
     {
         $rows = json_decode($this->ReadPropertyString('AutoPlan'), true);
         $dow = intval(date('N'));
@@ -1810,11 +2149,39 @@ class X60Ultra extends IPSModule
         if (is_array($rows)) foreach ($rows as $r) {
             $d = isset($r['day']) ? intval($r['day']) : 0;
             $match = $d == $dow ? 3 : (($d == 8 && $dow <= 5) || ($d == 9 && $dow >= 6) ? 2 : ($d == 0 ? 1 : 0));
-            if ($match > $rank && $match > 0) {
-                $rank = $match;
-                $best = $this->PlanCodes($r);
-            }
+            if ($match > $rank && $match > 0) { $rank = $match; $best = $r; }
         }
+        return $best;
+    }
+
+    // Programm für heute: aus dem Raumplan, sonst das allgemeine der Automatik
+    private function AutoProgramToday()
+    {
+        $row = $this->PlanRowToday();
+        $p = $row !== null && isset($row['prog']) ? intval($row['prog']) : -1;
+        if ($p < 0 || !isset(self::PROGRAMS[$p])) $p = intval($this->GetValue('AutoProgram'));
+        return isset(self::PROGRAMS[$p]) ? $p : 0;
+    }
+
+    // Aktuelle Vorwahlen als Einstellungen ("Eigene Einstellungen")
+    private function PresetValues()
+    {
+        $o = [];
+        foreach (['Mode', 'Suction', 'Wetness', 'Passes', 'Route', 'CleanGenius'] as $k) $o[$k] = intval($this->GetValue($k));
+        return $o;
+    }
+
+    // Einstellungen eines Programms (vollständig, damit keine Vorwahl hineinrutscht); null = Vorwahlen
+    private function ProgramSettings($p)
+    {
+        if (!isset(self::PROGRAMS[$p]) || self::PROGRAMS[$p][1] === null) return null;
+        return self::PROGRAMS[$p][1] + ['Mode' => -1, 'Suction' => -1, 'Wetness' => -1, 'Passes' => 1, 'Route' => -1, 'CleanGenius' => -1];
+    }
+
+    private function AutoRoomsToday()
+    {
+        $row = $this->PlanRowToday();
+        $best = $row === null ? null : $this->PlanCodes($row);
         if ($best === null) {
             $text = trim($this->ReadPropertyString('AutoRooms'));
             $best = $text === '-' ? '-' : ($text === '' ? [] : $this->ResolveRooms($text));
@@ -1826,13 +2193,17 @@ class X60Ultra extends IPSModule
     private function AutoBlocker()
     {
         if (!$this->GetValue('AutoAway')) return 'aus';
-        $home = $this->Home();
-        if ($home === null) return 'keine Anwesenheitsvariable gewählt';
-        if ($home) return 'wartet – jemand ist zu Hause';
-        $vid = $this->ReadPropertyInteger('PresenceVariable');
-        $since = IPS_GetVariable($vid)['VariableChanged'];
-        $delay = $this->ReadPropertyInteger('AutoDelay') * 60;
-        if (time() - $since < $delay) return 'wartet bis ' . date('H:i', $since + $delay);
+        // "zur Uhrzeit": einmal am Tag zur festen Zeit, egal ob jemand zu Hause ist
+        if ($this->AutoByPlan()) return $this->AutoTimeBlocker();
+        {
+            $home = $this->Home();
+            if ($home === null) return 'keine Anwesenheitsvariable gewählt';
+            if ($home) return 'wartet – jemand ist zu Hause';
+            $vid = $this->ReadPropertyInteger('PresenceVariable');
+            $since = IPS_GetVariable($vid)['VariableChanged'];
+            $delay = $this->ReadPropertyInteger('AutoDelay') * 60;
+            if (time() - $since < $delay) return 'wartet bis ' . date('H:i', $since + $delay);
+        }
         $last = $this->ReadAttributeInteger('LastAuto');
         $gap = $this->ReadPropertyInteger('AutoGap') * 3600;
         if ($last > 0 && time() - $last < $gap) return 'erledigt (' . $this->Weekday($last) . ' ' . date('H:i', $last) . ')';
@@ -1866,7 +2237,61 @@ class X60Ultra extends IPSModule
         $html = file_get_contents(__DIR__ . '/module.html');
         $html = str_replace('/*STYLE*/', file_get_contents(__DIR__ . '/tile.css'), $html);
         return str_replace('"__INIT__"', json_encode(['view' => $this->ViewModel(), 'map' => $this->MapDataUri(null, true),
-            'mapLast' => $this->MapDataUri('MapLast', true)], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), $html);
+            'mapLast' => $this->MapDataUri('MapLast', true), 'bg' => $this->BackgroundUri()], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), $html);
+    }
+
+    // ---- Hintergrundbild der Kachel ----
+    // Bild auf höchstens 1600 px verkleinern, als JPEG speichern (klein, schnell geladen)
+    private function StoreBackground($b64)
+    {
+        $raw = base64_decode(preg_replace('#^data:[^,]*,#', '', $b64), true);
+        if ($raw === false || strlen($raw) < 100 || strlen($raw) > 25 * 1048576) { $this->Note('Hintergrundbild nicht lesbar.', 'err'); return; }
+        $out = $raw; $type = 'jpeg';
+        if (function_exists('imagecreatefromstring') && ($img = @imagecreatefromstring($raw)) !== false) {
+            $w = imagesx($img); $h = imagesy($img);
+            $f = min(1, 1600 / max($w, $h));
+            $nw = max(1, intval($w * $f)); $nh = max(1, intval($h * $f));
+            $dst = imagecreatetruecolor($nw, $nh);
+            imagecopyresampled($dst, $img, 0, 0, 0, 0, $nw, $nh, $w, $h);
+            ob_start(); imagejpeg($dst, null, 80); $out = ob_get_clean();
+            imagedestroy($img); imagedestroy($dst);
+        } else {
+            // ohne GD: nur kleine Bilder unverändert übernehmen
+            if (strlen($raw) > 3 * 1048576) { $this->Note('Hintergrundbild zu groß (max. 3 MB ohne Bildbearbeitung).', 'err'); return; }
+            $type = substr($raw, 0, 4) === "\x89PNG" ? 'png' : 'jpeg';
+        }
+        $mid = @IPS_GetObjectIDByIdent('TileBackground', $this->InstanceID);
+        if (!$mid) {
+            $mid = IPS_CreateMedia(1);
+            IPS_SetParent($mid, $this->InstanceID);
+            IPS_SetIdent($mid, 'TileBackground');
+            IPS_SetName($mid, 'Kachel-Hintergrund');
+            IPS_SetPosition($mid, 4);
+            IPS_SetHidden($mid, true);
+        }
+        IPS_SetMediaFile($mid, 'media/Saugroboter_' . $this->InstanceID . '_Hintergrund.' . ($type == 'png' ? 'png' : 'jpg'), false);
+        IPS_SetMediaContent($mid, base64_encode($out));
+        $this->WriteAttributeString('BgType', $type);
+        $this->SetBuffer('BgStamp', strval(microtime(true)));
+        $this->Note('Hintergrundbild übernommen (' . round(strlen($out) / 1024) . ' KB).', 'ok');
+    }
+
+    // Button "Hintergrund entfernen"
+    public function RemoveBackground()
+    {
+        $mid = @IPS_GetObjectIDByIdent('TileBackground', $this->InstanceID);
+        if ($mid) IPS_DeleteMedia($mid, true);
+        $this->SetBuffer('BgStamp', strval(microtime(true)));
+        $this->Note('Hintergrundbild entfernt.', 'ok');
+        $this->RefreshViews();
+        return true;
+    }
+
+    private function BackgroundUri()
+    {
+        $mid = @IPS_GetObjectIDByIdent('TileBackground', $this->InstanceID);
+        $c = $mid ? @IPS_GetMediaContent($mid) : '';
+        return $c ? 'data:image/' . ($this->ReadAttributeString('BgType') ?: 'jpeg') . ';base64,' . $c : '';
     }
 
     // Kachel und HTML-Box auffrischen. Das Kartenbild geht nur nach einer Änderung mit.
@@ -1880,6 +2305,11 @@ class X60Ultra extends IPSModule
             if ($last !== $this->GetBuffer('LastSent')) {
                 $msg['mapLast'] = $this->MapDataUri('MapLast', true);
                 $this->SetBuffer('LastSent', $last);
+            }
+            $bs = $this->GetBuffer('BgStamp');
+            if ($bs !== $this->GetBuffer('BgSent')) {
+                $msg['bg'] = $this->BackgroundUri();
+                $this->SetBuffer('BgSent', $bs);
             }
             $stamp = $this->GetBuffer('MapStamp');
             if ($stamp !== $this->GetBuffer('MapSent')) {
@@ -1919,6 +2349,8 @@ class X60Ultra extends IPSModule
         return [
             'name' => IPS_GetName($this->InstanceID),
             'online' => $this->GetValue('Online'),
+            // Seit wann nichts Frisches mehr vom Roboter kam (weder direkt noch live) – dann ist der Stand veraltet
+            'staleSince' => intval($this->GetBuffer('FreshAt')) > 0 && time() - intval($this->GetBuffer('FreshAt')) > 300 ? date('H:i', intval($this->GetBuffer('FreshAt'))) : '',
             'live' => $this->ReadPropertyBoolean('Live') ? $this->LiveOk() : null,
             'state' => $state, 'stateText' => GetValueFormatted($this->GetIDForIdent('State')),
             'group' => SaugroboterTexte::StateGroup($state),
@@ -1944,7 +2376,25 @@ class X60Ultra extends IPSModule
             'maintenance' => $this->GetValue('Maintenance'),
             'history' => array_values(array_filter(explode("\n", $this->GetValue('History')))),
             'auto' => $this->GetValue('AutoAway'), 'autoStatus' => $this->GetValue('AutoStatus'),
-            'autoConfigured' => $this->Home() !== null,
+            'autoConfigured' => $this->AutoByPlan() || $this->Home() !== null,
+            'autoMode' => $this->AutoByPlan() ? 1 : 0,
+            'hasPresence' => $this->Home() !== null,
+            'autoTime' => @$this->GetIDForIdent('AutoTime') ? strval($this->GetValue('AutoTime')) : '10:00',
+            'cleanProgram' => intval($this->GetValue('CleanProgram')),
+            'programs' => array_map(function ($id) {
+                $s = $this->ProgramSettings($id);
+                return ['id' => $id, 'name' => self::PROGRAMS[$id][0], 'set' => $s === null ? $this->PresetValues() : $s, 'custom' => $s === null];
+            }, array_keys(self::PROGRAMS)),
+            'programNames' => array_map(function ($p) { return $p[0]; }, self::PROGRAMS),
+            'autoProgram' => intval($this->GetValue('AutoProgram')),
+            'plan' => $this->PlanView(),
+            'planRooms' => array_map(function ($r) { return ['code' => $r['code'], 'name' => $r['name'] . (count($this->Maps()) > 1 ? ' (' . $r['floor'] . ')' : '')]; }, $this->RoomList()),
+            'autoToday' => $this->AutoTodayText(),
+            'bgDim' => max(0, min(90, $this->ReadPropertyInteger('BgDim'))),
+            'bgBlur' => max(0, min(20, $this->ReadPropertyInteger('BgBlur'))),
+            'cardOpacity' => max(0, min(100, $this->ReadPropertyInteger('CardOpacity'))),
+            'cardGlass' => max(0, min(40, $this->ReadPropertyInteger('CardGlass'))),
+            'theme' => max(0, min(2, $this->ReadPropertyInteger('Theme'))),
             'message' => $this->GetValue('Message'),
             'mapMeta' => $this->MapMeta($this->MapIdent()),
             'lastMeta' => $this->MapMeta('MapLast'),

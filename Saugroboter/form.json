@@ -2,25 +2,21 @@
   "elements": [
     {
       "type": "ExpansionPanel",
-      "caption": "Nutzungshinweis – bitte lesen",
+      "caption": "Nutzungshinweis",
       "expanded": true,
       "items": [
         {
           "type": "Label",
-          "caption": "Dieses Modul ist ein privates, inoffizielles Projekt. Es ist nicht mit Dreame verbunden und wird von Dreame weder unterstützt noch geprüft."
+          "caption": "Privates, inoffizielles Projekt – nicht von Dreame."
         },
         {
           "type": "Label",
-          "caption": "Es nutzt die nicht dokumentierte Cloud-Schnittstelle der Dreamehome-App mit deinem eigenen Konto für dein eigenes Gerät. Dreame kann die Schnittstelle jederzeit ändern oder die Nutzung untersagen; ob das mit den Nutzungsbedingungen von Dreame vereinbar ist, liegt in deiner Verantwortung."
-        },
-        {
-          "type": "Label",
-          "caption": "Das Passwort wird nicht im Klartext gespeichert. Daten fließen nur zwischen dieser Symcon-Installation und der Dreame-Cloud."
+          "caption": "Nutzt die Cloud der Dreamehome-App mit deinem Konto. Dreame kann das jederzeit ändern."
         },
         {
           "type": "CheckBox",
           "name": "Consent",
-          "caption": "Gelesen – ich nutze das Modul mit meinem eigenen Konto und auf eigene Verantwortung"
+          "caption": "Gelesen – Nutzung auf eigene Verantwortung"
         }
       ]
     },
@@ -63,7 +59,7 @@
       "items": [
         {
           "type": "Label",
-          "caption": "Zugangsdaten der Dreamehome-App. Das Passwort wird beim Übernehmen in einen Hash umgewandelt und nicht im Klartext gespeichert."
+          "caption": "Zugangsdaten der Dreamehome-App (Passwort wird nur als Hash gespeichert)."
         },
         {
           "type": "ValidationTextBox",
@@ -109,21 +105,21 @@
         {
           "type": "ValidationTextBox",
           "name": "DeviceFilter",
-          "caption": "Gerät (nur bei mehreren Robotern: Name, Modell oder did)"
+          "caption": "Gerät (nur bei mehreren Robotern)"
         },
         {
           "type": "CheckBox",
           "name": "VerifyTLS",
-          "caption": "TLS-Zertifikate prüfen"
+          "caption": "Zertifikate prüfen"
         },
         {
           "type": "CheckBox",
           "name": "Live",
-          "caption": "Live-Verbindung (Zustand, Position und Karte in Echtzeit wie in der App)"
+          "caption": "Live-Verbindung (Echtzeit)"
         },
         {
           "type": "Label",
-          "caption": "Nutzt dieselbe Push-Verbindung (MQTT) wie die App. Dafür legt das Modul automatisch einen Client Socket als übergeordnete Instanz an und stellt ihn selbst ein. Fällt die Verbindung aus, fragt das Modul wie gewohnt regelmäßig ab. Der Live-Server hat kein öffentlich prüfbares Zertifikat. Das Modul merkt sich deshalb sein Zertifikat beim ersten Kontakt und sendet die Anmeldung nur, wenn der Server später dasselbe vorzeigt."
+          "caption": "Wie in der App: Zustand und Karte sofort. Richtet sich selbst ein; bei Ausfall normale Abfrage."
         },
         {
           "type": "RowLayout",
@@ -131,7 +127,7 @@
             {
               "type": "NumberSpinner",
               "name": "Interval",
-              "caption": "Abfrage im Ruhezustand",
+              "caption": "Abfrage in Ruhe",
               "suffix": "s",
               "minimum": 30,
               "maximum": 3600
@@ -139,7 +135,7 @@
             {
               "type": "NumberSpinner",
               "name": "IntervalBusy",
-              "caption": "während der Reinigung",
+              "caption": "beim Reinigen",
               "suffix": "s",
               "minimum": 10,
               "maximum": 300
@@ -156,18 +152,18 @@
             },
             {
               "type": "Button",
-              "caption": "Gerät scannen (Diagnose)",
+              "caption": "Gerät scannen",
               "onClick": "SAUG_ScanDevice($id);",
               "confirm": "Fragt rund 2.800 Kennungen ab (ca. 20–40 Sekunden). Fortfahren?"
             },
             {
               "type": "Button",
-              "caption": "Live-Verbindung neu aufbauen",
+              "caption": "Live neu verbinden",
               "onClick": "SAUG_LiveRestart($id);"
             },
             {
               "type": "Button",
-              "caption": "Server-Zertifikat neu übernehmen",
+              "caption": "Zertifikat neu übernehmen",
               "onClick": "SAUG_LiveTrustCertificate($id);",
               "confirm": "Nur nötig, wenn Dreame das Zertifikat des Live-Servers erneuert hat. Wirklich neu übernehmen?"
             }
@@ -181,7 +177,7 @@
       "items": [
         {
           "type": "Label",
-          "caption": "Liest die in der App gespeicherten Karten mit allen Räumen. Nach Umbau oder Neukartierung erneut einlesen."
+          "caption": "Liest Karten und Räume aus der App. Nach Neukartierung erneut einlesen."
         },
         {
           "type": "RowLayout",
@@ -200,7 +196,7 @@
         },
         {
           "type": "Label",
-          "caption": "„Verwenden“ abwählen blendet Räume aus (z. B. Phantomräume hinter Glastüren). Unter „Eigener Name“ lässt sich ein Raum für Symcon umbenennen."
+          "caption": "„Verwenden“ aus = Raum ausblenden. „Eigener Name“ = Anzeigename."
         },
         {
           "type": "List",
@@ -261,7 +257,7 @@
         {
           "type": "CheckBox",
           "name": "MapImage",
-          "caption": "Kartenbild erzeugen (Medienobjekt „Karte“, für Kachel und WebFront)"
+          "caption": "Kartenbild erzeugen"
         },
         {
           "type": "Select",
@@ -293,12 +289,12 @@
         {
           "type": "CheckBox",
           "name": "MapPath",
-          "caption": "Gefahrene Strecke einzeichnen"
+          "caption": "Strecke einzeichnen"
         },
         {
           "type": "Select",
           "name": "MapFormat",
-          "caption": "Zellformat (nur ändern, wenn die Karte falsch aussieht)",
+          "caption": "Zellformat (nur bei Fehlern)",
           "options": [
             {
               "caption": "automatisch",
@@ -327,7 +323,7 @@
         {
           "type": "NumberSpinner",
           "name": "WearWarn",
-          "caption": "Verschleißteil melden ab Restlaufzeit",
+          "caption": "Verschleiß melden ab",
           "suffix": "%",
           "minimum": 0,
           "maximum": 50
@@ -343,26 +339,26 @@
     },
     {
       "type": "ExpansionPanel",
-      "caption": "Automatik: reinigen, wenn niemand zu Hause ist",
+      "caption": "Automatik",
       "items": [
         {
           "type": "Label",
-          "caption": "Einschalten über die Variable „Reinigen bei Abwesenheit“ (auch in der Kachel)."
+          "caption": "Ein/Aus, „Bei Abwesenheit“ oder „Zur Uhrzeit“ und die Uhrzeit stellst du in der Kachel ein."
         },
         {
           "type": "SelectVariable",
           "name": "PresenceVariable",
-          "caption": "Anwesenheit (true = jemand zu Hause)"
+          "caption": "Anwesenheit (true = zu Hause, nur „Bei Abwesenheit“)"
         },
         {
           "type": "CheckBox",
           "name": "PresenceInverted",
-          "caption": "Variable umkehren (true = niemand zu Hause)"
+          "caption": "Variable umkehren"
         },
         {
           "type": "NumberSpinner",
           "name": "AutoDelay",
-          "caption": "Start frühestens nach",
+          "caption": "Start frühestens nach (bei Abwesenheit)",
           "suffix": "min Abwesenheit",
           "minimum": 0,
           "maximum": 240
@@ -373,7 +369,7 @@
             {
               "type": "NumberSpinner",
               "name": "AutoFrom",
-              "caption": "zwischen",
+              "caption": "Zeitfenster (bei Abwesenheit) von",
               "suffix": "Uhr",
               "minimum": 0,
               "maximum": 23
@@ -381,7 +377,7 @@
             {
               "type": "NumberSpinner",
               "name": "AutoTo",
-              "caption": "und",
+              "caption": "bis",
               "suffix": "Uhr",
               "minimum": 0,
               "maximum": 24
@@ -389,14 +385,40 @@
           ]
         },
         {
-          "type": "ValidationTextBox",
+          "type": "Select",
           "name": "AutoDays",
-          "caption": "an Tagen (1 = Mo … 7 = So)"
+          "caption": "Tage",
+          "options": [
+            {
+              "caption": "täglich",
+              "value": "1234567"
+            },
+            {
+              "caption": "Mo–Fr",
+              "value": "12345"
+            },
+            {
+              "caption": "Sa + So",
+              "value": "67"
+            },
+            {
+              "caption": "Mo, Mi, Fr",
+              "value": "135"
+            },
+            {
+              "caption": "Di, Do",
+              "value": "24"
+            },
+            {
+              "caption": "Mo–Sa",
+              "value": "123456"
+            }
+          ]
         },
         {
           "type": "NumberSpinner",
           "name": "AutoGap",
-          "caption": "höchstens einmal in",
+          "caption": "höchstens einmal in (bei Abwesenheit)",
           "suffix": "Stunden",
           "minimum": 0,
           "maximum": 168
@@ -410,18 +432,22 @@
           "maximum": 100
         },
         {
+          "type": "Label",
+          "caption": "Programm: in der Kachel oder über die Variable „Automatik-Programm“ wählen."
+        },
+        {
           "type": "ValidationTextBox",
           "name": "AutoRooms",
-          "caption": "Räume (leer = alles; z. B. „Küche, Flur“) – gilt, wenn der Raumplan für heute nichts vorgibt"
+          "caption": "Räume ohne Raumplan (leer = alles)"
         },
         {
           "type": "Label",
-          "caption": "Raumplan: je Tag die Räume anhaken. Nichts angehakt = alles, „frei“ = an diesem Tag nicht reinigen. Ein bestimmter Tag geht vor Mo–Fr/Sa+So, das vor täglich. Räume einer Zeile müssen auf derselben Etage liegen."
+          "caption": "Zeitpläne: je Eintrag Tag, Uhrzeit (leer = Standard-Uhrzeit), Programm und Räume (nichts = alles, „frei“ = an dem Tag nicht). Uhrzeiten gelten bei „Zur Uhrzeit“; bei Abwesenheit zählen nur Tag, Räume und Programm."
         },
         {
           "type": "List",
           "name": "AutoPlan",
-          "caption": "Raumplan",
+          "caption": "Zeitpläne",
           "rowCount": 5,
           "add": true,
           "delete": true,
@@ -429,7 +455,7 @@
             {
               "caption": "Tag",
               "name": "day",
-              "width": "160px",
+              "width": "110px",
               "add": 8,
               "edit": {
                 "type": "Select",
@@ -478,6 +504,456 @@
               }
             },
             {
+              "caption": "Uhrzeit",
+              "name": "time",
+              "width": "100px",
+              "add": "",
+              "edit": {
+                "type": "Select",
+                "options": [
+                  {
+                    "caption": "Standard",
+                    "value": ""
+                  },
+                  {
+                    "caption": "00:00",
+                    "value": "00:00"
+                  },
+                  {
+                    "caption": "00:15",
+                    "value": "00:15"
+                  },
+                  {
+                    "caption": "00:30",
+                    "value": "00:30"
+                  },
+                  {
+                    "caption": "00:45",
+                    "value": "00:45"
+                  },
+                  {
+                    "caption": "01:00",
+                    "value": "01:00"
+                  },
+                  {
+                    "caption": "01:15",
+                    "value": "01:15"
+                  },
+                  {
+                    "caption": "01:30",
+                    "value": "01:30"
+                  },
+                  {
+                    "caption": "01:45",
+                    "value": "01:45"
+                  },
+                  {
+                    "caption": "02:00",
+                    "value": "02:00"
+                  },
+                  {
+                    "caption": "02:15",
+                    "value": "02:15"
+                  },
+                  {
+                    "caption": "02:30",
+                    "value": "02:30"
+                  },
+                  {
+                    "caption": "02:45",
+                    "value": "02:45"
+                  },
+                  {
+                    "caption": "03:00",
+                    "value": "03:00"
+                  },
+                  {
+                    "caption": "03:15",
+                    "value": "03:15"
+                  },
+                  {
+                    "caption": "03:30",
+                    "value": "03:30"
+                  },
+                  {
+                    "caption": "03:45",
+                    "value": "03:45"
+                  },
+                  {
+                    "caption": "04:00",
+                    "value": "04:00"
+                  },
+                  {
+                    "caption": "04:15",
+                    "value": "04:15"
+                  },
+                  {
+                    "caption": "04:30",
+                    "value": "04:30"
+                  },
+                  {
+                    "caption": "04:45",
+                    "value": "04:45"
+                  },
+                  {
+                    "caption": "05:00",
+                    "value": "05:00"
+                  },
+                  {
+                    "caption": "05:15",
+                    "value": "05:15"
+                  },
+                  {
+                    "caption": "05:30",
+                    "value": "05:30"
+                  },
+                  {
+                    "caption": "05:45",
+                    "value": "05:45"
+                  },
+                  {
+                    "caption": "06:00",
+                    "value": "06:00"
+                  },
+                  {
+                    "caption": "06:15",
+                    "value": "06:15"
+                  },
+                  {
+                    "caption": "06:30",
+                    "value": "06:30"
+                  },
+                  {
+                    "caption": "06:45",
+                    "value": "06:45"
+                  },
+                  {
+                    "caption": "07:00",
+                    "value": "07:00"
+                  },
+                  {
+                    "caption": "07:15",
+                    "value": "07:15"
+                  },
+                  {
+                    "caption": "07:30",
+                    "value": "07:30"
+                  },
+                  {
+                    "caption": "07:45",
+                    "value": "07:45"
+                  },
+                  {
+                    "caption": "08:00",
+                    "value": "08:00"
+                  },
+                  {
+                    "caption": "08:15",
+                    "value": "08:15"
+                  },
+                  {
+                    "caption": "08:30",
+                    "value": "08:30"
+                  },
+                  {
+                    "caption": "08:45",
+                    "value": "08:45"
+                  },
+                  {
+                    "caption": "09:00",
+                    "value": "09:00"
+                  },
+                  {
+                    "caption": "09:15",
+                    "value": "09:15"
+                  },
+                  {
+                    "caption": "09:30",
+                    "value": "09:30"
+                  },
+                  {
+                    "caption": "09:45",
+                    "value": "09:45"
+                  },
+                  {
+                    "caption": "10:00",
+                    "value": "10:00"
+                  },
+                  {
+                    "caption": "10:15",
+                    "value": "10:15"
+                  },
+                  {
+                    "caption": "10:30",
+                    "value": "10:30"
+                  },
+                  {
+                    "caption": "10:45",
+                    "value": "10:45"
+                  },
+                  {
+                    "caption": "11:00",
+                    "value": "11:00"
+                  },
+                  {
+                    "caption": "11:15",
+                    "value": "11:15"
+                  },
+                  {
+                    "caption": "11:30",
+                    "value": "11:30"
+                  },
+                  {
+                    "caption": "11:45",
+                    "value": "11:45"
+                  },
+                  {
+                    "caption": "12:00",
+                    "value": "12:00"
+                  },
+                  {
+                    "caption": "12:15",
+                    "value": "12:15"
+                  },
+                  {
+                    "caption": "12:30",
+                    "value": "12:30"
+                  },
+                  {
+                    "caption": "12:45",
+                    "value": "12:45"
+                  },
+                  {
+                    "caption": "13:00",
+                    "value": "13:00"
+                  },
+                  {
+                    "caption": "13:15",
+                    "value": "13:15"
+                  },
+                  {
+                    "caption": "13:30",
+                    "value": "13:30"
+                  },
+                  {
+                    "caption": "13:45",
+                    "value": "13:45"
+                  },
+                  {
+                    "caption": "14:00",
+                    "value": "14:00"
+                  },
+                  {
+                    "caption": "14:15",
+                    "value": "14:15"
+                  },
+                  {
+                    "caption": "14:30",
+                    "value": "14:30"
+                  },
+                  {
+                    "caption": "14:45",
+                    "value": "14:45"
+                  },
+                  {
+                    "caption": "15:00",
+                    "value": "15:00"
+                  },
+                  {
+                    "caption": "15:15",
+                    "value": "15:15"
+                  },
+                  {
+                    "caption": "15:30",
+                    "value": "15:30"
+                  },
+                  {
+                    "caption": "15:45",
+                    "value": "15:45"
+                  },
+                  {
+                    "caption": "16:00",
+                    "value": "16:00"
+                  },
+                  {
+                    "caption": "16:15",
+                    "value": "16:15"
+                  },
+                  {
+                    "caption": "16:30",
+                    "value": "16:30"
+                  },
+                  {
+                    "caption": "16:45",
+                    "value": "16:45"
+                  },
+                  {
+                    "caption": "17:00",
+                    "value": "17:00"
+                  },
+                  {
+                    "caption": "17:15",
+                    "value": "17:15"
+                  },
+                  {
+                    "caption": "17:30",
+                    "value": "17:30"
+                  },
+                  {
+                    "caption": "17:45",
+                    "value": "17:45"
+                  },
+                  {
+                    "caption": "18:00",
+                    "value": "18:00"
+                  },
+                  {
+                    "caption": "18:15",
+                    "value": "18:15"
+                  },
+                  {
+                    "caption": "18:30",
+                    "value": "18:30"
+                  },
+                  {
+                    "caption": "18:45",
+                    "value": "18:45"
+                  },
+                  {
+                    "caption": "19:00",
+                    "value": "19:00"
+                  },
+                  {
+                    "caption": "19:15",
+                    "value": "19:15"
+                  },
+                  {
+                    "caption": "19:30",
+                    "value": "19:30"
+                  },
+                  {
+                    "caption": "19:45",
+                    "value": "19:45"
+                  },
+                  {
+                    "caption": "20:00",
+                    "value": "20:00"
+                  },
+                  {
+                    "caption": "20:15",
+                    "value": "20:15"
+                  },
+                  {
+                    "caption": "20:30",
+                    "value": "20:30"
+                  },
+                  {
+                    "caption": "20:45",
+                    "value": "20:45"
+                  },
+                  {
+                    "caption": "21:00",
+                    "value": "21:00"
+                  },
+                  {
+                    "caption": "21:15",
+                    "value": "21:15"
+                  },
+                  {
+                    "caption": "21:30",
+                    "value": "21:30"
+                  },
+                  {
+                    "caption": "21:45",
+                    "value": "21:45"
+                  },
+                  {
+                    "caption": "22:00",
+                    "value": "22:00"
+                  },
+                  {
+                    "caption": "22:15",
+                    "value": "22:15"
+                  },
+                  {
+                    "caption": "22:30",
+                    "value": "22:30"
+                  },
+                  {
+                    "caption": "22:45",
+                    "value": "22:45"
+                  },
+                  {
+                    "caption": "23:00",
+                    "value": "23:00"
+                  },
+                  {
+                    "caption": "23:15",
+                    "value": "23:15"
+                  },
+                  {
+                    "caption": "23:30",
+                    "value": "23:30"
+                  },
+                  {
+                    "caption": "23:45",
+                    "value": "23:45"
+                  }
+                ]
+              }
+            },
+            {
+              "caption": "Programm",
+              "name": "prog",
+              "width": "190px",
+              "add": -1,
+              "edit": {
+                "type": "Select",
+                "options": [
+                  {
+                    "caption": "Standard",
+                    "value": -1
+                  },
+                  {
+                    "caption": "wie Vorwahlen",
+                    "value": 0
+                  },
+                  {
+                    "caption": "Schnell saugen",
+                    "value": 1
+                  },
+                  {
+                    "caption": "Gründlich saugen (2×, Turbo)",
+                    "value": 2
+                  },
+                  {
+                    "caption": "Saugen und wischen",
+                    "value": 3
+                  },
+                  {
+                    "caption": "Erst saugen, dann wischen",
+                    "value": 4
+                  },
+                  {
+                    "caption": "Nur wischen",
+                    "value": 5
+                  },
+                  {
+                    "caption": "Leise (Nachtruhe)",
+                    "value": 6
+                  },
+                  {
+                    "caption": "CleanGenius Routine",
+                    "value": 7
+                  },
+                  {
+                    "caption": "CleanGenius Tiefenreinigung",
+                    "value": 8
+                  }
+                ]
+              }
+            },
+            {
               "caption": "Räume",
               "name": "rooms",
               "width": "auto",
@@ -491,7 +967,7 @@
         {
           "type": "CheckBox",
           "name": "AutoReturn",
-          "caption": "Kommt jemand heim: Automatik-Fahrt beenden, zurück zur Station"
+          "caption": "Bei Heimkehr zurück zur Station"
         }
       ]
     },
@@ -502,7 +978,7 @@
         {
           "type": "SelectInstance",
           "name": "NotifyTarget",
-          "caption": "Push an (Kachel-Visualisierung oder WebFront)"
+          "caption": "Push an"
         },
         {
           "type": "CheckBox",
@@ -512,7 +988,7 @@
         {
           "type": "CheckBox",
           "name": "NotifyError",
-          "caption": "Störungen und Hinweise"
+          "caption": "Störungen"
         },
         {
           "type": "CheckBox",
@@ -522,7 +998,7 @@
         {
           "type": "CheckBox",
           "name": "NotifyAuto",
-          "caption": "Start durch die Automatik"
+          "caption": "Start der Automatik"
         }
       ]
     },
@@ -532,12 +1008,65 @@
       "items": [
         {
           "type": "Label",
-          "caption": "Kachel-Visualisierung: die Instanz direkt als Kachel hinzufügen."
+          "caption": "Kachel: Instanz direkt als Kachel hinzufügen."
+        },
+        {
+          "type": "SelectFile",
+          "name": "BgUpload",
+          "caption": "Hintergrundbild der Kachel",
+          "extensions": ".jpg,.jpeg,.png,.webp"
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "BgDim",
+          "caption": "Hintergrund abdunkeln",
+          "suffix": "%",
+          "minimum": 0,
+          "maximum": 90
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "BgBlur",
+          "caption": "Hintergrund weichzeichnen",
+          "suffix": "px",
+          "minimum": 0,
+          "maximum": 20
+        },
+        {
+          "type": "Select",
+          "name": "Theme",
+          "caption": "Design",
+          "options": [
+            { "caption": "Dunkel", "value": 0 },
+            { "caption": "Wie Gerät (hell/dunkel)", "value": 1 },
+            { "caption": "Hell", "value": 2 }
+          ]
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "CardOpacity",
+          "caption": "Deckkraft der Felder",
+          "suffix": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "CardGlass",
+          "caption": "Milchglas-Stärke",
+          "suffix": "px",
+          "minimum": 0,
+          "maximum": 40
+        },
+        {
+          "type": "Button",
+          "caption": "Hintergrund entfernen",
+          "onClick": "SAUG_RemoveBackground($id);"
         },
         {
           "type": "CheckBox",
           "name": "DashboardBox",
-          "caption": "Zusätzlich HTML-Box „Übersicht“ für WebFront/IPSView"
+          "caption": "HTML-Box „Übersicht“ (WebFront)"
         }
       ]
     }
@@ -569,7 +1098,7 @@
         {
           "type": "Button",
           "caption": "Status abrufen",
-          "onClick": "SAUG_Poll($id);"
+          "onClick": "SAUG_Refresh($id);"
         }
       ]
     },

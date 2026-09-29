@@ -29,6 +29,8 @@ trait SaugroboterLive
         $this->RegisterMessage($this->InstanceID, FM_DISCONNECT);
         $this->LiveWatchParent();
         $was = $this->GetBuffer('MqttState');
+        // Nichts an Zugang/Verbindung geändert und Sitzung steht: einfach weiterlaufen lassen
+        if (!$this->credChanged && $this->LiveWanted() && $was === '2') return;
         $this->SetBuffer('MqttState', '0');
         if ($this->LiveWanted()) {
             // Bestehende Sitzung sauber beenden, damit die Anmeldung mit den neuen Einstellungen läuft
@@ -94,6 +96,8 @@ trait SaugroboterLive
             if (intval($Data[0]) == 102 && $this->LiveWanted()) $this->LiveConnect();
             elseif ($this->GetBuffer('LiveWasUp') === '1') {
                 $this->SetBuffer('LiveWasUp', '0');
+                $this->LiveCountDrop('Server hat die Verbindung getrennt');
+                $this->SetTimerInterval('LiveCheck', 5000);          // gleich prüfen statt erst in 30 s
                 $this->SetVal('Live', false);
                 $this->SetPollInterval();
             }
@@ -108,10 +112,21 @@ trait SaugroboterLive
     {
         if (!$this->ReadPropertyBoolean('Live')) return 'ausgeschaltet';
         if (!$this->LiveWanted()) return 'wartet (Instanz nicht aktiv oder Zugangsdaten fehlen)';
+        $d = json_decode($this->GetBuffer('LiveDrops'), true);
+        $drops = is_array($d) && ($d['day'] ?? '') === date('Ymd') && $d['n'] > 0
+            ? ' · heute ' . $d['n'] . '× neu aufgebaut (zuletzt ' . date('H:i', $d['at']) . ': ' . $d['why'] . ')' : '';
+        return $this->LiveStatusCore() . $drops;
+    }
+
+    private function LiveStatusCore()
+    {
         if ($this->LiveOk()) {
             $since = intval($this->GetBuffer('LiveSince'));
-            return '✅ verbunden' . ($since > 0 ? ' seit ' . date(date('Ymd', $since) == date('Ymd') ? 'H:i' : 'd.m. H:i', $since) : '')
-                . ' – Echtzeitdaten kommen an';
+            $last = intval($this->GetBuffer('LiveDevAt'));
+            $fmt = function ($t) { return date(date('Ymd', $t) == date('Ymd') ? 'H:i' : 'd.m. H:i', $t); };
+            return '✅ verbunden' . ($since > 0 ? ' seit ' . $fmt($since) : '') . ' – '
+                . ($last > 0 ? 'letzte Meldung vom Roboter ' . $fmt($last) . ' (' . intval($this->GetBuffer('LiveDevCnt')) . ' seit Verbindungsaufbau)'
+                    : 'vom Roboter kam noch keine Meldung');
         }
         $hold = intval($this->GetBuffer('LiveHold'));
         if ($hold > time() + 86400) return '⛔ gestoppt – unbekanntes Server-Zertifikat (siehe Letzte Meldung)';
@@ -163,12 +178,39 @@ trait SaugroboterLive
         $this->LiveSocketConfig($pid, ['Host' => $host, 'Port' => intval($port), 'UseSSL' => true,
             'VerifyPeer' => false, 'VerifyHost' => false, 'Open' => true]);
 
-        if (IPS_GetInstance($pid)['InstanceStatus'] != 102) return false;   // Socket baut noch auf
+        // Socket getrennt: nicht endlos warten, sondern selbst neu öffnen (wachsende Abstände 60 s … 10 min)
+        if (IPS_GetInstance($pid)['InstanceStatus'] != 102) {
+            $down = intval($this->GetBuffer('SockDownAt'));
+            if ($down == 0) { $this->SetBuffer('SockDownAt', strval(time())); return false; }
+            $wait = min(600, 60 * (1 << min(4, intval($this->GetBuffer('SockRetries')))));
+            if (time() - $down >= $wait) {
+                $this->SetBuffer('SockRetries', strval(intval($this->GetBuffer('SockRetries')) + 1));
+                $this->SetBuffer('SockDownAt', strval(time()));
+                $this->LiveReconnect('Verbindung zum Server getrennt');
+            }
+            return false;
+        }
+        $this->SetBuffer('SockDownAt', '0');
         $state = $this->GetBuffer('MqttState');
         if ($state === '' || $state === '0') { $this->LiveConnect(); return true; }
         if ($state === '1' && time() - intval($this->GetBuffer('LiveConnectAt')) > 20) { $this->LiveReconnect('keine Antwort auf die Anmeldung'); return false; }
         if ($state === '2') {
             if (time() - intval($this->GetBuffer('LiveRx')) > self::$LV_SILENT) { $this->LiveReconnect('keine Daten mehr'); return false; }
+            // Während einer Reinigung meldet sich der Roboter laufend – 3 Minuten Stille: Abo erneuern (höchstens alle 10 min)
+            $up = intval($this->GetBuffer('LiveSince'));
+            $dev = max($up, intval($this->GetBuffer('LiveDevAt')));
+            if ($this->ReadAttributeInteger('Job') == 1 && time() - $dev > 180 && time() - intval($this->GetBuffer('LiveQuietFix')) > 600) {
+                $this->SetBuffer('LiveQuietFix', strval(time()));
+                $this->LiveReconnect('keine Meldungen vom Roboter während der Reinigung');
+                return false;
+            }
+            // Zugangstoken läuft bald ab: erneuern und in Ruhe neu anmelden, bevor der Server trennt
+            $t = json_decode($this->ReadAttributeString('Token'), true);
+            if (is_array($t) && intval($t['until'] ?? 0) > 0 && intval($t['until']) - time() < 300) {
+                $t['until'] = 0;
+                $this->WriteAttributeString('Token', json_encode($t));
+                if ($this->CloudLogin()) { $this->LiveReconnect('Zugangstoken erneuert'); return false; }
+            }
             if (time() - intval($this->GetBuffer('LiveTx')) >= 25) $this->LiveSend("\xC0\x00");   // PINGREQ
         }
         return true;
@@ -286,11 +328,23 @@ trait SaugroboterLive
     private function LiveReconnect($why)
     {
         $this->SendDebug('Live', 'Neu verbinden: ' . $why, 0);
+        $this->LiveCountDrop($why);
         $this->SetBuffer('MqttState', '0');
         $pid = $this->LiveParent();
         if (!$this->LiveIsSocket($pid)) return;
         $this->LiveSocketConfig($pid, ['Open' => false]);
         $this->LiveSocketConfig($pid, ['Open' => true]);
+    }
+
+    // Neuaufbauten des Tages zählen (für den Status-Block)
+    private function LiveCountDrop($why)
+    {
+        $d = json_decode($this->GetBuffer('LiveDrops'), true);
+        if (!is_array($d) || ($d['day'] ?? '') !== date('Ymd')) $d = ['day' => date('Ymd'), 'n' => 0];
+        $d['n']++;
+        $d['at'] = time();
+        $d['why'] = $why;
+        $this->SetBuffer('LiveDrops', json_encode($d));
     }
 
     // ---- MQTT senden -------------------------------------------------------------
@@ -416,6 +470,8 @@ trait SaugroboterLive
                     $this->SetBuffer('LiveFails', '0');
                     $this->SetBuffer('LiveWasUp', '1');
                     $this->SetBuffer('LiveSince', strval(time()));
+                    $this->SetBuffer('LiveDevCnt', '0');
+                    $this->SetBuffer('SockRetries', '0');
                     $sub = '';
                     foreach ($this->LiveTopics() as $t) $sub .= self::MqttStr($t) . "\x01";
                     if ($sub !== '') $this->LiveSend(self::MqttPacket(0x82, pack('n', 1) . $sub));
@@ -486,6 +542,9 @@ trait SaugroboterLive
             return is_string($x) && strlen($x) > 60 ? substr($x, 0, 60) . '…' : $x;
         }, $v), JSON_UNESCAPED_UNICODE), 0);
         $this->Online(true);
+        $this->SetBuffer('LiveDevAt', strval(time()));
+        $this->SetBuffer('LiveDevCnt', strval(intval($this->GetBuffer('LiveDevCnt')) + 1));
+        $this->SetBuffer('FreshAt', strval(time()));
 
         $poll = false;
         if (isset($v['2.1'])) {
@@ -534,18 +593,41 @@ trait SaugroboterLive
     private function LiveMapFrame($text)
     {
         $b = SaugroboterKarte::Decode($text, self::MAP_IV);
-        if ($b === null) return false;
-        return $this->LiveTakeBlock($b);
+        if ($b === null) { $this->SetBuffer('LiveCntX', strval(intval($this->GetBuffer('LiveCntX')) + 1)); return false; }
+        // für die Kartendiagnose: letztes Voll- und Teilbild im Rohformat merken
+        $t = $b['type'] === 'I' ? 'I' : 'P';
+        $this->SetBuffer('LiveRaw' . $t, base64_encode(gzcompress($text)));
+        $this->SetBuffer('LiveCnt' . $t, strval(intval($this->GetBuffer('LiveCnt' . $t)) + 1));
+        $ok = $this->LiveTakeBlock($b);
+        if (!$ok) $this->SetBuffer('LiveCntX', strval(intval($this->GetBuffer('LiveCntX')) + 1));
+        return $ok;
     }
 
-    private function LiveTakeBlock($b)
+    /**
+     * Neues Kartenbild übernehmen. Die schnellen Live-Bilder des X60 enthalten teils keine Wände,
+     * Möbelumrisse oder Strecke – dann liefern sie nur Roboterposition und Zeit, die Details bleiben
+     * aus dem ausführlicheren Bild (Kartendatei). Ein älteres, aber ausführlicheres Bild (Datei)
+     * frischt umgekehrt die Details auf, ohne die aktuelle Roboterposition zu verlieren.
+     */
+    protected function LiveTakeBlock($b)
     {
         $base = $this->LiveBlock();
         if ($b['type'] === 'I') {
-            // Ältere Vollbilder (z. B. eine verspätete Datei) nicht über ein neueres legen
-            if ($base !== null && $base['mapId'] == $b['mapId'] && isset($base['info']['timestamp_ms'], $b['info']['timestamp_ms'])
-                && floatval($b['info']['timestamp_ms']) < floatval($base['info']['timestamp_ms'])) return false;
             $got = $b;
+            if ($base !== null && $base['mapId'] == $b['mapId']) {
+                $f = $this->CellFormat($b);
+                $dNew = SaugroboterKarte::DetailCount($b, $f);
+                $dOld = SaugroboterKarte::DetailCount($base, $f);
+                $newer = !isset($base['info']['timestamp_ms'], $b['info']['timestamp_ms'])
+                    || floatval($b['info']['timestamp_ms']) >= floatval($base['info']['timestamp_ms']);
+                $thin = $dOld > 50 && $dNew < $dOld * 0.5;
+                if ($newer && $thin) $got = SaugroboterKarte::Overlay($base, $b);          // nur Position/Zeit übernehmen
+                elseif ($newer) $got = $b;                                                   // neueres, ausführliches Bild
+                elseif (!$thin && $dNew >= $dOld * 0.8) $got = SaugroboterKarte::Overlay($b, $base); // ältere Datei: Details auffrischen
+                else return false;
+                // Strecke nicht verlieren, wenn das neue Bild keine mitbringt
+                if (empty($got['info']['tr']) && !empty($base['info']['tr'])) $got['info']['tr'] = $base['info']['tr'];
+            }
         } elseif ($b['type'] === 'P') {
             if ($base === null || $base['mapId'] != $b['mapId']) {
                 // Kein passendes Vollbild da: Kartendatei holen
@@ -572,6 +654,8 @@ trait SaugroboterLive
         if (!$this->ReadPropertyBoolean('Active')) return;
 
         $obj = $this->GetBuffer('LiveObject');
+        // Während der Reinigung alle 2 Minuten die ausführliche Kartendatei (Wände, Möbel, Strecke) nachladen
+        if ($this->ReadAttributeInteger('Job') == 1 && intval($this->GetBuffer('FullTry')) < time() - 120) $this->SetBuffer('NeedFull', '1');
         $full = $this->GetBuffer('NeedFull') === '1' && intval($this->GetBuffer('FullTry')) < time() - 20;
         if ($obj !== '' || $full) {
             $ok = $this->Locked(function () use ($obj, $full) {
