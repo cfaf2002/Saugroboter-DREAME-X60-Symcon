@@ -204,15 +204,19 @@ Gereinigt wird alles oder die unter *Räume* eingetragenen Räume („Küche, Fl
 
 Nicht genannte Werte bleiben wie am Gerät eingestellt. Die Vorwahlen selbst werden dabei nicht verändert.
 
+Das **Programm der Automatik** wählst du direkt in der Kachel (Karte *Reinigen bei Abwesenheit → Programm der Automatik*)
+oder über die Variable **Automatik-Programm**. In der Kachel stehen die Programme außerdem als **Schnellstart** bereit:
+antippen, Einstellungen bei Bedarf anpassen, *Jetzt starten* – für die ausgewählten Räume oder, ohne Auswahl, für alles.
+
 **Raumplan:** Im Raumplan hat jeder Raum eine eigene Spalte zum Anhaken (sobald die Räume eingelesen sind), dazu
-je Zeile ein eigenes *Programm* (oder *wie oben*). Nichts angehakt = alles, *frei* = an diesem Tag nicht reinigen. Ein bestimmter Tag geht vor *Mo–Fr* bzw. *Sa + So*,
+je Zeile ein eigenes *Programm* (oder *Standard* = Programm der Automatik). Nichts angehakt = alles, *frei* = an diesem Tag nicht reinigen. Ein bestimmter Tag geht vor *Mo–Fr* bzw. *Sa + So*,
 das vor *täglich*. Gibt der Plan für heute nichts vor, gilt *Räume*. Die Räume einer Zeile müssen auf derselben Etage liegen.
 
 | Tag | Programm | Wohnzimmer | Küche | Flur | frei |
 |---|---|---|---|---|---|
 | Mo–Fr | Schnell saugen |  | ✓ |  |  |
 | Samstag | Gründlich saugen |  |  |  |  |
-| Sonntag | wie oben |  |  |  | ✓ |
+| Sonntag | Standard |  |  |  | ✓ |
 
 Kommt jemand heim, fährt der Roboter auf Wunsch zurück zur Station. Die Variable **Automatik** zeigt jederzeit,
 worauf die Automatik gerade wartet; die Kachel zeigt zusätzlich, was heute geplant ist („Heute: Küche · Schnell saugen“).

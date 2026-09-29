@@ -194,6 +194,14 @@ class X60Ultra extends IPSModule
         $this->RegisterVariableBoolean('AutoAway', 'Reinigen bei Abwesenheit', '~Switch', 50);
         $this->EnableAction('AutoAway');
         $this->RegisterVariableString('AutoStatus', 'Automatik', '', 51);
+        $progs = [];
+        foreach (self::PROGRAMS as $id => $pr) $progs[$id] = $pr[0];
+        $this->Profile('SAUG.Program', 1, 'Robot', '', '', $progs);
+        $newProg = @$this->GetIDForIdent('AutoProgram') === false;
+        $this->RegisterVariableInteger('AutoProgram', 'Automatik-Programm', 'SAUG.Program', 52);
+        $this->EnableAction('AutoProgram');
+        // bisher als Instanz-Einstellung gespeichert: einmalig übernehmen
+        if ($newProg) $this->SetVal('AutoProgram', $this->ReadPropertyInteger('AutoProgram'));
 
         // ---- Wartung, Historie, Diagnose ----
         $this->RegisterVariableString('Maintenance', 'Wartung fällig', '', 150);
@@ -444,6 +452,21 @@ class X60Ultra extends IPSModule
             case 'Mode': case 'Route': case 'Suction': case 'Wetness': case 'Passes': case 'CleanGenius':
                 if (!$this->ValidPreset($Ident, $Value)) return;
                 $this->SetVal($Ident, intval($Value));
+                $this->RefreshViews();
+                return;
+            case 'AutoProgram':
+                if (!isset(self::PROGRAMS[intval($Value)])) return;
+                $this->SetVal('AutoProgram', intval($Value));
+                $this->Note('Automatik-Programm: ' . self::PROGRAMS[intval($Value)][0], 'ok');
+                $this->RefreshViews();
+                return;
+            case 'TileProgram':
+                // Kachel: Programm jetzt starten – für die ausgewählten Räume, sonst alles
+                $d = $this->Json($Value);
+                $over = is_array($d) ? $d : [];
+                $sel = $this->SelectedRooms();
+                if (count($sel)) $this->CleanRoomsWith($sel, json_encode($over));
+                else $this->Locked(function () use ($over) { return $this->StartAll($over); });
                 $this->RefreshViews();
                 return;
             case 'AutoAway':
@@ -1881,7 +1904,7 @@ class X60Ultra extends IPSModule
     {
         $row = $this->PlanRowToday();
         $p = $row !== null && isset($row['prog']) ? intval($row['prog']) : -1;
-        if ($p < 0 || !isset(self::PROGRAMS[$p])) $p = $this->ReadPropertyInteger('AutoProgram');
+        if ($p < 0 || !isset(self::PROGRAMS[$p])) $p = intval($this->GetValue('AutoProgram'));
         return isset(self::PROGRAMS[$p]) ? $p : 0;
     }
 
@@ -2085,6 +2108,12 @@ class X60Ultra extends IPSModule
             'history' => array_values(array_filter(explode("\n", $this->GetValue('History')))),
             'auto' => $this->GetValue('AutoAway'), 'autoStatus' => $this->GetValue('AutoStatus'),
             'autoConfigured' => $this->Home() !== null,
+            'programs' => array_values(array_filter(array_map(function ($id) {
+                $s = $this->ProgramSettings($id);
+                return $s === null ? null : ['id' => $id, 'name' => self::PROGRAMS[$id][0], 'set' => $s];
+            }, array_keys(self::PROGRAMS)))),
+            'programNames' => array_map(function ($p) { return $p[0]; }, self::PROGRAMS),
+            'autoProgram' => intval($this->GetValue('AutoProgram')),
             'autoToday' => $this->AutoTodayText(),
             'bgDim' => max(0, min(90, $this->ReadPropertyInteger('BgDim'))),
             'bgBlur' => max(0, min(20, $this->ReadPropertyInteger('BgBlur'))),

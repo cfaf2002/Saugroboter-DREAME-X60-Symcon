@@ -256,3 +256,17 @@ body.hasbg .head .batt, body.hasbg .head .avatar { background: var(--card2); -we
 
 /* Sehr durchsichtige Felder: Schrift mit leichtem Schatten, damit sie lesbar bleibt */
 body.hasbg .card, body.hasbg .head { text-shadow: var(--tshadow, none); }
+
+/* Programme */
+.progs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 8px; }
+.prog { display: flex; align-items: center; gap: 9px; padding: 11px 12px; border-radius: 14px; border: 1px solid var(--line);
+  background: var(--card2); cursor: pointer; text-align: left; font-size: 13px; font-weight: 600; line-height: 1.25; min-width: 0; }
+.prog .ic { color: var(--acc); }
+.prog span { overflow: hidden; text-overflow: ellipsis; }
+.prog:hover { border-color: var(--acc); }
+.prog:active { transform: scale(.97); }
+.plist { display: flex; flex-direction: column; gap: 6px; }
+.pitem { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line);
+  background: var(--card2); cursor: pointer; text-align: left; font-weight: 600; font-size: 14px; }
+.pitem .ic:first-child { color: var(--acc); }
+.pitem.on { border-color: var(--acc); background: var(--acc-soft); }

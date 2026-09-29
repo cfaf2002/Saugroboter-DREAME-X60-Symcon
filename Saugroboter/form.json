@@ -432,47 +432,8 @@
           "maximum": 100
         },
         {
-          "type": "Select",
-          "name": "AutoProgram",
-          "caption": "Programm",
-          "options": [
-            {
-              "caption": "wie Vorwahlen",
-              "value": 0
-            },
-            {
-              "caption": "Schnell saugen",
-              "value": 1
-            },
-            {
-              "caption": "Gründlich saugen (2×, Turbo)",
-              "value": 2
-            },
-            {
-              "caption": "Saugen und wischen",
-              "value": 3
-            },
-            {
-              "caption": "Erst saugen, dann wischen",
-              "value": 4
-            },
-            {
-              "caption": "Nur wischen",
-              "value": 5
-            },
-            {
-              "caption": "Leise (Nachtruhe)",
-              "value": 6
-            },
-            {
-              "caption": "CleanGenius Routine",
-              "value": 7
-            },
-            {
-              "caption": "CleanGenius Tiefenreinigung",
-              "value": 8
-            }
-          ]
+          "type": "Label",
+          "caption": "Programm: in der Kachel oder über die Variable „Automatik-Programm“ wählen."
         },
         {
           "type": "ValidationTextBox",
@@ -551,7 +512,7 @@
                 "type": "Select",
                 "options": [
                   {
-                    "caption": "wie oben",
+                    "caption": "Standard",
                     "value": -1
                   },
                   {
