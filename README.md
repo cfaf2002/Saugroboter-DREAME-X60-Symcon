@@ -176,7 +176,6 @@ und *Milchglas-Stärke* (Standard 18 px, 0 = klares Glas) die Felder darüber; *
 
 **Design:** Unter *Visualisierung → Design* steht standardmäßig *Dunkel* – so sieht die Kachel auf Handy, Tablet und
 PC gleich aus. *Wie Gerät* folgt der Hell-/Dunkel-Einstellung des jeweiligen Geräts, *Hell* erzwingt das helle Design.
-
 Für **WebFront/IPSView** gibt es unter *Visualisierung* die HTML-Box „Übersicht“ (nur Anzeige) sowie das Medienobjekt „Karte“.
 
 ---

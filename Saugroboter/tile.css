@@ -238,6 +238,7 @@ body.hasbg #bg { transform: scale(1.03); }
 body.hasbg #bg { display: block; }
 #bg::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(10,13,18,var(--dim, .45)); }
 body.light #bg::after { background: rgba(238,241,245,var(--dim, .45)); }
+@media (prefers-color-scheme: light) { #bg::after { background: rgba(238,241,245,var(--dim, .45)); } }
 /* Milchglas: Bild bleibt ringsum scharf, hinter den Feldern weichgezeichnet */
 body.hasbg .card { background: var(--cardbg, rgba(32,37,45,.62)); border-color: rgba(255,255,255,.14);
   -webkit-backdrop-filter: blur(var(--glass, 18px)) saturate(1.3); backdrop-filter: blur(var(--glass, 18px)) saturate(1.3); box-shadow: 0 8px 30px rgba(0,0,0,.22); }
@@ -245,6 +246,7 @@ body.hasbg .round, body.hasbg .batt, body.hasbg .avatar { background: var(--card
   -webkit-backdrop-filter: blur(var(--glass, 18px)); backdrop-filter: blur(var(--glass, 18px)); }
 body.hasbg .head .name, body.hasbg .head .state { text-shadow: 0 1px 8px rgba(0,0,0,.35); }
 body.light.hasbg .head .name, body.light.hasbg .head .state { text-shadow: 0 1px 8px rgba(255,255,255,.6); }
+@media (prefers-color-scheme: light) { body.hasbg .head .name, body.hasbg .head .state { text-shadow: 0 1px 8px rgba(255,255,255,.6); } }
 /* Kopfzeile auf Bildhintergrund ebenfalls als Milchglas, damit Name und Zustand lesbar bleiben */
 body.hasbg .head { padding: 10px 12px; border-radius: var(--r); border: 1px solid rgba(255,255,255,.14);
   background: var(--cardbg, rgba(32,37,45,.62)); -webkit-backdrop-filter: blur(var(--glass, 18px)) saturate(1.3); backdrop-filter: blur(var(--glass, 18px)) saturate(1.3);
@@ -335,17 +337,9 @@ select option, select optgroup { background: #262b33; color: #eef1f5; }
 body.light select { color-scheme: light; }
 body.light select option, body.light select optgroup { background: #ffffff; color: #16202c; }
 
-.stale { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--warn); }
-
-/* Kopf: Zustand passt sich der Breite an und bricht nicht um */
-.state { font-size: clamp(16px, 4.6vw, 23px); white-space: nowrap; min-width: 0; }
-.state { overflow: hidden; text-overflow: ellipsis; }
-.hl { min-width: 0; }
-.head .name { margin-bottom: 2px; }
-@media (max-width: 420px) {
-  .avatar { width: 44px; height: 44px; border-radius: 14px; }
-  .avatar .av { width: 32px; height: 32px; }
-  .batt { padding: 6px 9px; gap: 4px; }
-  .batt .cell { display: none; }
-  .batt b { font-size: 12.5px; }
+@media (prefers-color-scheme: light) {
+  select { color-scheme: light; }
+  select option, select optgroup { background: #ffffff; color: #16202c; }
 }
+
+.stale { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--warn); }
