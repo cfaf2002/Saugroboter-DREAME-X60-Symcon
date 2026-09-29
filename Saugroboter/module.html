@@ -265,6 +265,7 @@
   function render() {
     var v = view, el = document.getElementById('app');
     if (v && v.bgDim !== undefined) document.body.style.setProperty('--dim', v.bgDim / 100);
+    if (v && v.bgBlur !== undefined) document.body.style.setProperty('--blur', v.bgBlur + 'px');
     if (!v) { el.innerHTML = '<div class="loading"><span></span>Verbinde …</div>'; return; }
     var h = '';
 

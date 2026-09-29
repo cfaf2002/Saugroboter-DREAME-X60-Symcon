@@ -87,7 +87,8 @@ class X60Ultra extends IPSModule
         $this->RegisterPropertyInteger('HistoryCount', 5);
         $this->RegisterPropertyBoolean('DashboardBox', false);
         $this->RegisterPropertyString('BgUpload', '');           // Hintergrundbild der Kachel (Upload, wird sofort übernommen)
-        $this->RegisterPropertyInteger('BgDim', 45);             // Abdunkeln des Hintergrunds in %
+        $this->RegisterPropertyInteger('BgDim', 25);             // Abdunkeln des Hintergrunds in %
+        $this->RegisterPropertyInteger('BgBlur', 0);             // Weichzeichnen des Hintergrunds in px
         // Automatik
         $this->RegisterPropertyInteger('PresenceVariable', 0);
         $this->RegisterPropertyBoolean('PresenceInverted', false);
@@ -2084,6 +2085,7 @@ class X60Ultra extends IPSModule
             'autoConfigured' => $this->Home() !== null,
             'autoToday' => $this->AutoTodayText(),
             'bgDim' => max(0, min(90, $this->ReadPropertyInteger('BgDim'))),
+            'bgBlur' => max(0, min(20, $this->ReadPropertyInteger('BgBlur'))),
             'message' => $this->GetValue('Message'),
             'mapMeta' => $this->MapMeta($this->MapIdent()),
             'lastMeta' => $this->MapMeta('MapLast'),

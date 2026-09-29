@@ -167,8 +167,9 @@ In der **Kachel-Visualisierung** die Instanz direkt als Kachel hinzufügen. Die 
 
 **Hintergrundbild:** Unter *Visualisierung → Hintergrundbild der Kachel* ein Foto hochladen (JPG, PNG, WebP). Das Modul
 verkleinert es auf höchstens 1600 Pixel, legt es als verstecktes Medienobjekt „Kachel-Hintergrund“ ab und leert das
-Upload-Feld wieder – das Bild landet also nicht in den Einstellungen oder Backups. Mit *Hintergrund abdunkeln* (Standard 45 %)
-bleibt alles gut lesbar; *Hintergrund entfernen* nimmt es wieder heraus.
+Upload-Feld wieder – das Bild landet also nicht in den Einstellungen oder Backups. Die Felder liegen wie Milchglas darüber: ringsum bleibt
+das Bild scharf, hinter den Feldern wird es weichgezeichnet. *Hintergrund abdunkeln* (Standard 25 %) und *Hintergrund
+weichzeichnen* (Standard 0 = scharf) passen das Bild an; *Hintergrund entfernen* nimmt es wieder heraus.
 
 Für **WebFront/IPSView** gibt es unter *Visualisierung* die HTML-Box „Übersicht“ (nur Anzeige) sowie das Medienobjekt „Karte“.
 
