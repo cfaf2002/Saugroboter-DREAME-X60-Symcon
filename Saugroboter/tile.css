@@ -270,3 +270,17 @@ body.hasbg .card, body.hasbg .head { text-shadow: var(--tshadow, none); }
   background: var(--card2); cursor: pointer; text-align: left; font-weight: 600; font-size: 14px; }
 .pitem .ic:first-child { color: var(--acc); }
 .pitem.on { border-color: var(--acc); background: var(--acc-soft); }
+
+/* Raumplan */
+.setrow.plan { align-items: flex-start; }
+.pline { display: block; font-weight: 500; font-size: 13px; margin-top: 3px; }
+.pline b { font-weight: 700; margin-right: 4px; }
+.prow { border: 1px solid var(--line); border-radius: 14px; padding: 10px; margin-bottom: 10px; background: var(--card2); }
+.prow-top { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.prow select { flex: 1 1 0; min-width: 0; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--dlg); color: var(--fg); font: inherit; font-size: 13.5px; }
+.prow select option { color: #000; }
+.prow .chips { margin-bottom: 6px; }
+.chip.dim { opacity: .4; }
+.chip.off.on { background: var(--warn-soft); color: var(--warn); }
+.prow select[data-pday] { flex: 0 0 34%; }
+.prow select[data-pprog] { flex: 1 1 auto; }

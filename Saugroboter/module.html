@@ -187,11 +187,49 @@
   }
 
   // Nachfrage nach dem Antippen eines Raums: wie soll gereinigt werden?
+  var DAYS = { 0: 'täglich', 1: 'Montag', 2: 'Dienstag', 3: 'Mittwoch', 4: 'Donnerstag', 5: 'Freitag', 6: 'Samstag', 7: 'Sonntag', 8: 'Mo–Fr', 9: 'Sa + So' };
+  function planRoomNames(v, row) {
+    return v.planRooms.filter(function (r) { return row['r' + r.code]; }).map(function (r) { return r.name; });
+  }
+  // Raumplan als kurze Liste in der Automatik-Karte
+  function planSummary(v) {
+    var h = '<button class="setrow plan" data-open="plan">' + ic('list', 'lead') + '<span class="grow"><span class="small mute">Raumplan</span>';
+    if (!v.plan.length) h += '<br>kein Plan – jeden Tag gleich';
+    v.plan.forEach(function (row) {
+      var rooms = planRoomNames(v, row);
+      h += '<span class="pline"><b>' + esc(DAYS[row.day] || '?') + '</b> ' + (row.off ? 'frei' : esc(rooms.length ? rooms.join(', ') : 'alles') +
+        ' · ' + esc(row.prog >= 0 ? v.programNames[row.prog] : 'Standard')) + '</span>';
+    });
+    return h + '</span><span class="chev r"></span></button>';
+  }
+  // Raumplan bearbeiten
+  function planDialog(v, d) {
+    var h = '<div class="dlg-head"><div><div class="dlg-title">Raumplan</div><div class="small mute">Genauester Tag gewinnt: Wochentag vor Mo–Fr/Sa + So vor täglich.</div></div>' +
+      '<button class="iconbtn" data-dlg="close" aria-label="Schließen">' + ic('close') + '</button></div>';
+    if (!d.rows.length) h += '<div class="small mute" style="margin-bottom:10px">Noch keine Zeile – ohne Plan gilt jeden Tag dasselbe.</div>';
+    d.rows.forEach(function (row, i) {
+      h += '<div class="prow"><div class="prow-top"><select data-pday="' + i + '">';
+      Object.keys(DAYS).forEach(function (k) { h += '<option value="' + k + '"' + (parseInt(k, 10) === row.day ? ' selected' : '') + '>' + DAYS[k] + '</option>'; });
+      h += '</select><select data-pprog="' + i + '"' + (row.off ? ' disabled' : '') + '><option value="-1">Standard</option>';
+      Object.keys(v.programNames).forEach(function (k) { h += '<option value="' + k + '"' + (parseInt(k, 10) === row.prog ? ' selected' : '') + '>' + esc(v.programNames[k]) + '</option>'; });
+      h += '</select><button class="iconbtn sm" data-pdel="' + i + '" title="Zeile löschen">' + ic('close') + '</button></div><div class="chips">';
+      v.planRooms.forEach(function (r) {
+        var on = !row.off && row['r' + r.code];
+        h += '<button class="chip' + (on ? ' on' : '') + (row.off ? ' dim' : '') + '" data-proom="' + i + ':' + r.code + '">' + (on ? ic('check', 'xs') : '') + esc(r.name) + '</button>';
+      });
+      h += '<button class="chip' + (row.off ? ' on off' : '') + '" data-poff="' + i + '">frei</button></div>' +
+        '<div class="small mute">' + (row.off ? 'An diesem Tag keine Automatik-Reinigung' : (planRoomNames(v, row).length ? '' : 'Nichts angehakt = alles')) + '</div></div>';
+    });
+    h += '<div class="dlg-actions"><button class="btn ghost" data-padd="1">+ Zeile hinzufügen</button>' +
+      '<button class="btn main" data-psave="1">' + ic('check') + 'Speichern</button></div>';
+    return h;
+  }
   var PICON = { 0: 'tune', 1: 'bolt', 2: 'fan', 3: 'drop', 4: 'layers', 5: 'wash', 6: 'moon', 7: 'spark', 8: 'spark' };
   var DLG = [['Mode', 'Modus'], ['Suction', 'Saugkraft'], ['Wetness', 'Wischfeuchte'], ['Passes', 'Durchgänge'], ['Route', 'Route'], ['CleanGenius', 'CleanGenius']];
   function dialogBlock(v) {
     if (!dialog) return '';
     var d = dialog, h = '<div class="dlg-back" data-dlg="close"><div class="dlg" role="dialog">';
+    if (d.mode === 'plan') return h + planDialog(v, d) + '</div></div>';
     if (d.mode === 'autoprog') {
       h += '<div class="dlg-head"><div><div class="dlg-title">Programm der Automatik</div><div class="small mute">So reinigt der Roboter, wenn niemand zu Hause ist.</div></div>' +
         '<button class="iconbtn" data-dlg="close" aria-label="Schließen">' + ic('close') + '</button></div><div class="plist">';
@@ -370,7 +408,7 @@
       (v.autoConfigured ? esc(v.autoStatus) : 'Anwesenheitsvariable in der Instanz wählen') + '</div>' + (v.autoConfigured && v.autoToday ? '<div class="small mute">' + esc(v.autoToday) + '</div>' : '') + '</div></div>' +
       (v.autoConfigured ? '<button class="switch' + (v.auto ? ' on' : '') + '" data-auto="' + (v.auto ? 0 : 1) + '" aria-label="Automatik"></button>' : '') + '</div>' +
       '<button class="setrow" data-open="autoprog">' + ic(PICON[v.autoProgram] || 'tune', 'lead') + '<span class="grow"><span class="small mute">Programm der Automatik</span><br>' +
-      esc(v.programNames[v.autoProgram] || '') + '</span><span class="chev r"></span></button></div>';
+      esc(v.programNames[v.autoProgram] || '') + '</span><span class="chev r"></span></button>' + planSummary(v) + '</div>';
 
     if (v.wear.length) {
       var low = v.wear.filter(function (w) { return w.v <= v.wearWarn; }).length;
@@ -416,6 +454,18 @@
     // Segmentschalter in der Nachfrage
     var ds = e.target.closest('[data-dlgset]');
     if (ds && dialog) { dialog.vals[ds.dataset.dlgset] = parseInt(ds.dataset.val, 10); render(); return; }
+    if (dialog && dialog.mode === 'plan') {
+      var pb = e.target.closest('[data-proom],[data-poff],[data-pdel],[data-padd],[data-psave]');
+      if (pb) {
+        var rows = dialog.rows;
+        if (pb.dataset.proom) { var pr2 = pb.dataset.proom.split(':'), row = rows[+pr2[0]]; if (!row.off) row['r' + pr2[1]] = !row['r' + pr2[1]]; }
+        else if (pb.dataset.poff) { var ro = rows[+pb.dataset.poff]; ro.off = !ro.off; }
+        else if (pb.dataset.pdel) rows.splice(+pb.dataset.pdel, 1);
+        else if (pb.dataset.padd) rows.push({ day: 8, prog: -1, off: false });
+        else if (pb.dataset.psave) { var out = rows; dialog = null; act('TilePlan', JSON.stringify(out), 'plan'); flash('Wird gespeichert …', 'wait', 30000); return; }
+        render(); return;
+      }
+    }
     var pk = e.target.closest('[data-pick]');
     if (pk && dialog) { dialog = null; act('AutoProgram', parseInt(pk.dataset.pick, 10)); return; }
     var dl = e.target.closest('[data-dlg]');
@@ -439,6 +489,7 @@
     if (t && t.dataset.view) { showLast = t.dataset.view === 'last'; render(); return; }
     if (!t || t.disabled) return;
     if (t.dataset.open === 'autoprog') { dialog = { mode: 'autoprog' }; render(); return; }
+    if (t.dataset.open === 'plan') { dialog = { mode: 'plan', rows: JSON.parse(JSON.stringify(view.plan)) }; render(); return; }
     if (t.dataset.prog) {
       var pr = view.programs.filter(function (p) { return p.id === parseInt(t.dataset.prog, 10); })[0];
       if (!pr) return;
@@ -454,6 +505,15 @@
     else if (t.dataset.reset) {
       if (typeof confirm !== 'function' || confirm(t.dataset.name + ': Zähler zurücksetzen?')) act('TileReset', t.dataset.reset);
     }
+  });
+  // Auswahlfelder im Raumplan-Dialog
+  document.addEventListener('change', function (e) {
+    if (!dialog || dialog.mode !== 'plan') return;
+    var t = e.target;
+    if (t.dataset.pday !== undefined) dialog.rows[+t.dataset.pday].day = parseInt(t.value, 10);
+    else if (t.dataset.pprog !== undefined) dialog.rows[+t.dataset.pprog].prog = parseInt(t.value, 10);
+    else return;
+    render();
   });
   document.addEventListener('toggle', function (e) {
     if (e.target.dataset && e.target.dataset.k) open[e.target.dataset.k] = e.target.open;

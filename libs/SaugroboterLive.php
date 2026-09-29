@@ -29,6 +29,8 @@ trait SaugroboterLive
         $this->RegisterMessage($this->InstanceID, FM_DISCONNECT);
         $this->LiveWatchParent();
         $was = $this->GetBuffer('MqttState');
+        // Nichts an Zugang/Verbindung geändert und Sitzung steht: einfach weiterlaufen lassen
+        if (!$this->credChanged && $this->LiveWanted() && $was === '2') return;
         $this->SetBuffer('MqttState', '0');
         if ($this->LiveWanted()) {
             // Bestehende Sitzung sauber beenden, damit die Anmeldung mit den neuen Einstellungen läuft

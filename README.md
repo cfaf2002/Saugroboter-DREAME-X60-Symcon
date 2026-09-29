@@ -204,6 +204,9 @@ Gereinigt wird alles oder die unter *Räume* eingetragenen Räume („Küche, Fl
 
 Nicht genannte Werte bleiben wie am Gerät eingestellt. Die Vorwahlen selbst werden dabei nicht verändert.
 
+Auch der **Raumplan** lässt sich in der Kachel ansehen und bearbeiten (Karte *Reinigen bei Abwesenheit → Raumplan*):
+je Zeile Tag, Programm und Räume antippen, *frei* für Tage ohne Automatik, *Speichern*. Er ist derselbe wie in der Instanz.
+
 Das **Programm der Automatik** wählst du direkt in der Kachel (Karte *Reinigen bei Abwesenheit → Programm der Automatik*)
 oder über die Variable **Automatik-Programm**. In der Kachel stehen die Programme außerdem als **Schnellstart** bereit:
 antippen, Einstellungen bei Bedarf anpassen, *Jetzt starten* – für die ausgewählten Räume oder, ohne Auswahl, für alles.

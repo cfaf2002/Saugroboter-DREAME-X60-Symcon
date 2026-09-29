@@ -26,6 +26,8 @@ require_once __DIR__ . '/../libs/SaugroboterLive.php';
 
 class X60Ultra extends IPSModule
 {
+    // true, wenn ApplyChanges geänderte Zugangsdaten/Verbindungseinstellungen erkannt hat
+    protected $credChanged = true;
     use SaugroboterApi;
     use SaugroboterLive;
 
@@ -132,7 +134,8 @@ class X60Ultra extends IPSModule
         $this->RegisterAttributeString('MapMeta', '{}');    // Lage der Räume je Kartenbild (Beschriftung/Antippen)
         $this->RegisterAttributeString('LastLog', '');
         $this->RegisterAttributeString('LivePin', '');
-        $this->RegisterAttributeString('BgType', 'jpeg');     // gemerktes Zertifikat des Live-Servers      // Startzeit der Fahrt hinter "Letzte Reinigung"
+        $this->RegisterAttributeString('BgType', 'jpeg');
+        $this->RegisterAttributeString('CredKey', '');      // Prüfsumme der Zugangsdaten (Neuanmeldung nur bei Änderung)     // gemerktes Zertifikat des Live-Servers      // Startzeit der Fahrt hinter "Letzte Reinigung"
 
         // ---- Profile ----
         $this->Profile('SAUG.State', 1, 'Robot', '', '', SaugroboterTexte::States());
@@ -234,9 +237,17 @@ class X60Ultra extends IPSModule
     {
         parent::ApplyChanges();
 
-        // Anmeldung und Gerät nach Konfigurationsänderung frisch ermitteln
-        $this->WriteAttributeString('Token', '');
-        $this->WriteAttributeString('Device', '');
+        // Anmeldung und Gerät nur frisch ermitteln, wenn sich Zugangsdaten/Verbindung geändert haben
+        // (Änderungen am Raumplan o. Ä. – auch aus der Kachel – lassen Anmeldung und Live-Verbindung in Ruhe)
+        $cred = md5(implode('|', [$this->ReadPropertyString('Email'), $this->ReadPropertyString('Password'), $this->ReadPropertyString('Region'),
+            $this->ReadPropertyString('DeviceFilter'), intval($this->ReadPropertyBoolean('VerifyTLS')), intval($this->ReadPropertyBoolean('Live')),
+            intval($this->ReadPropertyBoolean('Active')), intval($this->ReadPropertyBoolean('Consent'))]));
+        $this->credChanged = $cred !== $this->ReadAttributeString('CredKey');
+        if ($this->credChanged) {
+            $this->WriteAttributeString('Token', '');
+            $this->WriteAttributeString('Device', '');
+            $this->WriteAttributeString('CredKey', $cred);
+        }
 
         $this->SyncCapabilities();
         $this->SyncRooms();
@@ -458,6 +469,26 @@ class X60Ultra extends IPSModule
                 if (!isset(self::PROGRAMS[intval($Value)])) return;
                 $this->SetVal('AutoProgram', intval($Value));
                 $this->Note('Automatik-Programm: ' . self::PROGRAMS[intval($Value)][0], 'ok');
+                $this->RefreshViews();
+                return;
+            case 'TilePlan':
+                // Kachel: Raumplan speichern (gleiche Form wie in der Instanz)
+                $rows = $this->Json($Value);
+                if (!is_array($rows)) return;
+                $clean = [];
+                foreach ($rows as $r) {
+                    if (!is_array($r)) continue;
+                    $day = intval($r['day'] ?? 0);
+                    if ($day < 0 || $day > 9) continue;
+                    $prog = intval($r['prog'] ?? -1);
+                    $row = ['day' => $day, 'prog' => ($prog >= 0 && isset(self::PROGRAMS[$prog])) ? $prog : -1, 'off' => !empty($r['off'])];
+                    foreach ($r as $k => $v) if (preg_match('/^r\d{1,5}$/', $k)) $row[$k] = (bool)$v;
+                    $clean[] = $row;
+                    if (count($clean) >= 20) break;
+                }
+                IPS_SetProperty($this->InstanceID, 'AutoPlan', json_encode($clean));
+                IPS_ApplyChanges($this->InstanceID);
+                $this->Note('Raumplan gespeichert.', 'ok');
                 $this->RefreshViews();
                 return;
             case 'TileProgram':
@@ -1876,6 +1907,20 @@ class X60Ultra extends IPSModule
      * Räume für heute laut Raumplan: [] = alles, '-' = heute nicht, sonst Raumcodes.
      * Genaueste Zeile gewinnt: bestimmter Tag vor Mo–Fr/Sa+So vor täglich. Ohne passende Zeile gilt "Räume".
      */
+    // Raumplan für die Kachel: Zeilen in Häkchenform (alte Textzeilen umgesetzt)
+    private function PlanView()
+    {
+        $rows = json_decode($this->ReadPropertyString('AutoPlan'), true);
+        $out = [];
+        if (is_array($rows)) foreach ($rows as $r) {
+            $codes = $this->PlanCodes($r);
+            $v = ['day' => intval($r['day'] ?? 0), 'prog' => intval($r['prog'] ?? -1), 'off' => $codes === '-'];
+            if (is_array($codes)) foreach ($codes as $c) $v['r' . $c] = true;
+            $out[] = $v;
+        }
+        return $out;
+    }
+
     // "Heute: Küche, Bad · Gründlich saugen" für die Kachel
     private function AutoTodayText()
     {
@@ -2114,6 +2159,8 @@ class X60Ultra extends IPSModule
             }, array_keys(self::PROGRAMS)))),
             'programNames' => array_map(function ($p) { return $p[0]; }, self::PROGRAMS),
             'autoProgram' => intval($this->GetValue('AutoProgram')),
+            'plan' => $this->PlanView(),
+            'planRooms' => array_map(function ($r) { return ['code' => $r['code'], 'name' => $r['name'] . (count($this->Maps()) > 1 ? ' (' . $r['floor'] . ')' : '')]; }, $this->RoomList()),
             'autoToday' => $this->AutoTodayText(),
             'bgDim' => max(0, min(90, $this->ReadPropertyInteger('BgDim'))),
             'bgBlur' => max(0, min(20, $this->ReadPropertyInteger('BgBlur'))),
