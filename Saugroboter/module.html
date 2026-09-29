@@ -205,6 +205,17 @@
     return h;
   }
 
+  // Farbe der Felder über dem Hintergrundbild – hier ausgerechnet statt per CSS-Farbmischung,
+  // damit es auch in älteren Browser-Engines (Handy-App) funktioniert
+  var cardOp = 0.62, darkMq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  function applyGlass() {
+    var dark = !darkMq || darkMq.matches, st = document.body.style;
+    st.setProperty('--cardbg', (dark ? 'rgba(32,37,45,' : 'rgba(255,255,255,') + cardOp + ')');
+    var sh = Math.max(0, (1 - cardOp) * 0.8).toFixed(2);
+    st.setProperty('--tshadow', cardOp < 0.5 ? '0 1px 3px rgba(' + (dark ? '0,0,0,' : '255,255,255,') + sh + ')' : 'none');
+  }
+  if (darkMq && darkMq.addListener) darkMq.addListener(applyGlass);
+
   // Kurze Rückmeldung unten in der Kachel (kind: info | ok | err)
   function flash(t, kind, ms) {
     var f = document.getElementById('flash');
@@ -266,10 +277,7 @@
     var v = view, el = document.getElementById('app');
     if (v && v.bgDim !== undefined) document.body.style.setProperty('--dim', v.bgDim / 100);
     if (v && v.bgBlur !== undefined) document.body.style.setProperty('--blur', v.bgBlur + 'px');
-    if (v && v.cardOpacity !== undefined) {
-      document.body.style.setProperty('--cardop', v.cardOpacity + '%');
-      document.body.style.setProperty('--cardop-n', v.cardOpacity / 100);
-    }
+    if (v && v.cardOpacity !== undefined) { cardOp = v.cardOpacity / 100; applyGlass(); }
     if (v && v.cardGlass !== undefined) document.body.style.setProperty('--glass', v.cardGlass + 'px');
     if (!v) { el.innerHTML = '<div class="loading"><span></span>Verbinde …</div>'; return; }
     var h = '';
