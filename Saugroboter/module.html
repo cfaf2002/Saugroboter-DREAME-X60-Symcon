@@ -209,7 +209,8 @@
     var short = { 0: 'Tägl.', 1: 'Mo', 2: 'Di', 3: 'Mi', 4: 'Do', 5: 'Fr', 6: 'Sa', 7: 'So', 8: 'Mo–Fr', 9: 'Sa+So' };
     return v.plan.map(function (row) {
       var rooms = planRoomNames(v, row);
-      return short[row.day] + ': ' + (row.off ? 'frei' : (rooms.length ? rooms.join(', ') : 'alles'));
+      var t = v.autoMode === 1 && !row.off ? ' ' + (row.time || v.autoTime) : '';
+      return short[row.day] + t + ': ' + (row.off ? 'frei' : (rooms.length ? rooms.join(', ') : 'alles'));
     }).join(' · ');
   }
   // Programm wählen (Untermenü); mode 'progsel' = zum Reinigen, 'autoprog' = für die Automatik
@@ -239,15 +240,18 @@
   }
   // Raumplan bearbeiten
   function planDialog(v, d) {
-    var h = '<div class="dlg-head"><div><div class="dlg-title">Raumplan</div><div class="small mute">Genauester Tag gewinnt: Wochentag vor Mo–Fr/Sa + So vor täglich.</div></div>' +
+    var h = '<div class="dlg-head"><div><div class="dlg-title">Zeitpläne</div><div class="small mute">' +
+      (v.autoMode === 1 ? 'Jeder Eintrag startet zu seiner Uhrzeit (leer = ' + esc(v.autoTime) + ' Uhr). Mehrere Einträge pro Tag sind möglich.' : 'Bei Abwesenheit zählen Tag, Räume und Programm (Uhrzeit nur bei „Zur Uhrzeit“).') + '</div></div>' +
       '<button class="iconbtn" data-dlg="close" aria-label="Schließen">' + ic('close') + '</button></div>';
-    if (!d.rows.length) h += '<div class="small mute" style="margin-bottom:10px">Noch keine Zeile – ohne Plan gilt jeden Tag dasselbe.</div>';
+    if (!d.rows.length) h += '<div class="small mute" style="margin-bottom:10px">Noch kein Eintrag – dann gilt täglich die Standard-Uhrzeit mit dem Standard-Programm.</div>';
     d.rows.forEach(function (row, i) {
       h += '<div class="prow"><div class="prow-top"><select data-pday="' + i + '">';
       Object.keys(DAYS).forEach(function (k) { h += '<option value="' + k + '"' + (parseInt(k, 10) === row.day ? ' selected' : '') + '>' + DAYS[k] + '</option>'; });
-      h += '</select><select data-pprog="' + i + '"' + (row.off ? ' disabled' : '') + '><option value="-1">Standard</option>';
+      h += '</select><input class="ptime" type="time" data-ptime="' + i + '" value="' + esc(row.time || '') + '" title="Uhrzeit (leer = Standard)"' + (row.off ? ' disabled' : '') + '>' +
+        '<button class="iconbtn sm" data-pdel="' + i + '" title="Eintrag löschen">' + ic('close') + '</button></div>' +
+        '<select class="pprog" data-pprog="' + i + '"' + (row.off ? ' disabled' : '') + '><option value="-1">Programm: Standard</option>';
       Object.keys(v.programNames).forEach(function (k) { h += '<option value="' + k + '"' + (parseInt(k, 10) === row.prog ? ' selected' : '') + '>' + esc(v.programNames[k]) + '</option>'; });
-      h += '</select><button class="iconbtn sm" data-pdel="' + i + '" title="Zeile löschen">' + ic('close') + '</button></div><div class="chips">';
+      h += '</select><div class="chips">';
       v.planRooms.forEach(function (r) {
         var on = !row.off && row['r' + r.code];
         h += '<button class="chip' + (on ? ' on' : '') + (row.off ? ' dim' : '') + '" data-proom="' + i + ':' + r.code + '">' + (on ? ic('check', 'xs') : '') + esc(r.name) + '</button>';
@@ -255,7 +259,7 @@
       h += '<button class="chip' + (row.off ? ' on off' : '') + '" data-poff="' + i + '">frei</button></div>' +
         '<div class="small mute">' + (row.off ? 'An diesem Tag keine Automatik-Reinigung' : (planRoomNames(v, row).length ? '' : 'Nichts angehakt = alles')) + '</div></div>';
     });
-    h += '<div class="dlg-actions"><button class="btn ghost" data-padd="1">+ Zeile hinzufügen</button>' +
+    h += '<div class="dlg-actions"><button class="btn ghost" data-padd="1">+ Eintrag hinzufügen</button>' +
       '<button class="btn main" data-psave="1">' + ic('check') + 'Speichern</button></div>';
     return h;
   }
@@ -265,6 +269,17 @@
     if (!dialog) return '';
     var d = dialog, h = '<div class="dlg-back" data-dlg="close"><div class="dlg" role="dialog">';
     if (d.mode === 'plan') return h + planDialog(v, d) + '</div></div>';
+    if (d.mode === 'hist' || d.mode === 'wear') {
+      h += '<div class="dlg-head"><div><div class="dlg-title">' + (d.mode === 'hist' ? 'Verlauf' : 'Verschleiß') + '</div></div>' +
+        '<button class="iconbtn" data-dlg="close" aria-label="Schließen">' + ic('close') + '</button></div>';
+      if (d.mode === 'hist') v.history.forEach(function (l) { h += '<div class="hist">' + esc(l) + '</div>'; });
+      else v.wear.forEach(function (w) {
+        var lw = w.v <= v.wearWarn;
+        h += '<div class="wear' + (lw ? ' low' : '') + '"><span>' + esc(w.name) + '</span><div class="bar"><i style="width:' + w.v + '%"></i></div>' +
+          '<em>' + w.v + ' %</em><button class="iconbtn sm" data-reset="' + w.id + '" data-name="' + esc(w.name) + '" title="Zähler zurücksetzen">' + ic('reset') + '</button></div>';
+      });
+      return h + '</div></div>';
+    }
     if (d.mode === 'autotime') {
       return h + '<div class="dlg-head"><div><div class="dlg-title">Uhrzeit der Automatik</div><div class="small mute">Startet einmal am Tag – auch wenn jemand zu Hause ist. Verpasste Starts werden bis zu 3 Stunden nachgeholt.</div></div>' +
         '<button class="iconbtn" data-dlg="close" aria-label="Schließen">' + ic('close') + '</button></div>' +
@@ -422,7 +437,12 @@
       esc(cp.name) + ' <span class="mute small">· ' + esc(setSummary(v, cp.set)) + '</span></span><span class="chev r"></span></button>';
     if (any && v.job) h += '<button class="btn main full' + (isBusy('start') ? ' pending' : '') + '" data-start="1">' + ic('play') + 'Danach reinigen</button>';
     if (v.queue && v.queue !== '–') h += '<div class="queue">' + ic('list', 'xs') + '<span class="grow">Vorgemerkt: ' + esc(v.queue) + '</span><button class="iconbtn sm" data-cmd="9" title="Vormerkung verwerfen">' + ic('close') + '</button></div>';
-    h += '</div>';
+    // Verlauf und Verschleiß als Zeilen, Details im Untermenü
+    var lowN = v.wear.filter(function (w) { return w.v <= v.wearWarn; }).length;
+    h += '<div class="rows">' +
+      (v.history.length ? '<button class="lrow" data-open="hist"><span class="lk">Verlauf</span><span class="lv">' + esc(v.history[0]) + '</span><span class="chev r"></span></button>' : '') +
+      (v.wear.length ? '<button class="lrow" data-open="wear"><span class="lk">Verschleiß</span><span class="lv">' + (lowN ? '<span class="badge warn">' + lowN + ' fällig</span>' : 'alles in Ordnung') + '</span><span class="chev r"></span></button>' : '') +
+      '</div></div>';
 
     // Station kompakt: Zustand als kleine Anzeigen, Aktionen in einer Zeile
     var sIcon = ['drop', 'dirty', 'bag'], sShort = ['Frischwasser', 'Schmutzwasser', 'Beutel'];
@@ -445,26 +465,11 @@
       (v.autoMode === 1 || v.hasPresence ? '<button class="switch' + (v.auto ? ' on' : '') + '" data-auto="' + (v.auto ? 0 : 1) + '" aria-label="Automatik"></button>' : '') + '</div>' +
       '<div class="seg full amode"><button class="' + (v.autoMode === 0 ? 'on' : '') + '" data-amode="0">Bei Abwesenheit</button>' +
       '<button class="' + (v.autoMode === 1 ? 'on' : '') + '" data-amode="1">Zur Uhrzeit</button></div><div class="rows">' +
-      (v.autoMode === 1 ? '<button class="lrow" data-open="autotime"><span class="lk">Uhrzeit</span><span class="lv">' + esc(v.autoTime) + ' Uhr</span><span class="chev r"></span></button>' : '') +
+      (v.autoMode === 1 ? '<button class="lrow" data-open="autotime"><span class="lk">Uhrzeit</span><span class="lv">' + esc(v.autoTime) + ' Uhr <span class="mute small">Standard</span></span><span class="chev r"></span></button>' : '') +
       '<button class="lrow" data-open="autoprog"><span class="lk">Programm</span><span class="lv">' + esc(ap.name) + '</span><span class="chev r"></span></button>' +
-      '<button class="lrow" data-open="plan"><span class="lk">Raumplan</span><span class="lv">' + esc(planShort(v)) + '</span><span class="chev r"></span></button></div></div>';
+      '<button class="lrow" data-open="plan"><span class="lk">Zeitpläne</span><span class="lv">' + esc(planShort(v)) + '</span><span class="chev r"></span></button></div>' +
+      (v.auto && v.autoMode === 1 && v.autoToday ? '<div class="small mute" style="margin-top:6px">' + esc(v.autoToday) + '</div>' : '') + '</div>';
 
-    if (v.wear.length) {
-      var low = v.wear.filter(function (w) { return w.v <= v.wearWarn; }).length;
-      h += '<details class="card" data-k="wear"' + (open.wear ? ' open' : '') + '><summary>' + ic('wrench', 'lead') + '<span class="grow">Verschleiß</span>' +
-        (low ? '<span class="badge warn">' + low + ' fällig</span>' : '') + '<span class="chev"></span></summary><div class="dbody">';
-      v.wear.forEach(function (w) {
-        var lw = w.v <= v.wearWarn;
-        h += '<div class="wear' + (lw ? ' low' : '') + '"><span>' + esc(w.name) + '</span><div class="bar"><i style="width:' + w.v + '%"></i></div>' +
-          '<em>' + w.v + ' %</em><button class="iconbtn sm" data-reset="' + w.id + '" data-name="' + esc(w.name) + '" title="Zähler zurücksetzen">' + ic('reset') + '</button></div>';
-      });
-      h += '</div></details>';
-    }
-    if (v.history.length) {
-      h += '<details class="card" data-k="hist"' + (open.hist ? ' open' : '') + '><summary>' + ic('list', 'lead') + '<span class="grow">Verlauf</span><span class="chev"></span></summary><div class="dbody">';
-      v.history.forEach(function (l) { h += '<div class="hist">' + esc(l) + '</div>'; });
-      h += '</div></details>';
-    }
     if (v.message) h += '<div class="msg">' + esc(v.message) + '</div>';
     h += '</div></div>';
     h += dialogBlock(v);
@@ -500,10 +505,16 @@
         if (pb.dataset.proom) { var pr2 = pb.dataset.proom.split(':'), row = rows[+pr2[0]]; if (!row.off) row['r' + pr2[1]] = !row['r' + pr2[1]]; }
         else if (pb.dataset.poff) { var ro = rows[+pb.dataset.poff]; ro.off = !ro.off; }
         else if (pb.dataset.pdel) rows.splice(+pb.dataset.pdel, 1);
-        else if (pb.dataset.padd) rows.push({ day: 8, prog: -1, off: false });
+        else if (pb.dataset.padd) rows.push({ day: 8, time: '', prog: -1, off: false });
         else if (pb.dataset.psave) { var out = rows; dialog = null; act('TilePlan', JSON.stringify(out), 'plan'); flash('Wird gespeichert …', 'wait', 30000); return; }
         render(); return;
       }
+    }
+    // Zähler zurücksetzen (im Verschleiß-Dialog)
+    var rs = e.target.closest('[data-reset]');
+    if (rs) {
+      if (typeof confirm !== 'function' || confirm(rs.dataset.name + ': Zähler zurücksetzen?')) act('TileReset', rs.dataset.reset);
+      return;
     }
     // Uhrzeit-Dialog
     var tb = e.target.closest('[data-tq],[data-tsave]');
@@ -539,7 +550,7 @@
     var t = e.target.closest('button');
     if (t && t.dataset.view) { showLast = t.dataset.view === 'last'; render(); return; }
     if (!t || t.disabled) return;
-    if (t.dataset.open === 'autoprog' || t.dataset.open === 'progsel' || t.dataset.open === 'autotime') { dialog = { mode: t.dataset.open }; render(); return; }
+    if (['autoprog', 'progsel', 'autotime', 'hist', 'wear'].indexOf(t.dataset.open) >= 0) { dialog = { mode: t.dataset.open }; render(); return; }
     if (t.dataset.start) { act('TileStart', 1, 'start'); flash('Wird gesendet …', 'wait', 30000); return; }
     if (t.dataset.amode) { act('AutoMode', parseInt(t.dataset.amode, 10)); return; }
     if (t.dataset.open === 'plan') { dialog = { mode: 'plan', rows: JSON.parse(JSON.stringify(view.plan)) }; render(); return; }
@@ -565,6 +576,7 @@
     var t = e.target;
     if (t.dataset.pday !== undefined) dialog.rows[+t.dataset.pday].day = parseInt(t.value, 10);
     else if (t.dataset.pprog !== undefined) dialog.rows[+t.dataset.pprog].prog = parseInt(t.value, 10);
+    else if (t.dataset.ptime !== undefined) { dialog.rows[+t.dataset.ptime].time = t.value || ''; return; }
     else return;
     render();
   });

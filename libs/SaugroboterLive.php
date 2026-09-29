@@ -536,8 +536,14 @@ trait SaugroboterLive
     private function LiveMapFrame($text)
     {
         $b = SaugroboterKarte::Decode($text, self::MAP_IV);
-        if ($b === null) return false;
-        return $this->LiveTakeBlock($b);
+        if ($b === null) { $this->SetBuffer('LiveCntX', strval(intval($this->GetBuffer('LiveCntX')) + 1)); return false; }
+        // für die Kartendiagnose: letztes Voll- und Teilbild im Rohformat merken
+        $t = $b['type'] === 'I' ? 'I' : 'P';
+        $this->SetBuffer('LiveRaw' . $t, base64_encode(gzcompress($text)));
+        $this->SetBuffer('LiveCnt' . $t, strval(intval($this->GetBuffer('LiveCnt' . $t)) + 1));
+        $ok = $this->LiveTakeBlock($b);
+        if (!$ok) $this->SetBuffer('LiveCntX', strval(intval($this->GetBuffer('LiveCntX')) + 1));
+        return $ok;
     }
 
     private function LiveTakeBlock($b)

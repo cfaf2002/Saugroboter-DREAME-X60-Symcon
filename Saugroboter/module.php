@@ -139,7 +139,8 @@ class X60Ultra extends IPSModule
         $this->RegisterAttributeString('LivePin', '');
         $this->RegisterAttributeString('BgType', 'jpeg');
         $this->RegisterAttributeString('CredKey', '');
-        $this->RegisterAttributeInteger('RenderVersion', 0);      // Prüfsumme der Zugangsdaten (Neuanmeldung nur bei Änderung)     // gemerktes Zertifikat des Live-Servers      // Startzeit der Fahrt hinter "Letzte Reinigung"
+        $this->RegisterAttributeInteger('RenderVersion', 0);
+        $this->RegisterAttributeString('AutoDone', '{}');   // Zeitplan-Einträge, die heute schon gelaufen sind      // Prüfsumme der Zugangsdaten (Neuanmeldung nur bei Änderung)     // gemerktes Zertifikat des Live-Servers      // Startzeit der Fahrt hinter "Letzte Reinigung"
 
         // ---- Profile ----
         $this->Profile('SAUG.State', 1, 'Robot', '', '', SaugroboterTexte::States());
@@ -424,7 +425,7 @@ class X60Ultra extends IPSModule
             $vals = [];
             $plan = json_decode($this->ReadPropertyString('AutoPlan'), true);
             if (is_array($plan)) foreach ($plan as $row) {
-                $v = ['day' => isset($row['day']) ? intval($row['day']) : 0, 'prog' => isset($row['prog']) ? intval($row['prog']) : -1, 'off' => false];
+                $v = ['day' => isset($row['day']) ? intval($row['day']) : 0, 'time' => strval($row['time'] ?? ''), 'prog' => isset($row['prog']) ? intval($row['prog']) : -1, 'off' => false];
                 $codes = $this->PlanCodes($row);
                 if ($codes === '-') $v['off'] = true;
                 foreach ($rooms as $r) $v['r' . $r['code']] = is_array($codes) && in_array($r['code'], $codes, true);
@@ -523,7 +524,9 @@ class X60Ultra extends IPSModule
                     $day = intval($r['day'] ?? 0);
                     if ($day < 0 || $day > 9) continue;
                     $prog = intval($r['prog'] ?? -1);
-                    $row = ['day' => $day, 'prog' => ($prog >= 0 && isset(self::PROGRAMS[$prog])) ? $prog : -1, 'off' => !empty($r['off'])];
+                    $tm = isset($r['time']) && preg_match('/^(\d{1,2}):(\d{2})$/', trim(strval($r['time'])), $mm) && intval($mm[1]) < 24 && intval($mm[2]) < 60
+                        ? sprintf('%02d:%02d', intval($mm[1]), intval($mm[2])) : '';
+                    $row = ['day' => $day, 'time' => $tm, 'prog' => ($prog >= 0 && isset(self::PROGRAMS[$prog])) ? $prog : -1, 'off' => !empty($r['off'])];
                     foreach ($r as $k => $v) if (preg_match('/^r\d{1,5}$/', $k)) $row[$k] = (bool)$v;
                     $clean[] = $row;
                     if (count($clean) >= 20) break;
@@ -1090,16 +1093,27 @@ class X60Ultra extends IPSModule
         foreach ($this->LiveMapObjects() as $o) {
             $r[] = 'Abgelegte Karte ' . preg_replace('#^.*/#', '…/', $o) . ': ' . $this->BlockReport($this->CloudFile($o));
         }
+        // Live-Verbindung: zuletzt empfangene Bilder und das daraus zusammengesetzte
+        $r[] = 'Live empfangen: ' . intval($this->GetBuffer('LiveCntI')) . ' Vollbilder, ' . intval($this->GetBuffer('LiveCntP')) . ' Teilbilder, '
+            . intval($this->GetBuffer('LiveCntX')) . ' verworfen';
+        foreach (['LiveRawI' => 'Live-Vollbild', 'LiveRawP' => 'Live-Teilbild'] as $buf => $label) {
+            $raw = $this->GetBuffer($buf);
+            if ($raw !== '') $r[] = $label . ': ' . $this->BlockReport(gzuncompress(base64_decode($raw)));
+        }
+        $lb = $this->LiveBlock();
+        if ($lb !== null) $r[] = 'Live-Karte (zusammengesetzt): ' . $this->BlockReport(null, $lb);
         $out = implode("\n", $r);
         $this->SendDebug('Kartendiagnose', $out, 0);
         return $out;
     }
 
-    private function BlockReport($text)
+    private function BlockReport($text, $b = null)
     {
-        if ($text === null) return 'nicht ladbar';
-        $b = SaugroboterKarte::Decode($text, self::MAP_IV);
-        if ($b === null) return 'nicht dekodierbar (' . strlen($text) . ' Zeichen, ' . (strpos($text, ',') !== false ? 'mit' : 'ohne') . ' Schlüssel)';
+        if ($b === null) {
+            if ($text === null) return 'nicht ladbar';
+            $b = SaugroboterKarte::Decode($text, self::MAP_IV);
+            if ($b === null) return 'nicht dekodierbar (' . strlen($text) . ' Zeichen, ' . (strpos($text, ',') !== false ? 'mit' : 'ohne') . ' Schlüssel)';
+        }
         $segs = isset($b['info']['seg_inf']) && is_array($b['info']['seg_inf']) ? implode(',', array_keys($b['info']['seg_inf'])) : '–';
         $hist = [];
         for ($i = 0; $i < strlen($b['cells']); $i++) { $c = ord($b['cells'][$i]); if ($c) $hist[$c] = (isset($hist[$c]) ? $hist[$c] : 0) + 1; }
@@ -1894,21 +1908,65 @@ class X60Ultra extends IPSModule
         if (IPS_GetKernelRunlevel() != KR_READY) $this->RegisterMessage(0, IPS_KERNELSTARTED);
     }
 
+    /**
+     * Zeitplan-Einträge für heute ("zur Uhrzeit"): jeder Eintrag mit Tag, Uhrzeit, Räumen, Programm.
+     * Ohne Einträge gilt ein täglicher Standard-Eintrag (Standard-Uhrzeit, Räume/Programm der Automatik).
+     * Rückgabe: [['key','ts','time','rooms','prog','done'], …] nach Uhrzeit sortiert; null = heute frei.
+     */
+    private function EntriesToday()
+    {
+        $rows = json_decode($this->ReadPropertyString('AutoPlan'), true);
+        $dow = intval(date('N'));
+        $done = json_decode($this->ReadAttributeString('AutoDone'), true);
+        if (!is_array($done)) $done = [];
+        $std = $this->AutoStartToday();
+        $out = [];
+        if (!is_array($rows) || !count($rows)) {
+            $days = preg_replace('/[^1-7]/', '', $this->ReadPropertyString('AutoDays'));
+            if ($days !== '' && strpos($days, strval($dow)) === false) return [];
+            $text = trim($this->ReadPropertyString('AutoRooms'));
+            $rows = [['day' => 0, 'time' => '', 'prog' => -1, 'rooms' => $text]];
+        }
+        foreach ($rows as $i => $r) {
+            $d = intval($r['day'] ?? 0);
+            if (!($d == 0 || $d == $dow || ($d == 8 && $dow <= 5) || ($d == 9 && $dow >= 6))) continue;
+            $codes = $this->PlanCodes($r);
+            if ($codes === '-') return null;          // "frei" an diesem Tag schlägt alles
+            $t = isset($r['time']) && preg_match('/^(\d{1,2}):(\d{2})$/', trim(strval($r['time'])), $m) ? mktime(intval($m[1]), intval($m[2]), 0) : $std;
+            $p = intval($r['prog'] ?? -1);
+            if ($p < 0 || !isset(self::PROGRAMS[$p])) $p = intval($this->GetValue('AutoProgram'));
+            $key = md5($i . '|' . $d . '|' . date('H:i', $t));
+            $out[] = ['key' => $key, 'ts' => $t, 'time' => date('H:i', $t), 'rooms' => $codes, 'prog' => $p, 'done' => ($done[$key] ?? '') === date('Ymd')];
+        }
+        usort($out, function ($a, $b) { return $a['ts'] - $b['ts']; });
+        return $out;
+    }
+
+    // Fälliger Eintrag: Uhrzeit erreicht, heute noch nicht gelaufen, höchstens 3 Stunden her
+    private function DueEntry()
+    {
+        $list = $this->EntriesToday();
+        if (!is_array($list)) return null;
+        foreach ($list as $e) {
+            if (!$e['done'] && $e['ts'] <= time() && time() <= $e['ts'] + 3 * 3600) return $e;
+        }
+        return null;
+    }
+
     // Automatik "zur Uhrzeit": '' = jetzt starten, sonst der Grund
     private function AutoTimeBlocker()
     {
-        $at = $this->AutoStartToday();
-        $days = preg_replace('/[^1-7]/', '', $this->ReadPropertyString('AutoDays'));
-        $today = $days === '' || strpos($days, date('N')) !== false;
-        $last = $this->ReadAttributeInteger('LastAuto');
-        if (!$today) return 'heute nicht – nächster Start an einem freigegebenen Tag um ' . date('H:i', $at);
-        if ($this->AutoRoomsToday() === '-') return 'heute laut Raumplan frei';
-        if ($last >= $at) return 'heute erledigt (' . date('H:i', $last) . ')';
-        if (time() < $at) return 'startet heute um ' . date('H:i', $at);
-        // bis zu 3 Stunden nachholen (Roboter war unterwegs, offline, Akku leer …)
-        if (time() > $at + 3 * 3600) return 'heute verpasst – morgen um ' . date('H:i', $at);
+        $list = $this->EntriesToday();
+        if ($list === null) return 'heute frei';
+        if (!count($list)) return 'heute kein Zeitplan';
+        $due = $this->DueEntry();
+        if ($due === null) {
+            foreach ($list as $e) if (!$e['done'] && $e['ts'] > time()) return 'nächster Start heute um ' . $e['time'];
+            $doneAny = count(array_filter($list, function ($e) { return $e['done']; }));
+            return $doneAny ? 'heute erledigt' : 'heute verpasst';
+        }
         if (!$this->GetValue('Online')) return 'Roboter nicht erreichbar';
-        if ($this->ReadAttributeInteger('Job') == 1) return 'Roboter ist unterwegs';
+        if ($this->ReadAttributeInteger('Job') == 1) return 'Roboter ist unterwegs – Start ' . $due['time'] . ' folgt danach';
         if ($this->GetValue('Battery') < $this->ReadPropertyInteger('AutoBattery')) return 'wartet auf Akku (' . $this->GetValue('Battery') . ' %)';
         if ($this->GetValue('Error') != 0 && !in_array($this->GetValue('Error'), SaugroboterTexte::WarningCodes(), true)) return 'Störung am Gerät';
         if (intval($this->GetBuffer('AutoRetry')) > time()) return 'neuer Versuch ' . date('H:i', intval($this->GetBuffer('AutoRetry')));
@@ -1962,17 +2020,32 @@ class X60Ultra extends IPSModule
         $this->SetVal('AutoStatus', $why === '' ? 'startet …' : $why);
         if ($why !== '') return false;
 
-        $rooms = $this->AutoRoomsToday();
-        $prog = $this->AutoProgramToday();
+        $entry = null;
+        if ($this->AutoByPlan()) {
+            // "zur Uhrzeit": der fällige Zeitplan-Eintrag bestimmt Räume und Programm
+            $entry = $this->DueEntry();
+            if ($entry === null) return false;
+            $rooms = $entry['rooms'];
+            $prog = $entry['prog'];
+        } else {
+            $rooms = $this->AutoRoomsToday();
+            $prog = $this->AutoProgramToday();
+        }
         $over = $this->ProgramSettings($prog);
         if (!count($rooms)) $ok = $over === null ? $this->CleanAll() : $this->Locked(function () use ($over) { return $this->StartAll($over); });
         else $ok = $this->CleanRoomsWith($rooms, json_encode($over === null ? [] : $over));
         if ($ok) {
             $this->WriteAttributeInteger('LastAuto', time());
             $this->WriteAttributeInteger('JobByAuto', 1);
+            if ($entry !== null) {
+                $done = json_decode($this->ReadAttributeString('AutoDone'), true);
+                if (!is_array($done)) $done = [];
+                $done[$entry['key']] = date('Ymd');
+                $this->WriteAttributeString('AutoDone', json_encode($done));
+            }
             $what = (!count($rooms) ? 'alles' : $this->RoomNames($rooms)) . ($prog > 0 ? ', ' . self::PROGRAMS[$prog][0] : '');
             $this->SetVal('AutoStatus', 'gestartet ' . date('H:i') . ' (' . $what . ')');
-            if ($this->ReadPropertyBoolean('NotifyAuto')) $this->Push('Automatik', 'Niemand zu Hause – Reinigung gestartet: ' . $what . '.');
+            if ($this->ReadPropertyBoolean('NotifyAuto')) $this->Push('Automatik', ($entry !== null ? 'Zeitplan ' . $entry['time'] : 'Niemand zu Hause') . ' – Reinigung gestartet: ' . $what . '.');
         } else {
             $this->SetBuffer('AutoRetry', strval(time() + 1800));
             $this->SetVal('AutoStatus', 'Start fehlgeschlagen, neuer Versuch ' . date('H:i', time() + 1800));
@@ -1992,7 +2065,7 @@ class X60Ultra extends IPSModule
         $out = [];
         if (is_array($rows)) foreach ($rows as $r) {
             $codes = $this->PlanCodes($r);
-            $v = ['day' => intval($r['day'] ?? 0), 'prog' => intval($r['prog'] ?? -1), 'off' => $codes === '-'];
+            $v = ['day' => intval($r['day'] ?? 0), 'time' => strval($r['time'] ?? ''), 'prog' => intval($r['prog'] ?? -1), 'off' => $codes === '-'];
             if (is_array($codes)) foreach ($codes as $c) $v['r' . $c] = true;
             $out[] = $v;
         }
@@ -2002,6 +2075,14 @@ class X60Ultra extends IPSModule
     // "Heute: Küche, Bad · Gründlich saugen" für die Kachel
     private function AutoTodayText()
     {
+        if ($this->AutoByPlan()) {
+            $list = $this->EntriesToday();
+            if ($list === null) return 'Heute frei';
+            if (!count($list)) return 'Heute kein Zeitplan';
+            return 'Heute: ' . implode(', ', array_map(function ($e) {
+                return $e['time'] . ' ' . (count($e['rooms']) ? $this->RoomNames($e['rooms']) : 'alles') . ($e['done'] ? ' ✓' : '');
+            }, $list));
+        }
         $rooms = $this->AutoRoomsToday();
         if ($rooms === '-') return 'Heute frei';
         $p = $this->AutoProgramToday();

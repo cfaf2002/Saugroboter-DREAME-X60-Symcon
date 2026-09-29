@@ -442,12 +442,12 @@
         },
         {
           "type": "Label",
-          "caption": "Raumplan: je Tag Räume anhaken (nichts = alles, „frei“ = nicht reinigen) und ggf. ein eigenes Programm."
+          "caption": "Zeitpläne: je Eintrag Tag, Uhrzeit (leer = Standard-Uhrzeit), Programm und Räume (nichts = alles, „frei“ = an dem Tag nicht). Uhrzeiten gelten bei „Zur Uhrzeit“; bei Abwesenheit zählen nur Tag, Räume und Programm."
         },
         {
           "type": "List",
           "name": "AutoPlan",
-          "caption": "Raumplan",
+          "caption": "Zeitpläne",
           "rowCount": 5,
           "add": true,
           "delete": true,
@@ -501,6 +501,16 @@
                     "value": 9
                   }
                 ]
+              }
+            },
+            {
+              "caption": "Uhrzeit",
+              "name": "time",
+              "width": "90px",
+              "add": "",
+              "edit": {
+                "type": "ValidationTextBox",
+                "validate": "^([01]?\\d|2[0-3]):[0-5]\\d$|^$"
               }
             },
             {

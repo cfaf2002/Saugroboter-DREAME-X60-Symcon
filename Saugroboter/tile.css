@@ -322,3 +322,11 @@ body.hasbg .card, body.hasbg .head { text-shadow: var(--tshadow, none); }
 .timein { width: 100%; font: inherit; font-size: 28px; font-weight: 700; text-align: center; padding: 12px; border-radius: 14px;
   border: 1px solid var(--line); background: var(--card2); color: var(--fg); color-scheme: dark light; }
 .tquick { margin-top: 10px; justify-content: center; }
+
+.ptime { flex: 0 0 92px; padding: 7px 6px; border-radius: 10px; border: 1px solid var(--line); background: var(--dlg); color: var(--fg); font: inherit; font-size: 13.5px; color-scheme: dark light; }
+.prow select[data-pday] { flex: 0 0 30%; }
+.lrow .badge { font-size: 11px; }
+
+.prow select[data-pday] { flex: 1 1 auto; }
+.ptime { flex: 0 0 110px; }
+.prow select.pprog { display: block; width: 100%; margin-bottom: 10px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--dlg); color: var(--fg); font: inherit; font-size: 13.5px; }

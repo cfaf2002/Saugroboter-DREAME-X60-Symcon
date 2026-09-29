@@ -163,8 +163,8 @@ In der **Kachel-Visualisierung** die Instanz direkt als Kachel hinzufügen. Die 
   *Eigene Einstellungen* = deine Vorwahlen, über das Regler-Symbol anpassbar). Der große Startknopf zeigt, was passiert:
   „Küche reinigen · Schnell saugen“ bzw. „Alles reinigen · …“. Während einer Fahrt: *Danach reinigen*.
 - Station mit Mopp waschen, Trocknen, Absaugen
-- **Automatik** kompakt: Ein/Aus, *Bei Abwesenheit* oder *Zur Uhrzeit*, Programm und Raumplan
-- Verschleiß (mit Zurücksetzen) und Verlauf
+- **Automatik** kompakt: Ein/Aus, *Bei Abwesenheit* oder *Zur Uhrzeit*, Standard-Uhrzeit, Programm und Zeitpläne
+- **Verlauf** und **Verschleiß** (mit Zurücksetzen) als Zeilen in der Karte *Reinigen*, Details per Tipp
 - **Rückmeldung** nach jedem Befehl: grün „… gesendet“, rot mit dem Grund, wenn etwas nicht geklappt hat
 
 **Hintergrundbild:** Unter *Visualisierung → Hintergrundbild der Kachel* ein Foto hochladen (JPG, PNG, WebP). Das Modul
@@ -213,11 +213,18 @@ Gereinigt wird alles oder die unter *Räume* eingetragenen Räume („Küche, Fl
 
 Nicht genannte Werte bleiben wie am Gerät eingestellt. Die Vorwahlen selbst werden dabei nicht verändert.
 
-Auch der **Raumplan** lässt sich in der Kachel ansehen und bearbeiten (Karte *Automatik → Raumplan*):
+Auch der **Raumplan** lässt sich in der Kachel ansehen und bearbeiten (Karte *Automatik → Zeitpläne*):
 je Zeile Tag, Programm und Räume antippen, *frei* für Tage ohne Automatik, *Speichern*. Er ist derselbe wie in der Instanz.
 
 Das **Programm der Automatik** wählst du direkt in der Kachel (Karte *Automatik → Programm*)
 oder über die Variable **Automatik-Programm**. Dieselben Programme wählst du in der Kachel auch fürs manuelle Reinigen (Karte *Reinigen → Programm*).
+
+**Zeitpläne (mehrere Automatik-Einträge):** Jeder Eintrag hat Tag, **Uhrzeit**, Programm und Räume – z. B.
+*Mo–Fr 10:00 Küche · Schnell saugen* und *Sa 14:30 alles · Gründlich saugen*; auch mehrere Einträge am selben Tag.
+Bei *Zur Uhrzeit* startet jeder Eintrag einmal zu seiner Uhrzeit (leer = Standard-Uhrzeit), verpasste Starts werden bis zu
+3 Stunden nachgeholt; ein Eintrag *frei* sperrt den ganzen Tag. Ohne Einträge gilt täglich die Standard-Uhrzeit mit dem
+Standard-Programm. Bei *Bei Abwesenheit* zählen Tag, Räume und Programm, die Uhrzeit nicht. Bearbeiten in der Instanz
+(Liste *Zeitpläne*, Spalte *Uhrzeit*) oder in der Kachel (*Automatik → Zeitpläne*).
 
 **Raumplan:** Im Raumplan hat jeder Raum eine eigene Spalte zum Anhaken (sobald die Räume eingelesen sind), dazu
 je Zeile ein eigenes *Programm* (oder *Standard* = Programm der Automatik). Nichts angehakt = alles, *frei* = an diesem Tag nicht reinigen. Ein bestimmter Tag geht vor *Mo–Fr* bzw. *Sa + So*,
