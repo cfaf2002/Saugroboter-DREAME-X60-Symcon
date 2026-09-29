@@ -332,11 +332,12 @@ class SaugroboterKarte
         }
         $gw = min(120, $cw); $gh = max(1, intval(round($ch * $gw / $cw)));
         $grid = '';
+        $G = self::Classes($b, $format, $x0, $y0, $x1, $y1);     // wie gezeichnet (Lücken gefüllt)
         for ($gy = 0; $gy < $gh; $gy++) {
             for ($gx = 0; $gx < $gw; $gx++) {
                 $x = $x0 + intval(($gx + 0.5) * $cw / $gw);
                 $y = $y1 - intval(($gy + 0.5) * $ch / $gh);
-                $c = self::Cell(ord($cells[$y * $w + $x]), $format, true);
+                $c = $G[($y - $y0) * $cw + $x - $x0];
                 $grid .= ($c > 0 && $c < 63) ? chr(48 + $c) : '.';
             }
         }
@@ -357,6 +358,61 @@ class SaugroboterKarte
         if ($rot == 180) return [round(1 - $fx, 4), round(1 - $fy, 4)];
         if ($rot == 270) return [round($fy, 4), round(1 - $fx, 4)];
         return [round($fx, 4), round($fy, 4)];
+    }
+
+    /**
+     * Zellklassen im Ausschnitt (0 = leer, WALL, FLOOR, Raumnummer) für die Darstellung:
+     *  - Flächen, die zum Raum gehören, aber verdeckt sind (Möbel, unerkundet), werden Raumfläche
+     *  - eingeschlossene Lücken (nicht mit dem Außenbereich verbunden) übernehmen den Nachbarraum
+     *  - einzelne Krümel außerhalb der Wohnung fallen weg
+     */
+    public static function Classes($b, $format, $x0, $y0, $x1, $y1)
+    {
+        $cw = $x1 - $x0 + 1; $ch = $y1 - $y0 + 1; $w = $b['w']; $cells = $b['cells'];
+        $G = array_fill(0, $cw * $ch, 0);
+        for ($y = $y0; $y <= $y1; $y++) {
+            $row = $y * $w; $gr = ($y - $y0) * $cw;
+            for ($x = $x0; $x <= $x1; $x++) {
+                $byte = ord($cells[$row + $x]);
+                $c = self::Cell($byte, $format);
+                if ($c == 0) { $a = self::Cell($byte, $format, true); if ($a > 0 && $a < 250) $c = $a; }
+                $G[$gr + $x - $x0] = $c;
+            }
+        }
+        // Außenbereich: vom Rand aus über leere Zellen erreichbar
+        $out = array_fill(0, $cw * $ch, false);
+        $stack = [];
+        for ($x = 0; $x < $cw; $x++) { $stack[] = $x; $stack[] = ($ch - 1) * $cw + $x; }
+        for ($y = 0; $y < $ch; $y++) { $stack[] = $y * $cw; $stack[] = $y * $cw + $cw - 1; }
+        while ($stack) {
+            $i = array_pop($stack);
+            if ($out[$i] || $G[$i] != 0) continue;
+            $out[$i] = true;
+            $x = $i % $cw;
+            if ($x > 0) $stack[] = $i - 1;
+            if ($x < $cw - 1) $stack[] = $i + 1;
+            if ($i >= $cw) $stack[] = $i - $cw;
+            if ($i < ($ch - 1) * $cw) $stack[] = $i + $cw;
+        }
+        // Eingeschlossene Lücken von den Nachbarn her auffüllen (Räume vor Wand)
+        for ($pass = 0; $pass < 40; $pass++) {
+            $changed = 0;
+            $next = $G;
+            for ($i = 0; $i < $cw * $ch; $i++) {
+                if ($G[$i] != 0 || $out[$i]) continue;
+                $x = $i % $cw; $best = 0;
+                foreach ([$x > 0 ? $i - 1 : -1, $x < $cw - 1 ? $i + 1 : -1, $i - $cw, $i + $cw] as $j) {
+                    if ($j < 0 || $j >= $cw * $ch) continue;
+                    $n = $G[$j];
+                    if ($n > 0 && $n < 250) { $best = $n; break; }
+                    if ($n == self::FLOOR && $best == 0) $best = $n;
+                }
+                if ($best) { $next[$i] = $best; $changed++; }
+            }
+            $G = $next;
+            if (!$changed) break;
+        }
+        return $G;
     }
 
     public static function Render($b, $format, $opt = [])
@@ -388,11 +444,13 @@ class SaugroboterKarte
         $col = []; $edge = [];
         $wall = imagecolorallocate($img, 0x6E, 0x78, 0x87);
         $floor = imagecolorallocate($img, 0xCF, 0xD5, 0xDD);
+        // Zellen einmal einordnen und Lücken schließen (Möbel, verdeckte Stellen) – wie in der App
+        $G = self::Classes($b, $format, $x0, $y0, $x1, $y1);
         for ($y = $y0; $y <= $y1; $y++) {
-            $row = $y * $w;
             $py = ($y1 - $y) * $K;                 // Kartenachse zeigt nach oben
+            $gr = ($y - $y0) * $cw;
             for ($x = $x0; $x <= $x1; $x++) {
-                $c = self::Cell(ord($cells[$row + $x]), $format);
+                $c = $G[$gr + $x - $x0];
                 if ($c == 0) continue;
                 if ($c == self::WALL) $color = $wall;
                 elseif ($c == self::FLOOR) $color = $floor;
@@ -413,16 +471,16 @@ class SaugroboterKarte
         // Feine Linien zwischen Räumen bzw. zur Außenkante (erst ab lesbarer Größe)
         if ($k >= 3) {
             $t = $ss;                              // Linienstärke im großen Bild
+            $at = function ($x, $y) use ($G, $x0, $y0, $x1, $y1, $cw) {
+                return ($x < $x0 || $x > $x1 || $y < $y0 || $y > $y1) ? 0 : $G[($y - $y0) * $cw + $x - $x0];
+            };
             for ($y = $y0; $y <= $y1; $y++) {
                 $py = ($y1 - $y) * $K;
                 for ($x = $x0; $x <= $x1; $x++) {
-                    $c = self::Cell(ord($cells[$y * $w + $x]), $format);
+                    $c = $at($x, $y);
                     if (!isset($edge[$c])) continue;
                     $px = ($x - $x0) * $K;
-                    $r = $x < $x1 ? self::Cell(ord($cells[$y * $w + $x + 1]), $format) : 0;
-                    $u = $y < $y1 ? self::Cell(ord($cells[($y + 1) * $w + $x]), $format) : 0;
-                    $l = $x > $x0 ? self::Cell(ord($cells[$y * $w + $x - 1]), $format) : 0;
-                    $d = $y > $y0 ? self::Cell(ord($cells[($y - 1) * $w + $x]), $format) : 0;
+                    $r = $at($x + 1, $y); $u = $at($x, $y + 1); $l = $at($x - 1, $y); $d = $at($x, $y - 1);
                     if ($r != $c && $r != self::WALL) imagefilledrectangle($img, $px + $K - $t, $py, $px + $K - 1, $py + $K - 1, $edge[$c]);
                     if ($l != $c && $l != self::WALL && !isset($edge[$l])) imagefilledrectangle($img, $px, $py, $px + $t - 1, $py + $K - 1, $edge[$c]);
                     if ($u != $c && $u != self::WALL) imagefilledrectangle($img, $px, $py, $px + $K - 1, $py + $t - 1, $edge[$c]);

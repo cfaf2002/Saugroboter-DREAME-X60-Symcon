@@ -276,6 +276,9 @@
       (!v.online ? '<div class="small mute">keine Verbindung zum Roboter</div>' : '') +
       '</div>' + battery(v.battery, v.charging) + '</header>';
 
+    // Zwei Spalten auf breiten Kacheln: links Karte und Bedienung, rechts der Rest
+    h += '<div class="cols"><div class="col">';
+
     // Laufende Reinigung
     if (v.job) {
       h += '<div class="card jobcard">';
@@ -292,6 +295,7 @@
 
     h += mapBlock(v);
     h += controls(v);
+    h += '</div><div class="col">';
 
     // Räume
     if (v.rooms.length) {
@@ -345,6 +349,7 @@
       h += '</div></details>';
     }
     if (v.message) h += '<div class="msg">' + esc(v.message) + '</div>';
+    h += '</div></div>';
     h += dialogBlock(v);
     el.innerHTML = h;
     placeLabels();

@@ -23,6 +23,15 @@ html, body { margin: 0; background: transparent; color: var(--fg);
 /* oben Platz für Titel und Vollbild-Knopf der Kachel-Visualisierung */
 body { padding: 44px 14px 18px; height: 100vh; overflow-y: auto; scrollbar-width: thin; }
 #app { display: flex; flex-direction: column; gap: 12px; max-width: 560px; margin: 0 auto; }
+.cols, .col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* Breite Kachel (Vollbild, Tablet, PC): Karte groß links, Bedienung rechts */
+@media (min-width: 760px) {
+  #app { max-width: 1280px; }
+  .cols { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr); align-items: start; gap: 16px; }
+  .cols > .col:first-child { position: sticky; top: 0; }
+  .mapwrap img { max-height: calc(100vh - 290px); min-height: 280px; }
+  .mapbox { padding: 6px 0; }
+}
 .row { display: flex; align-items: center; gap: 10px; }
 .between { justify-content: space-between; }
 .grow { flex: 1 1 auto; min-width: 0; }
@@ -226,10 +235,10 @@ details[open] .chev { transform: rotate(225deg); margin: 4px 4px 0; }
 .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: spin 1s linear infinite; }
 
 /* Eigenes Hintergrundbild (in der Instanz hochgeladen), abgedunkelt für gute Lesbarkeit */
-#bg { position: fixed; inset: 0; z-index: -1; background: center / cover no-repeat; display: none; }
+#bg { position: fixed; inset: -20px; z-index: -1; background: center / cover no-repeat; display: none; filter: blur(6px) saturate(1.1); }
 body.hasbg #bg { display: block; }
 #bg::after { content: ""; position: absolute; inset: 0; background: rgba(10,13,18,var(--dim, .45)); }
 @media (prefers-color-scheme: light) { #bg::after { background: rgba(238,241,245,var(--dim, .45)); } }
-body.hasbg .card { background: color-mix(in srgb, var(--dlg) 72%, transparent); }
+body.hasbg .card { background: color-mix(in srgb, var(--dlg) 84%, transparent); box-shadow: 0 8px 30px rgba(0,0,0,.25); }
 body.hasbg .head .name, body.hasbg .head .state { text-shadow: 0 1px 8px rgba(0,0,0,.35); }
 @media (prefers-color-scheme: light) { body.hasbg .head .name, body.hasbg .head .state { text-shadow: 0 1px 8px rgba(255,255,255,.6); } }
