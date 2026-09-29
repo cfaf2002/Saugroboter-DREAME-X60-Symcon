@@ -293,8 +293,9 @@ Alle Befehle geben `true`/`false` zurück; der Grund eines Fehlschlags steht in 
   umgesetzt, es braucht keine Zusatzbibliothek und keinen eigenen MQTT-Server. Kartenbilder kommen als Voll- oder
   Differenzbild direkt in der Nachricht; Differenzbilder werden auf das letzte Vollbild gelegt. Enthalten die Live-Bilder keine Wände/Möbel/Strecke,
   liefern sie nur Position und Zeit; die Details kommen aus der Kartendatei, die während der Reinigung alle 2 Minuten
-  nachgeladen wird. Nach 150 s ohne Daten
-  baut das Modul die Verbindung neu auf; wird die Anmeldung dreimal abgelehnt, pausiert es 10 Minuten.
+  nachgeladen wird. Die Verbindung heilt sich selbst: nach 150 s ohne Daten, bei getrenntem Socket (nach 60 s, dann in
+  wachsenden Abständen bis 10 min), bei 3 Minuten ohne Meldung während einer Reinigung und kurz vor Ablauf des Zugangstokens
+  baut das Modul sie neu auf. Der Status-Block zeigt, wie oft das heute nötig war und warum; wird die Anmeldung dreimal abgelehnt, pausiert es 10 Minuten.
 - **Abfrage**: alle *n* Sekunden im Ruhezustand, schneller während einer Reinigung und kurz nach jedem Befehl.
   Steht die Live-Verbindung, reicht eine ruhige Abfrage (höchstens jede Minute) für Station und Verschleiß, und
   Kartendateien werden gar nicht mehr geladen.

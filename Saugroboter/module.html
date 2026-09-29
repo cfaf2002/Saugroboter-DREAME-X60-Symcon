@@ -400,6 +400,7 @@
       (v.live === true ? '<span class="live" title="Live-Verbindung aktiv – Karte und Zustand in Echtzeit"><i></i>LIVE</span>' : '') + '</div>' +
       '<div class="state"><span class="dot ' + tone + '"></span>' + esc(v.stateText) + '</div>' +
       (!v.online ? '<div class="small mute">keine Verbindung zum Roboter</div>' : '') +
+      (v.online && v.staleSince ? '<div class="stale">' + ic('alert', 'xs') + 'Roboter meldet sich nicht – Stand von ' + esc(v.staleSince) + ' Uhr</div>' : '') +
       '</div>' + battery(v.battery, v.charging) + '</header>';
 
     // Zwei Spalten auf breiten Kacheln: links Karte und Bedienung, rechts der Rest

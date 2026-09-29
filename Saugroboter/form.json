@@ -1088,7 +1088,7 @@
         {
           "type": "Button",
           "caption": "Status abrufen",
-          "onClick": "SAUG_Poll($id);"
+          "onClick": "SAUG_Refresh($id);"
         }
       ]
     },

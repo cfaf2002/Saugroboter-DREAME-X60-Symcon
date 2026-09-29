@@ -1203,7 +1203,28 @@ class X60Ultra extends IPSModule
     // Abruf
     // =========================================================================
 
+    // Button "Status abrufen": mit Rückmeldung, wartet notfalls auf einen laufenden Abruf
+    public function Refresh()
+    {
+        $this->SetBuffer('SlowAt', '0');
+        $ok = $this->DoPoll(true);
+        $fresh = intval($this->GetBuffer('FreshAt'));
+        if ($ok && time() - $fresh < 30) $msg = 'Status aktualisiert – Werte direkt vom Roboter.';
+        elseif ($ok) $msg = 'Roboter antwortet nicht – ' . ($fresh > 0 ? 'letzter frischer Stand ' . date('d.m. H:i', $fresh) . '. ' : '')
+            . 'Angezeigt werden Werte aus dem Cloud-Speicher; die können veraltet sein. Ist der Roboter im WLAN und in der App erreichbar?';
+        else $msg = 'Kein Abruf möglich: ' . ($this->dcLastError !== '' ? $this->dcLastError : 'Instanz beschäftigt oder Roboter nicht erreichbar.');
+        $this->Note($msg, $ok && time() - $fresh < 30 ? 'ok' : 'err');
+        echo $msg;
+        return $ok;
+    }
+
     public function Poll()
+    {
+        return $this->DoPoll(false);
+    }
+
+    // $User = true: vom Button – wartet auf einen laufenden Abruf statt ihn zu überspringen
+    private function DoPoll($User)
     {
         if (!$this->ReadPropertyBoolean('Active')) return false;
         $done = false;
@@ -1235,6 +1256,7 @@ class X60Ultra extends IPSModule
             } else {
                 $this->Online(true);
                 if ($this->dcFromCache) $this->Note('Roboter antwortet nicht direkt – Werte aus dem Cloud-Speicher.');
+                else $this->SetBuffer('FreshAt', strval(time()));     // Werte direkt vom Roboter
             }
 
             $state = intval($v['2.1']);
@@ -1318,7 +1340,7 @@ class X60Ultra extends IPSModule
             $this->CheckError($err);
             $this->CheckMaintenance();
             return true;
-        }, true);
+        }, !$User);
         if ($ok === null) return false;   // übersprungen: anderer Zugriff läuft
         if ($done) {
             $this->JobFinished();
@@ -2326,6 +2348,8 @@ class X60Ultra extends IPSModule
         return [
             'name' => IPS_GetName($this->InstanceID),
             'online' => $this->GetValue('Online'),
+            // Seit wann nichts Frisches mehr vom Roboter kam (weder direkt noch live) – dann ist der Stand veraltet
+            'staleSince' => intval($this->GetBuffer('FreshAt')) > 0 && time() - intval($this->GetBuffer('FreshAt')) > 300 ? date('H:i', intval($this->GetBuffer('FreshAt'))) : '',
             'live' => $this->ReadPropertyBoolean('Live') ? $this->LiveOk() : null,
             'state' => $state, 'stateText' => GetValueFormatted($this->GetIDForIdent('State')),
             'group' => SaugroboterTexte::StateGroup($state),

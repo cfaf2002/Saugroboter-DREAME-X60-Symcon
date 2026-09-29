@@ -248,7 +248,8 @@ class SaugroboterKarte
     {
         $out = $detail;
         $out['robot'] = $live['robot'];
-        $out['dock'] = $live['dock'];
+        // Station nur aus dem ausführlichen Bild – in den Live-Bildern ist sie nicht zuverlässig
+        if (empty($detail['dock']) || ($detail['dock'][0] == 0 && $detail['dock'][1] == 0)) $out['dock'] = $live['dock'];
         $out['frameId'] = $live['frameId'];
         $tl = isset($live['info']['timestamp_ms']) ? floatval($live['info']['timestamp_ms']) : 0;
         $td = isset($detail['info']['timestamp_ms']) ? floatval($detail['info']['timestamp_ms']) : 0;

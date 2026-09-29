@@ -338,3 +338,5 @@ select option, select optgroup { background: #262b33; color: #eef1f5; }
   select { color-scheme: light; }
   select option, select optgroup { background: #ffffff; color: #16202c; }
 }
+
+.stale { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--warn); }
