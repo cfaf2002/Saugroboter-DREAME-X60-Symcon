@@ -1,0 +1,615 @@
+<?php
+
+/**
+ * Saugroboter – Live-Verbindung zur Hersteller-Cloud (MQTT 3.1.1 über TLS).
+ *
+ * Die App bekommt Zustand, Position und Kartenänderungen nicht per Abfrage, sondern als
+ * Push-Nachrichten ("properties_changed") über MQTT. Genau das macht dieses Modul auch:
+ * Ein Symcon-Client-Socket (TLS) hält die Verbindung, das MQTT-Protokoll selbst
+ * (CONNECT, SUBSCRIBE, PUBLISH, PING) ist hier von Hand umgesetzt – ohne Fremdbibliothek.
+ *
+ * Verbindungsdaten (Server, Client-Kennung, Thema) entsprechen dem offengelegten Protokoll
+ * (Tasshack/dreame-vacuum, MIT). Anmeldung: Benutzer = Konto-ID, Passwort = Zugangstoken.
+ *
+ * Fällt die Verbindung aus, arbeitet das Modul wie bisher mit regelmäßiger Abfrage weiter.
+ */
+trait SaugroboterLive
+{
+    private static $LV_SOCKET = '{3CFF0FD9-E306-41DB-9B5A-9D06D38576C3}';   // Client Socket
+    private static $LV_TX     = '{79827379-F36E-4ADA-8A95-5F8D1DC92FA9}';   // an den Socket
+    private static $LV_KEEP   = 60;     // MQTT-Keepalive in Sekunden
+    private static $LV_SILENT = 150;    // so lange ohne Daten -> Verbindung neu aufbauen
+
+    // ---- Einrichtung ----------------------------------------------------------
+
+    // Aus ApplyChanges: Nachrichten anmelden, Prüfung anstoßen bzw. Verbindung schließen
+    protected function LiveApply()
+    {
+        $this->RegisterMessage($this->InstanceID, FM_CONNECT);
+        $this->RegisterMessage($this->InstanceID, FM_DISCONNECT);
+        $this->LiveWatchParent();
+        $was = $this->GetBuffer('MqttState');
+        $this->SetBuffer('MqttState', '0');
+        if ($this->LiveWanted()) {
+            // Bestehende Sitzung sauber beenden, damit die Anmeldung mit den neuen Einstellungen läuft
+            if ($was === '1' || $was === '2') $this->LiveReconnect('Einstellungen übernommen');
+            $this->SetBuffer('LiveHold', '0');
+            $this->SetBuffer('LiveFails', '0');
+            $this->SetTimerInterval('LiveCheck', 3000);   // erste Prüfung gleich, danach alle 30 s
+        } else {
+            $this->SetTimerInterval('LiveCheck', 0);
+            $this->SetTimerInterval('LiveWork', 0);
+            $this->LiveSocketOpen(false);
+            $this->SetVal('Live', false);
+        }
+    }
+
+    protected function LiveWanted()
+    {
+        return $this->ReadPropertyBoolean('Live') && $this->ReadPropertyBoolean('Active') && $this->ReadPropertyBoolean('Consent')
+            && trim($this->ReadPropertyString('Email')) !== '' && $this->ReadPropertyString('Password') !== '';
+    }
+
+    // Live-Daten kommen gerade an (dann braucht es keine Kartendateien und kein schnelles Abfragen)
+    protected function LiveOk()
+    {
+        return $this->GetBuffer('MqttState') === '2' && time() - intval($this->GetBuffer('LiveRx')) < self::$LV_SILENT;
+    }
+
+    private function LiveParent()
+    {
+        $i = @IPS_GetInstance($this->InstanceID);
+        return is_array($i) ? intval($i['ConnectionID']) : 0;
+    }
+
+    private function LiveIsSocket($pid)
+    {
+        if ($pid <= 0 || !IPS_InstanceExists($pid)) return false;
+        $i = IPS_GetInstance($pid);
+        return strcasecmp($i['ModuleInfo']['ModuleID'], self::$LV_SOCKET) == 0;
+    }
+
+    // Statusmeldungen des Sockets verfolgen (verbunden -> MQTT-Anmeldung senden)
+    private function LiveWatchParent()
+    {
+        $pid = $this->LiveParent();
+        $old = intval($this->GetBuffer('LiveParent'));
+        if ($old == $pid) return;
+        if ($old > 0 && IPS_InstanceExists($old)) @$this->UnregisterMessage($old, IM_CHANGESTATUS);
+        if ($pid > 0) $this->RegisterMessage($pid, IM_CHANGESTATUS);
+        $this->SetBuffer('LiveParent', strval($pid));
+    }
+
+    protected function LiveMessageSink($SenderID, $Message, $Data)
+    {
+        if ($Message == FM_CONNECT || $Message == FM_DISCONNECT) {
+            $this->LiveWatchParent();
+            $this->SetBuffer('MqttState', '0');
+            if ($this->LiveWanted()) $this->SetTimerInterval('LiveCheck', 2000);
+            return true;
+        }
+        if ($Message == IM_CHANGESTATUS && $SenderID == $this->LiveParent()) {
+            $this->SetBuffer('MqttState', '0');
+            $this->SetBuffer('LiveIn', '');
+            if (intval($Data[0]) == 102 && $this->LiveWanted()) $this->LiveConnect();
+            elseif ($this->GetBuffer('LiveWasUp') === '1') {
+                $this->SetBuffer('LiveWasUp', '0');
+                $this->SetVal('Live', false);
+                $this->SetPollInterval();
+            }
+            $this->UpdateStatusForm();
+            return true;
+        }
+        return false;
+    }
+
+    // Zustand der Live-Verbindung in Worten (für den Statusblock der Instanz)
+    protected function LiveStatusText()
+    {
+        if (!$this->ReadPropertyBoolean('Live')) return 'ausgeschaltet';
+        if (!$this->LiveWanted()) return 'wartet (Instanz nicht aktiv oder Zugangsdaten fehlen)';
+        if ($this->LiveOk()) {
+            $since = intval($this->GetBuffer('LiveSince'));
+            return '✅ verbunden' . ($since > 0 ? ' seit ' . date(date('Ymd', $since) == date('Ymd') ? 'H:i' : 'd.m. H:i', $since) : '')
+                . ' – Echtzeitdaten kommen an';
+        }
+        $hold = intval($this->GetBuffer('LiveHold'));
+        if ($hold > time() + 86400) return '⛔ gestoppt – unbekanntes Server-Zertifikat (siehe Letzte Meldung)';
+        if ($hold > time()) return '⏸ pausiert bis ' . date('H:i', $hold) . ' (Anmeldung abgelehnt) – solange normale Abfrage';
+        $pid = $this->LiveParent();
+        if (!$this->LiveIsSocket($pid)) return 'wird eingerichtet …';
+        if (IPS_GetInstance($pid)['InstanceStatus'] != 102) return '⚠️ Socket nicht verbunden – solange normale Abfrage';
+        if ($this->GetBuffer('MqttState') === '1') return 'Anmeldung läuft …';
+        if ($this->GetBuffer('MqttState') === '2') return '⚠️ verbunden, aber seit über 2 Minuten keine Daten';
+        return 'verbindet …';
+    }
+
+    // ---- Wächter (Timer "LiveCheck", alle 30 s) --------------------------------
+
+    public function LiveCheck()
+    {
+        $this->SetTimerInterval('LiveCheck', 30000);
+        $this->UpdateStatusForm();
+        if (!$this->LiveWanted()) { $this->SetTimerInterval('LiveCheck', 0); return false; }
+
+        // Nach wiederholter Ablehnung eine Weile Ruhe geben
+        if (intval($this->GetBuffer('LiveHold')) > time()) return false;
+
+        $pid = $this->LiveParent();
+        if ($pid == 0) {
+            $pid = IPS_CreateInstance(self::$LV_SOCKET);
+            IPS_SetName($pid, 'Saugroboter Live (' . IPS_GetName($this->InstanceID) . ')');
+            IPS_ConnectInstance($this->InstanceID, $pid);
+            $this->LiveWatchParent();
+            $this->SendDebug('Live', 'Client Socket #' . $pid . ' angelegt', 0);
+        }
+        if (!$this->LiveIsSocket($pid)) {
+            $this->Note('Live-Verbindung: Die übergeordnete Instanz ist kein Client Socket.');
+            return false;
+        }
+
+        // Zieladresse: der MQTT-Server, an dem das Gerät hängt ("bindDomain" aus der Geräteliste)
+        $dev = $this->Locked(function () { return $this->CloudDevice(); }, true);
+        if (!is_array($dev)) return false;        // gerade beschäftigt oder Cloud nicht erreichbar
+        if (empty($dev['host']) || strpos($dev['host'], ':') === false) {
+            $this->Note('Live-Verbindung nicht möglich: Die Cloud nennt keinen Server für das Gerät.');
+            return false;
+        }
+        list($host, $port) = explode(':', $dev['host'], 2);
+        if ($this->CloudRegion() == 'kr') $host = str_replace('10100', '10000', $host);
+        // Der Live-Server hat kein öffentlich prüfbares Zertifikat (die App prüft es deshalb gar nicht).
+        // Der Socket verschlüsselt nur; geschützt wird das Token durch die Zertifikatsbindung in LiveConnect().
+        $this->SetBuffer('LiveHost', $host . ':' . intval($port));
+        $this->LiveSocketConfig($pid, ['Host' => $host, 'Port' => intval($port), 'UseSSL' => true,
+            'VerifyPeer' => false, 'VerifyHost' => false, 'Open' => true]);
+
+        if (IPS_GetInstance($pid)['InstanceStatus'] != 102) return false;   // Socket baut noch auf
+        $state = $this->GetBuffer('MqttState');
+        if ($state === '' || $state === '0') { $this->LiveConnect(); return true; }
+        if ($state === '1' && time() - intval($this->GetBuffer('LiveConnectAt')) > 20) { $this->LiveReconnect('keine Antwort auf die Anmeldung'); return false; }
+        if ($state === '2') {
+            if (time() - intval($this->GetBuffer('LiveRx')) > self::$LV_SILENT) { $this->LiveReconnect('keine Daten mehr'); return false; }
+            if (time() - intval($this->GetBuffer('LiveTx')) >= 25) $this->LiveSend("\xC0\x00");   // PINGREQ
+        }
+        return true;
+    }
+
+    // Button "Live-Verbindung neu aufbauen"
+    public function LiveRestart()
+    {
+        $this->SetBuffer('LiveHold', '0');
+        $this->SetBuffer('LiveFails', '0');
+        if (!$this->LiveWanted()) { echo 'Die Live-Verbindung ist ausgeschaltet.'; return false; }
+        $this->LiveReconnect('von Hand');
+        $this->SetTimerInterval('LiveCheck', 3000);
+        return true;
+    }
+
+    // ---- Zertifikatsbindung ---------------------------------------------------------
+    // Beim ersten Kontakt wird die Zertifikatskette des Live-Servers gemerkt (oberstes Zertifikat).
+    // Vor jeder Anmeldung muss der Server eine Kette vorzeigen, die zu diesem Zertifikat passt –
+    // sonst geht das Token nicht raus. Schützt vor Mitlesern, auch ohne öffentliche Zertifizierungsstelle.
+
+    private function LivePinOk($bindDomain)
+    {
+        if (!$this->ReadPropertyBoolean('VerifyTLS')) return true;      // bewusst abgeschaltet
+        $parts = explode(':', $bindDomain, 2);
+        $host = $parts[0];
+        if ($this->CloudRegion() == 'kr') $host = str_replace('10100', '10000', $host);
+        $port = isset($parts[1]) ? intval($parts[1]) : 0;
+
+        // Ergebnis kurz merken (Wiederverbinden in Folge)
+        if (intval($this->GetBuffer('PinOkAt')) > time() - 300 && $this->GetBuffer('PinOkHost') === $host) return true;
+
+        $chain = $this->LiveFetchChain($host, $port);
+        if (!is_array($chain) || !count($chain)) {
+            $this->SendDebug('Live', 'Zertifikat des Servers nicht lesbar – Anmeldung verschoben', 0);
+            return false;
+        }
+        $top = end($chain);
+        $fp = openssl_x509_fingerprint($top, 'sha256');
+        $info = openssl_x509_parse($top);
+        $name = is_array($info) && isset($info['name']) ? $info['name'] : '?';
+        $pin = json_decode($this->ReadAttributeString('LivePin'), true);
+
+        if (!is_array($pin) || empty($pin['fp'])) {
+            $this->WriteAttributeString('LivePin', json_encode(['fp' => $fp, 'name' => $name, 'at' => time()]));
+            $this->SendDebug('Live', 'Server-Zertifikat gemerkt: ' . $name . ' ' . $fp, 0);
+            $this->Note('Live-Verbindung: Zertifikat des Servers gemerkt.');
+        } elseif (!hash_equals($pin['fp'], $fp) || !self::ChainValid($chain)) {
+            $this->SetBuffer('LiveHold', strval(time() + 86400 * 365));
+            $this->LiveSocketOpen(false);
+            $this->SetVal('Live', false);
+            $this->SendDebug('Live', 'Zertifikat passt NICHT: ' . $name . ' ' . $fp . ' (gemerkt: ' . $pin['name'] . ' ' . $pin['fp'] . ')', 0);
+            $this->Note('Live-Verbindung gestoppt: Der Server zeigt ein anderes Zertifikat als bisher. '
+                . 'Wenn Dreame es erneuert hat: „Server-Zertifikat neu übernehmen“. Sonst könnte jemand die Verbindung umleiten.');
+            if ($this->ReadPropertyBoolean('NotifyError')) $this->Push('Saugroboter', 'Live-Verbindung gestoppt: unbekanntes Server-Zertifikat.');
+            return false;
+        }
+        $this->SetBuffer('PinOkAt', strval(time()));
+        $this->SetBuffer('PinOkHost', $host);
+        return true;
+    }
+
+    // Jedes Zertifikat der Kette muss vom nächsten unterschrieben sein
+    public static function ChainValid($chain)
+    {
+        $chain = array_values($chain);
+        for ($i = 0; $i < count($chain) - 1; $i++) {
+            $key = openssl_pkey_get_public($chain[$i + 1]);
+            if ($key === false || openssl_x509_verify($chain[$i], $key) !== 1) return false;
+        }
+        return true;
+    }
+
+    // Zertifikatskette des Servers holen (nur ansehen, keine Daten senden)
+    protected function LiveFetchChain($host, $port)
+    {
+        $ctx = stream_context_create(['ssl' => [
+            'capture_peer_cert_chain' => true, 'verify_peer' => false, 'verify_peer_name' => false,
+            'allow_self_signed' => true, 'SNI_enabled' => true, 'peer_name' => $host
+        ]]);
+        $fp = @stream_socket_client('ssl://' . $host . ':' . $port, $errno, $errstr, 8, STREAM_CLIENT_CONNECT, $ctx);
+        if ($fp === false) { $this->SendDebug('Live', 'Zertifikatsabruf: ' . $errstr, 0); return null; }
+        $p = stream_context_get_params($fp);
+        fclose($fp);
+        return isset($p['options']['ssl']['peer_certificate_chain']) ? $p['options']['ssl']['peer_certificate_chain'] : null;
+    }
+
+    // Button "Server-Zertifikat neu übernehmen"
+    public function LiveTrustCertificate()
+    {
+        $this->WriteAttributeString('LivePin', '');
+        $this->SetBuffer('PinOkAt', '0');
+        return $this->LiveRestart();
+    }
+
+    private function LiveSocketConfig($pid, $want)
+    {
+        $changed = false;
+        $conf = json_decode(@IPS_GetConfiguration($pid), true);
+        if (!is_array($conf)) return false;
+        foreach ($want as $k => $v) {
+            if (!array_key_exists($k, $conf)) continue;      // Eigenschaft gibt es in dieser Symcon-Version nicht
+            if ($conf[$k] !== $v) { IPS_SetProperty($pid, $k, $v); $changed = true; }
+        }
+        if ($changed) @IPS_ApplyChanges($pid);
+        return $changed;
+    }
+
+    private function LiveSocketOpen($open)
+    {
+        $pid = $this->LiveParent();
+        if ($this->LiveIsSocket($pid)) $this->LiveSocketConfig($pid, ['Open' => (bool)$open]);
+    }
+
+    private function LiveReconnect($why)
+    {
+        $this->SendDebug('Live', 'Neu verbinden: ' . $why, 0);
+        $this->SetBuffer('MqttState', '0');
+        $pid = $this->LiveParent();
+        if (!$this->LiveIsSocket($pid)) return;
+        $this->LiveSocketConfig($pid, ['Open' => false]);
+        $this->LiveSocketConfig($pid, ['Open' => true]);
+    }
+
+    // ---- MQTT senden -------------------------------------------------------------
+
+    private function LiveConnect()
+    {
+        if (!$this->CloudLogin()) { $this->SendDebug('Live', 'Keine Anmeldung: ' . $this->dcLastError, 0); return false; }
+        $dev = $this->CloudDevice();
+        if (!is_array($dev) || empty($dev['host'])) return false;
+        // Token erst senden, wenn der Server sein bekanntes Zertifikat vorzeigt
+        if (!$this->LivePinOk($dev['host'])) return false;
+        $uid = $this->CloudToken('uid');
+        $master = !empty($dev['master']) ? $dev['master'] : $uid;
+        $rand = '';
+        for ($i = 0; $i < 13; $i++) $rand .= 'ABCDEF'[mt_rand(0, 5)];
+        $client = 'p_' . $master . '_' . $rand . '_' . explode(':', $dev['host'])[0];
+
+        $var = self::MqttStr('MQTT') . "\x04" . "\xC2" . pack('n', self::$LV_KEEP);   // 3.1.1, Benutzer+Passwort, Clean Session
+        $pay = self::MqttStr($client) . self::MqttStr($uid) . self::MqttStr($this->CloudToken('access'));
+        $this->SetBuffer('LiveIn', '');
+        $this->SetBuffer('MqttState', '1');
+        $this->SetBuffer('LiveConnectAt', strval(time()));
+        $this->SendDebug('Live', 'CONNECT ' . $client, 0);
+        return $this->LiveSend(self::MqttPacket(0x10, $var . $pay));
+    }
+
+    private function LiveTopics()
+    {
+        $dev = $this->CloudDevice();
+        if (!is_array($dev)) return [];
+        $master = !empty($dev['master']) ? $dev['master'] : $this->CloudToken('uid');
+        $region = $this->CloudRegion();
+        $base = '/status/' . $dev['did'] . '/' . $master . '/' . $dev['model'] . '/';
+        // Geräte am KR-Server melden sich (noch) unter SG
+        return $region == 'kr' ? [$base . 'sg/', $base . 'kr/'] : [$base . $region . '/'];
+    }
+
+    private function LiveSend($bin)
+    {
+        try {
+            $this->SendDataToParent(json_encode([
+                'DataID' => self::$LV_TX,
+                'Buffer' => mb_convert_encoding($bin, 'UTF-8', 'ISO-8859-1')
+            ]));
+            $this->SetBuffer('LiveTx', strval(time()));
+            return true;
+        } catch (Throwable $e) {
+            $this->SendDebug('Live', 'Senden fehlgeschlagen: ' . $e->getMessage(), 0);
+            return false;
+        }
+    }
+
+    public static function MqttStr($s)
+    {
+        return pack('n', strlen($s)) . $s;
+    }
+
+    public static function MqttPacket($type, $body)
+    {
+        $len = strlen($body);
+        $enc = '';
+        do {
+            $b = $len % 128;
+            $len = intdiv($len, 128);
+            if ($len > 0) $b |= 128;
+            $enc .= chr($b);
+        } while ($len > 0);
+        return chr($type) . $enc . $body;
+    }
+
+    // Vollständige Pakete aus dem Datenstrom lösen: [[Typ, Flags, Inhalt], ...], Rest bleibt stehen
+    public static function MqttSplit(&$buf)
+    {
+        $out = [];
+        while (strlen($buf) >= 2) {
+            $mul = 1; $len = 0; $i = 1;
+            do {
+                if ($i >= strlen($buf)) return $out;       // Längenangabe noch unvollständig
+                $b = ord($buf[$i++]);
+                $len += ($b & 127) * $mul;
+                $mul *= 128;
+            } while (($b & 128) && $i < 5);
+            if (strlen($buf) < $i + $len) return $out;     // Paket noch nicht vollständig
+            $out[] = [ord($buf[0]) >> 4, ord($buf[0]) & 15, substr($buf, $i, $len)];
+            $buf = substr($buf, $i + $len);
+        }
+        return $out;
+    }
+
+    // ---- MQTT empfangen ------------------------------------------------------------
+
+    public function ReceiveData($JSONString)
+    {
+        $d = json_decode($JSONString, true);
+        if (!is_array($d)) return '';
+        if (isset($d['BufferHex'])) $raw = hex2bin($d['BufferHex']);
+        elseif (isset($d['Buffer'])) $raw = mb_convert_encoding($d['Buffer'], 'ISO-8859-1', 'UTF-8');
+        else return '';
+
+        // Pakete können über mehrere Aufrufe verteilt ankommen – nacheinander verarbeiten
+        $key = 'SAUG_RX_' . $this->InstanceID;
+        if (!IPS_SemaphoreEnter($key, 5000)) return '';
+        try {
+            $buf = base64_decode($this->GetBuffer('LiveIn')) . $raw;
+            $packets = self::MqttSplit($buf);
+            // Schutz gegen Datenmüll: ein unvollständiger Rest über 4 MB wird verworfen
+            $this->SetBuffer('LiveIn', strlen($buf) > 4194304 ? '' : base64_encode($buf));
+            $this->SetBuffer('LiveRx', strval(time()));
+            foreach ($packets as $p) $this->LivePacket($p[0], $p[1], $p[2]);
+        } finally {
+            IPS_SemaphoreLeave($key);
+        }
+        return '';
+    }
+
+    private function LivePacket($type, $flags, $body)
+    {
+        switch ($type) {
+            case 2: // CONNACK
+                $rc = strlen($body) >= 2 ? ord($body[1]) : 255;
+                if ($rc == 0) {
+                    $this->SetBuffer('MqttState', '2');
+                    $this->SetBuffer('LiveFails', '0');
+                    $this->SetBuffer('LiveWasUp', '1');
+                    $this->SetBuffer('LiveSince', strval(time()));
+                    $sub = '';
+                    foreach ($this->LiveTopics() as $t) $sub .= self::MqttStr($t) . "\x01";
+                    if ($sub !== '') $this->LiveSend(self::MqttPacket(0x82, pack('n', 1) . $sub));
+                    $this->SetVal('Live', true);
+                    $this->SendDebug('Live', 'Verbunden, abonniert: ' . implode(' ', $this->LiveTopics()), 0);
+                    $this->SetPollInterval();
+                    $this->UpdateStatusForm();
+                    return;
+                }
+                $n = intval($this->GetBuffer('LiveFails')) + 1;
+                $this->SetBuffer('LiveFails', strval($n));
+                $this->SetBuffer('MqttState', '0');
+                $this->SendDebug('Live', 'Anmeldung abgelehnt (Code ' . $rc . ')', 0);
+                // 4/5 = Zugang abgelehnt: beim nächsten Versuch frisches Token holen
+                if ($rc == 4 || $rc == 5) {
+                    $t = json_decode($this->ReadAttributeString('Token'), true);
+                    if (is_array($t)) { $t['until'] = 0; $this->WriteAttributeString('Token', json_encode($t)); }
+                }
+                if ($n >= 3) {
+                    $this->SetBuffer('LiveHold', strval(time() + 600));
+                    $this->LiveSocketOpen(false);
+                    $this->Note('Live-Verbindung abgelehnt – neuer Versuch in 10 Minuten, bis dahin normale Abfrage.');
+                }
+                return;
+            case 3: // PUBLISH
+                if (strlen($body) < 2) return;
+                $tl = unpack('n', substr($body, 0, 2))[1];
+                $pos = 2 + $tl;
+                $qos = ($flags >> 1) & 3;
+                if ($qos > 0) {
+                    $pid = substr($body, $pos, 2);
+                    $pos += 2;
+                    if ($qos == 1) $this->LiveSend("\x40\x02" . $pid);            // PUBACK
+                }
+                $this->LiveMessage(substr($body, $pos));
+                return;
+            case 9: // SUBACK
+                if (strpos(substr($body, 2), "\x80") !== false) {
+                    $this->Note('Live-Verbindung: Das Abonnement wurde abgelehnt.');
+                }
+                return;
+            case 13: // PINGRESP
+                return;
+        }
+    }
+
+    // Nachricht vom Gerät: {"data":{"method":"properties_changed","params":[{siid,piid,value},...]}}
+    private function LiveMessage($payload)
+    {
+        $m = json_decode($payload, true);
+        if (!is_array($m)) return;
+        $data = isset($m['data']) && is_array($m['data']) ? $m['data'] : $m;
+        // Nur Nachrichten des eigenen Geräts
+        $dev = $this->CloudDevice();
+        if (!is_array($dev)) return;
+        foreach ([$m, $data] as $x) {
+            if (isset($x['did']) && strval($x['did']) !== strval($dev['did'])) return;
+        }
+        if (!isset($data['method']) || $data['method'] !== 'properties_changed' || !isset($data['params']) || !is_array($data['params'])) return;
+
+        $v = [];
+        foreach ($data['params'] as $p) {
+            if (!is_array($p) || !isset($p['siid'], $p['piid']) || !array_key_exists('value', $p)) continue;
+            $v[intval($p['siid']) . '.' . intval($p['piid'])] = $p['value'];
+        }
+        if (!count($v)) return;
+        $this->SendDebug('Live', json_encode(array_map(function ($x) {
+            return is_string($x) && strlen($x) > 60 ? substr($x, 0, 60) . '…' : $x;
+        }, $v), JSON_UNESCAPED_UNICODE), 0);
+        $this->Online(true);
+
+        $poll = false;
+        if (isset($v['2.1'])) {
+            $state = intval($v['2.1']);
+            if ($this->GetValue('State') !== $state) $poll = true;
+            $this->SetVal('State', $state);
+        }
+        if (isset($v['2.2'])) {
+            $err = intval($v['2.2']);
+            if ($this->GetValue('Error') !== $err) $poll = true;
+            $this->SetVal('Error', $err);
+            $this->SetVal('ErrorHint', SaugroboterTexte::ErrorHint($err));
+        }
+        if (isset($v['3.1'])) $this->SetVal('Battery', intval($v['3.1']));
+        if (isset($v['3.2']) && @$this->GetIDForIdent('Charging')) $this->SetVal('Charging', intval($v['3.2']) == 1);
+        if (isset($v['4.2'])) $this->SetVal('CleanTime', intval($v['4.2']));
+        if (isset($v['4.3'])) $this->SetVal('CleanArea', intval($v['4.3']));
+        if (isset($v['4.63']) && @$this->GetIDForIdent('Progress')) $this->SetVal('Progress', intval($v['4.63']));
+        foreach (['4.41', '27.1', '27.2', '27.3'] as $k) if (isset($v[$k])) $poll = true;
+        // Geräte-Einstellungen mitschreiben (spart beim nächsten Start das Nachfragen)
+        $cfg = array_intersect_key($v, array_flip(['4.4', '4.5', '4.23', '4.50']));
+        if (count($cfg)) $this->DevCfg($cfg);
+
+        // Karte: 6/1 = Kartenbild (Voll- oder Differenzbild) direkt in der Nachricht,
+        //        6/3 = Name einer neu abgelegten Kartendatei
+        if (isset($v['6.1']) && is_string($v['6.1']) && $v['6.1'] !== '') $this->LiveMapFrame($v['6.1']);
+        if (isset($v['6.3']) && $v['6.3'] !== '') {
+            $o = $v['6.3'];
+            if (is_string($o) && is_array($j = json_decode($o, true))) $o = $j;
+            if (is_array($o)) $o = isset($o['object_name']) ? $o['object_name'] : (isset($o['obj_name']) ? $o['obj_name'] : '');
+            if (is_string($o) && $o !== '') $this->SetBuffer('LiveObject', $o);
+        }
+
+        // Zustandswechsel: vollständige Abfrage gleich hinterher (Auftrag, Station, Warteschlange …)
+        if ($poll) $this->SetTimerInterval('Poll', 1000);
+        $this->SetBuffer('ViewDirty', '1');
+        $this->LiveKick(500);
+    }
+
+    private function LiveKick($ms)
+    {
+        $this->SetTimerInterval('LiveWork', $ms);
+    }
+
+    // Kartenbild aus der Nachricht übernehmen (Vollbild ersetzt, Differenzbild wird aufgelegt)
+    private function LiveMapFrame($text)
+    {
+        $b = SaugroboterKarte::Decode($text, self::MAP_IV);
+        if ($b === null) return false;
+        return $this->LiveTakeBlock($b);
+    }
+
+    private function LiveTakeBlock($b)
+    {
+        $base = $this->LiveBlock();
+        if ($b['type'] === 'I') {
+            // Ältere Vollbilder (z. B. eine verspätete Datei) nicht über ein neueres legen
+            if ($base !== null && $base['mapId'] == $b['mapId'] && isset($base['info']['timestamp_ms'], $b['info']['timestamp_ms'])
+                && floatval($b['info']['timestamp_ms']) < floatval($base['info']['timestamp_ms'])) return false;
+            $got = $b;
+        } elseif ($b['type'] === 'P') {
+            if ($base === null || $base['mapId'] != $b['mapId']) {
+                // Kein passendes Vollbild da: Kartendatei holen
+                $this->SetBuffer('NeedFull', '1');
+                return false;
+            }
+            if (intval($b['frameId']) <= intval($base['frameId']) && intval($base['frameId']) - intval($b['frameId']) < 1000) return false;
+            $got = SaugroboterKarte::Merge($base, $b, $this->IsV2());
+        } else {
+            return false;
+        }
+        $this->SetBuffer('LiveFrame', strval($got['frameId']));
+        $this->SetBuffer('LiveBlock', base64_encode(gzcompress(serialize($got))));
+        $this->SetBuffer('MapDirty', '1');
+        return true;
+    }
+
+    // ---- Nacharbeit (Timer "LiveWork") --------------------------------------------
+    // Zeichnen und Dateiabrufe laufen hier, damit der Datenempfang nie blockiert.
+
+    public function LiveWork()
+    {
+        $this->SetTimerInterval('LiveWork', 0);
+        if (!$this->ReadPropertyBoolean('Active')) return;
+
+        $obj = $this->GetBuffer('LiveObject');
+        $full = $this->GetBuffer('NeedFull') === '1' && intval($this->GetBuffer('FullTry')) < time() - 20;
+        if ($obj !== '' || $full) {
+            $ok = $this->Locked(function () use ($obj, $full) {
+                if ($obj !== '') {
+                    // Objektname kann den Schlüssel mitbringen: "pfad/datei,schlüssel"
+                    $parts = explode(',', $obj, 2);
+                    $text = $this->CloudFile($parts[0]);
+                    if ($text !== null && isset($parts[1]) && strpos($text, ',') === false) $text = trim($text) . ',' . $parts[1];
+                    $b = $text === null ? null : SaugroboterKarte::Decode($text, self::MAP_IV);
+                    if ($b !== null) $this->LiveTakeBlock($b);
+                }
+                if ($full) {
+                    $this->SetBuffer('FullTry', strval(time()));
+                    $this->FetchLiveMap(true);
+                    $this->SetBuffer('NeedFull', '0');
+                }
+                return true;
+            }, true);
+            if ($ok === null) { $this->LiveKick(2000); return; }   // anderer Zugriff läuft – gleich nochmal
+            $this->SetBuffer('LiveObject', '');
+        }
+
+        if ($this->GetBuffer('MapDirty') === '1') {
+            // höchstens alle 3 s neu zeichnen
+            $wait = 3 - (microtime(true) - floatval($this->GetBuffer('LiveDrawAt')));
+            if ($wait > 0) { $this->LiveKick(intval($wait * 1000) + 50); return; }
+            $b = $this->LiveBlock();
+            $this->SetBuffer('MapDirty', '0');
+            if ($b !== null) {
+                $this->SetBuffer('LiveDrawAt', strval(microtime(true)));
+                if ($this->ReadPropertyBoolean('MapImage')) $this->StoreMapImage($b, $b['mapId'], 'Map');
+                $this->RoomFromBlock($b);
+            }
+            $this->SetBuffer('ViewDirty', '1');
+        }
+        if ($this->GetBuffer('ViewDirty') === '1') {
+            $this->SetBuffer('ViewDirty', '0');
+            $this->RefreshViews();
+        }
+    }
+}

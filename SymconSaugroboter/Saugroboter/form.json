@@ -1,0 +1,824 @@
+{
+  "elements": [
+    {
+      "type": "ExpansionPanel",
+      "caption": "Nutzungshinweis",
+      "expanded": true,
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Privates, inoffizielles Projekt – nicht von Dreame."
+        },
+        {
+          "type": "Label",
+          "caption": "Nutzt die Cloud der Dreamehome-App mit deinem Konto. Dreame kann das jederzeit ändern."
+        },
+        {
+          "type": "CheckBox",
+          "name": "Consent",
+          "caption": "Gelesen – Nutzung auf eigene Verantwortung"
+        }
+      ]
+    },
+    {
+      "type": "CheckBox",
+      "name": "Active",
+      "caption": "Instanz aktiv"
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Status",
+      "expanded": true,
+      "items": [
+        {
+          "type": "Label",
+          "name": "StatusCloud",
+          "caption": "Cloud: –"
+        },
+        {
+          "type": "Label",
+          "name": "StatusLive",
+          "caption": "Live-Verbindung: –"
+        },
+        {
+          "type": "Label",
+          "name": "StatusCert",
+          "caption": "Server-Zertifikat: –"
+        },
+        {
+          "type": "Label",
+          "name": "StatusMessage",
+          "caption": "Letzte Meldung: –"
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Konto & Gerät",
+      "expanded": true,
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Zugangsdaten der Dreamehome-App (Passwort wird nur als Hash gespeichert)."
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "Email",
+          "caption": "E-Mail"
+        },
+        {
+          "type": "PasswordTextBox",
+          "name": "Password",
+          "caption": "Passwort"
+        },
+        {
+          "type": "Select",
+          "name": "Region",
+          "caption": "Region",
+          "options": [
+            {
+              "caption": "Europa",
+              "value": "eu"
+            },
+            {
+              "caption": "USA",
+              "value": "us"
+            },
+            {
+              "caption": "China",
+              "value": "cn"
+            },
+            {
+              "caption": "Singapur",
+              "value": "sg"
+            },
+            {
+              "caption": "Korea",
+              "value": "kr"
+            },
+            {
+              "caption": "Russland",
+              "value": "ru"
+            }
+          ]
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "DeviceFilter",
+          "caption": "Gerät (nur bei mehreren Robotern)"
+        },
+        {
+          "type": "CheckBox",
+          "name": "VerifyTLS",
+          "caption": "Zertifikate prüfen"
+        },
+        {
+          "type": "CheckBox",
+          "name": "Live",
+          "caption": "Live-Verbindung (Echtzeit)"
+        },
+        {
+          "type": "Label",
+          "caption": "Wie in der App: Zustand und Karte sofort. Richtet sich selbst ein; bei Ausfall normale Abfrage."
+        },
+        {
+          "type": "RowLayout",
+          "items": [
+            {
+              "type": "NumberSpinner",
+              "name": "Interval",
+              "caption": "Abfrage in Ruhe",
+              "suffix": "s",
+              "minimum": 30,
+              "maximum": 3600
+            },
+            {
+              "type": "NumberSpinner",
+              "name": "IntervalBusy",
+              "caption": "beim Reinigen",
+              "suffix": "s",
+              "minimum": 10,
+              "maximum": 300
+            }
+          ]
+        },
+        {
+          "type": "RowLayout",
+          "items": [
+            {
+              "type": "Button",
+              "caption": "Verbindung testen",
+              "onClick": "SAUG_TestConnection($id);"
+            },
+            {
+              "type": "Button",
+              "caption": "Gerät scannen",
+              "onClick": "SAUG_ScanDevice($id);",
+              "confirm": "Fragt rund 2.800 Kennungen ab (ca. 20–40 Sekunden). Fortfahren?"
+            },
+            {
+              "type": "Button",
+              "caption": "Live neu verbinden",
+              "onClick": "SAUG_LiveRestart($id);"
+            },
+            {
+              "type": "Button",
+              "caption": "Zertifikat neu übernehmen",
+              "onClick": "SAUG_LiveTrustCertificate($id);",
+              "confirm": "Nur nötig, wenn Dreame das Zertifikat des Live-Servers erneuert hat. Wirklich neu übernehmen?"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Etagen & Räume",
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Liest Karten und Räume aus der App. Nach Neukartierung erneut einlesen."
+        },
+        {
+          "type": "RowLayout",
+          "items": [
+            {
+              "type": "Button",
+              "caption": "Karten & Räume einlesen",
+              "onClick": "SAUG_ReadMaps($id);"
+            },
+            {
+              "type": "Button",
+              "caption": "Kartendiagnose",
+              "onClick": "SAUG_MapDiagnosis($id);"
+            }
+          ]
+        },
+        {
+          "type": "Label",
+          "caption": "„Verwenden“ aus = Raum ausblenden. „Eigener Name“ = Anzeigename."
+        },
+        {
+          "type": "List",
+          "name": "Rooms",
+          "caption": "Räume",
+          "rowCount": 12,
+          "add": false,
+          "delete": false,
+          "columns": [
+            {
+              "caption": "Verwenden",
+              "name": "use",
+              "width": "100px",
+              "edit": {
+                "type": "CheckBox"
+              }
+            },
+            {
+              "caption": "Etage",
+              "name": "floor",
+              "width": "120px",
+              "save": true
+            },
+            {
+              "caption": "Karte",
+              "name": "map",
+              "width": "60px",
+              "save": true
+            },
+            {
+              "caption": "Nr.",
+              "name": "seg",
+              "width": "50px",
+              "save": true
+            },
+            {
+              "caption": "Name in der App",
+              "name": "app",
+              "width": "180px",
+              "save": true
+            },
+            {
+              "caption": "Eigener Name",
+              "name": "alias",
+              "width": "auto",
+              "edit": {
+                "type": "ValidationTextBox"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Karte",
+      "items": [
+        {
+          "type": "CheckBox",
+          "name": "MapImage",
+          "caption": "Kartenbild erzeugen"
+        },
+        {
+          "type": "Select",
+          "name": "MapRotate",
+          "caption": "Ausrichtung",
+          "options": [
+            {
+              "caption": "wie in der App",
+              "value": -1
+            },
+            {
+              "caption": "nicht drehen",
+              "value": 0
+            },
+            {
+              "caption": "90° rechts",
+              "value": 90
+            },
+            {
+              "caption": "180°",
+              "value": 180
+            },
+            {
+              "caption": "90° links",
+              "value": 270
+            }
+          ]
+        },
+        {
+          "type": "CheckBox",
+          "name": "MapPath",
+          "caption": "Strecke einzeichnen"
+        },
+        {
+          "type": "Select",
+          "name": "MapFormat",
+          "caption": "Zellformat (nur bei Fehlern)",
+          "options": [
+            {
+              "caption": "automatisch",
+              "value": "auto"
+            },
+            {
+              "caption": "Format A",
+              "value": "shift"
+            },
+            {
+              "caption": "Format B",
+              "value": "low6"
+            },
+            {
+              "caption": "Format C",
+              "value": "low5"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Wartung & Verlauf",
+      "items": [
+        {
+          "type": "NumberSpinner",
+          "name": "WearWarn",
+          "caption": "Verschleiß melden ab",
+          "suffix": "%",
+          "minimum": 0,
+          "maximum": 50
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "HistoryCount",
+          "caption": "Einträge im Verlauf",
+          "minimum": 1,
+          "maximum": 20
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Automatik (niemand zu Hause)",
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Ein/Aus über „Reinigen bei Abwesenheit“ – auch in der Kachel."
+        },
+        {
+          "type": "SelectVariable",
+          "name": "PresenceVariable",
+          "caption": "Anwesenheit (true = zu Hause)"
+        },
+        {
+          "type": "CheckBox",
+          "name": "PresenceInverted",
+          "caption": "Variable umkehren"
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "AutoDelay",
+          "caption": "Start frühestens nach",
+          "suffix": "min Abwesenheit",
+          "minimum": 0,
+          "maximum": 240
+        },
+        {
+          "type": "RowLayout",
+          "items": [
+            {
+              "type": "NumberSpinner",
+              "name": "AutoFrom",
+              "caption": "zwischen",
+              "suffix": "Uhr",
+              "minimum": 0,
+              "maximum": 23
+            },
+            {
+              "type": "NumberSpinner",
+              "name": "AutoTo",
+              "caption": "und",
+              "suffix": "Uhr",
+              "minimum": 0,
+              "maximum": 24
+            }
+          ]
+        },
+        {
+          "type": "Select",
+          "name": "AutoDays",
+          "caption": "Tage",
+          "options": [
+            {
+              "caption": "täglich",
+              "value": "1234567"
+            },
+            {
+              "caption": "Mo–Fr",
+              "value": "12345"
+            },
+            {
+              "caption": "Sa + So",
+              "value": "67"
+            },
+            {
+              "caption": "Mo, Mi, Fr",
+              "value": "135"
+            },
+            {
+              "caption": "Di, Do",
+              "value": "24"
+            },
+            {
+              "caption": "Mo–Sa",
+              "value": "123456"
+            }
+          ]
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "AutoGap",
+          "caption": "höchstens einmal in",
+          "suffix": "Stunden",
+          "minimum": 0,
+          "maximum": 168
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "AutoBattery",
+          "caption": "Akku mindestens",
+          "suffix": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "type": "Select",
+          "name": "AutoProgram",
+          "caption": "Programm",
+          "options": [
+            {
+              "caption": "wie Vorwahlen",
+              "value": 0
+            },
+            {
+              "caption": "Schnell saugen",
+              "value": 1
+            },
+            {
+              "caption": "Gründlich saugen (2×, Turbo)",
+              "value": 2
+            },
+            {
+              "caption": "Saugen und wischen",
+              "value": 3
+            },
+            {
+              "caption": "Erst saugen, dann wischen",
+              "value": 4
+            },
+            {
+              "caption": "Nur wischen",
+              "value": 5
+            },
+            {
+              "caption": "Leise (Nachtruhe)",
+              "value": 6
+            },
+            {
+              "caption": "CleanGenius Routine",
+              "value": 7
+            },
+            {
+              "caption": "CleanGenius Tiefenreinigung",
+              "value": 8
+            }
+          ]
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "AutoRooms",
+          "caption": "Räume ohne Raumplan (leer = alles)"
+        },
+        {
+          "type": "Label",
+          "caption": "Raumplan: je Tag Räume anhaken (nichts = alles, „frei“ = nicht reinigen) und ggf. ein eigenes Programm."
+        },
+        {
+          "type": "List",
+          "name": "AutoPlan",
+          "caption": "Raumplan",
+          "rowCount": 5,
+          "add": true,
+          "delete": true,
+          "columns": [
+            {
+              "caption": "Tag",
+              "name": "day",
+              "width": "110px",
+              "add": 8,
+              "edit": {
+                "type": "Select",
+                "options": [
+                  {
+                    "caption": "täglich",
+                    "value": 0
+                  },
+                  {
+                    "caption": "Montag",
+                    "value": 1
+                  },
+                  {
+                    "caption": "Dienstag",
+                    "value": 2
+                  },
+                  {
+                    "caption": "Mittwoch",
+                    "value": 3
+                  },
+                  {
+                    "caption": "Donnerstag",
+                    "value": 4
+                  },
+                  {
+                    "caption": "Freitag",
+                    "value": 5
+                  },
+                  {
+                    "caption": "Samstag",
+                    "value": 6
+                  },
+                  {
+                    "caption": "Sonntag",
+                    "value": 7
+                  },
+                  {
+                    "caption": "Mo–Fr",
+                    "value": 8
+                  },
+                  {
+                    "caption": "Sa + So",
+                    "value": 9
+                  }
+                ]
+              }
+            },
+            {
+              "caption": "Programm",
+              "name": "prog",
+              "width": "190px",
+              "add": -1,
+              "edit": {
+                "type": "Select",
+                "options": [
+                  {
+                    "caption": "wie oben",
+                    "value": -1
+                  },
+                  {
+                    "caption": "wie Vorwahlen",
+                    "value": 0
+                  },
+                  {
+                    "caption": "Schnell saugen",
+                    "value": 1
+                  },
+                  {
+                    "caption": "Gründlich saugen (2×, Turbo)",
+                    "value": 2
+                  },
+                  {
+                    "caption": "Saugen und wischen",
+                    "value": 3
+                  },
+                  {
+                    "caption": "Erst saugen, dann wischen",
+                    "value": 4
+                  },
+                  {
+                    "caption": "Nur wischen",
+                    "value": 5
+                  },
+                  {
+                    "caption": "Leise (Nachtruhe)",
+                    "value": 6
+                  },
+                  {
+                    "caption": "CleanGenius Routine",
+                    "value": 7
+                  },
+                  {
+                    "caption": "CleanGenius Tiefenreinigung",
+                    "value": 8
+                  }
+                ]
+              }
+            },
+            {
+              "caption": "Räume",
+              "name": "rooms",
+              "width": "auto",
+              "add": "",
+              "edit": {
+                "type": "ValidationTextBox"
+              }
+            }
+          ]
+        },
+        {
+          "type": "CheckBox",
+          "name": "AutoReturn",
+          "caption": "Bei Heimkehr zurück zur Station"
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Benachrichtigungen",
+      "items": [
+        {
+          "type": "SelectInstance",
+          "name": "NotifyTarget",
+          "caption": "Push an"
+        },
+        {
+          "type": "CheckBox",
+          "name": "NotifyDone",
+          "caption": "Reinigung fertig"
+        },
+        {
+          "type": "CheckBox",
+          "name": "NotifyError",
+          "caption": "Störungen"
+        },
+        {
+          "type": "CheckBox",
+          "name": "NotifyMaintenance",
+          "caption": "Wartung fällig"
+        },
+        {
+          "type": "CheckBox",
+          "name": "NotifyAuto",
+          "caption": "Start der Automatik"
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Visualisierung",
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Kachel: Instanz direkt als Kachel hinzufügen."
+        },
+        {
+          "type": "SelectFile",
+          "name": "BgUpload",
+          "caption": "Hintergrundbild der Kachel",
+          "extensions": ".jpg,.jpeg,.png,.webp"
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "BgDim",
+          "caption": "Hintergrund abdunkeln",
+          "suffix": "%",
+          "minimum": 0,
+          "maximum": 90
+        },
+        {
+          "type": "Button",
+          "caption": "Hintergrund entfernen",
+          "onClick": "SAUG_RemoveBackground($id);"
+        },
+        {
+          "type": "CheckBox",
+          "name": "DashboardBox",
+          "caption": "HTML-Box „Übersicht“ (WebFront)"
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "type": "RowLayout",
+      "items": [
+        {
+          "type": "Button",
+          "caption": "Alles reinigen",
+          "onClick": "SAUG_CleanAll($id);"
+        },
+        {
+          "type": "Button",
+          "caption": "Pause",
+          "onClick": "SAUG_Pause($id);"
+        },
+        {
+          "type": "Button",
+          "caption": "Zur Station",
+          "onClick": "SAUG_Dock($id);"
+        },
+        {
+          "type": "Button",
+          "caption": "Orten",
+          "onClick": "SAUG_Locate($id);"
+        },
+        {
+          "type": "Button",
+          "caption": "Status abrufen",
+          "onClick": "SAUG_Poll($id);"
+        }
+      ]
+    },
+    {
+      "type": "RowLayout",
+      "items": [
+        {
+          "type": "Select",
+          "name": "Part",
+          "caption": "Verschleißteil",
+          "options": [
+            {
+              "caption": "Hauptbürste",
+              "value": "MainBrush"
+            },
+            {
+              "caption": "Seitenbürste",
+              "value": "SideBrush"
+            },
+            {
+              "caption": "Filter",
+              "value": "Filter"
+            },
+            {
+              "caption": "Sensoren",
+              "value": "Sensors"
+            },
+            {
+              "caption": "Mopp-Pads",
+              "value": "MopPad"
+            },
+            {
+              "caption": "Wassertankfilter",
+              "value": "TankFilter"
+            },
+            {
+              "caption": "Silberionen",
+              "value": "SilverIon"
+            },
+            {
+              "caption": "Reinigungsmittel",
+              "value": "Detergent"
+            },
+            {
+              "caption": "Abstreifer",
+              "value": "Squeegee"
+            },
+            {
+              "caption": "Schmutzwasserkanal",
+              "value": "DirtyChannel"
+            },
+            {
+              "caption": "Geruchsneutralisierer",
+              "value": "Deodorizer"
+            },
+            {
+              "caption": "Antriebsräder",
+              "value": "Wheels"
+            },
+            {
+              "caption": "Entkalker",
+              "value": "ScaleInhibitor"
+            },
+            {
+              "caption": "Aufplusterwalze",
+              "value": "FluffRoller"
+            },
+            {
+              "caption": "Walzenmopp-Filter",
+              "value": "RollerFilter"
+            },
+            {
+              "caption": "Wasserauslassfilter",
+              "value": "OutletFilter"
+            },
+            {
+              "caption": "Waschbrett",
+              "value": "Washboard"
+            },
+            {
+              "caption": "Filterreinigung",
+              "value": "FilterClean"
+            }
+          ]
+        },
+        {
+          "type": "Button",
+          "caption": "Zähler zurücksetzen",
+          "onClick": "SAUG_ResetConsumable($id, $Part);",
+          "confirm": "Zähler wirklich zurücksetzen?"
+        }
+      ]
+    }
+  ],
+  "status": [
+    {
+      "code": 102,
+      "icon": "active",
+      "caption": "Verbunden"
+    },
+    {
+      "code": 104,
+      "icon": "inactive",
+      "caption": "Instanz ist deaktiviert"
+    },
+    {
+      "code": 202,
+      "icon": "inactive",
+      "caption": "Nutzungshinweis noch nicht bestätigt"
+    },
+    {
+      "code": 201,
+      "icon": "error",
+      "caption": "E-Mail oder Passwort fehlt"
+    }
+  ]
+}
