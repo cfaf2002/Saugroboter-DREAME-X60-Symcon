@@ -291,7 +291,9 @@ Alle Befehle geben `true`/`false` zurück; der Grund eines Fehlschlags steht in 
 - **Live-Verbindung**: MQTT über TLS zum Server, an dem der Roboter hängt – angemeldet mit Konto-ID und Zugangstoken,
   abonniert wird nur das eigene Gerät. Das Protokoll (Anmelden, Abonnieren, Empfangen, Keepalive) ist im Modul selbst
   umgesetzt, es braucht keine Zusatzbibliothek und keinen eigenen MQTT-Server. Kartenbilder kommen als Voll- oder
-  Differenzbild direkt in der Nachricht; Differenzbilder werden auf das letzte Vollbild gelegt. Nach 150 s ohne Daten
+  Differenzbild direkt in der Nachricht; Differenzbilder werden auf das letzte Vollbild gelegt. Enthalten die Live-Bilder keine Wände/Möbel/Strecke,
+  liefern sie nur Position und Zeit; die Details kommen aus der Kartendatei, die während der Reinigung alle 2 Minuten
+  nachgeladen wird. Nach 150 s ohne Daten
   baut das Modul die Verbindung neu auf; wird die Anmeldung dreimal abgelehnt, pausiert es 10 Minuten.
 - **Abfrage**: alle *n* Sekunden im Ruhezustand, schneller während einer Reinigung und kurz nach jedem Befehl.
   Steht die Live-Verbindung, reicht eine ruhige Abfrage (höchstens jede Minute) für Station und Verschleiß, und

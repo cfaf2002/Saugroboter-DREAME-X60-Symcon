@@ -32,7 +32,7 @@ class X60Ultra extends IPSModule
     use SaugroboterLive;
 
     // Stand der Kartendarstellung: ändert sich die Zeichnung, wird die Karte nach dem Update neu gezeichnet
-    const RENDER_VERSION = 4;
+    const RENDER_VERSION = 5;
 
     // AES-IV der Kartendaten aktueller Dreame-Modelle (X40/X50/X60)
     const MAP_IV = 'NRwnBj5FsNPgBNbT';
@@ -432,6 +432,15 @@ class X60Ultra extends IPSModule
                 $vals[] = $v;
             }
             $e['values'] = $vals;
+            // Uhrzeiten außerhalb des Viertelstunden-Rasters (z. B. aus der Kachel) als Auswahl erhalten
+            foreach ($e['columns'] as &$c) {
+                if ($c['name'] !== 'time' || !isset($c['edit']['options'])) continue;
+                $have = array_column($c['edit']['options'], 'value');
+                foreach ($vals as $vv) {
+                    if (!empty($vv['time']) && !in_array($vv['time'], $have, true)) { $c['edit']['options'][] = ['caption' => $vv['time'], 'value' => $vv['time']]; $have[] = $vv['time']; }
+                }
+            }
+            unset($c);
         }
         unset($e);
     }
@@ -1373,8 +1382,10 @@ class X60Ultra extends IPSModule
         if (!$force && $got !== null && $base !== null && $best > 0 && isset($base['info']['timestamp_ms'])
             && $best <= floatval($base['info']['timestamp_ms'])) return $base;
         if ($got === null) return $base;
-        $this->SetBuffer('LiveFrame', strval($got['frameId']));
-        $this->SetBuffer('LiveBlock', base64_encode(gzcompress(serialize($got))));
+        // gemeinsame Übernahme mit den Live-Bildern (Details und Position richtig zusammenführen)
+        $got['type'] = 'I';
+        if (!$this->LiveTakeBlock($got)) return $base;
+        $got = $this->LiveBlock();
         if ($this->ReadPropertyBoolean('MapImage')) $this->StoreMapImage($got, $got['mapId'], 'Map');
         return $got;
     }

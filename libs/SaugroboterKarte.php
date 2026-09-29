@@ -203,7 +203,14 @@ class SaugroboterKarte
                 $n = ord($p['cells'][$y * $p['w'] + $x]);
                 if ($n == 0) continue;
                 $i = ($oy + $y) * $w + $ox + $x;
-                $cells[$i] = chr($v2 ? $n : ((ord($cells[$i]) + $n) & 0xFF));
+                if ($v2) {
+                    // Wände und Möbelumrisse nicht durch bloße Raumfläche überschreiben
+                    $old = ord($cells[$i]);
+                    if ((($old >> 5) & 3) == 1 || (($old >> 5) & 3) == 2) { if ((($n >> 5) & 3) == 0) continue; }
+                    $cells[$i] = chr($n);
+                } else {
+                    $cells[$i] = chr((ord($cells[$i]) + $n) & 0xFF);
+                }
             }
         }
         $info = $base['info'];
@@ -220,6 +227,36 @@ class SaugroboterKarte
             'frameId' => $p['frameId'], 'robot' => $p['robot'], 'dock' => $p['dock'],
             'w' => $w, 'h' => $h, 'left' => $left, 'top' => $top, 'cells' => $cells, 'info' => $info, 'type' => 'I'
         ]);
+    }
+
+    // Zahl der Detailzellen (Wände, Möbelumrisse) – zeigt, wie ausführlich ein Kartenbild ist
+    public static function DetailCount($b, $format)
+    {
+        $n = 0; $len = strlen($b['cells']);
+        for ($i = 0; $i < $len; $i++) {
+            $c = ord($b['cells'][$i]);
+            if ($c && self::Cell($c, $format) == self::WALL) $n++;
+        }
+        return $n;
+    }
+
+    /**
+     * Ausführliche Karte ($detail) mit dem aktuellen Stand eines anderen Bilds ($live) verbinden:
+     * Zellen (Wände, Möbel, Räume) aus $detail, Roboter/Station/Zeit aus $live, die längere Strecke gewinnt.
+     */
+    public static function Overlay($detail, $live)
+    {
+        $out = $detail;
+        $out['robot'] = $live['robot'];
+        $out['dock'] = $live['dock'];
+        $out['frameId'] = $live['frameId'];
+        $tl = isset($live['info']['timestamp_ms']) ? floatval($live['info']['timestamp_ms']) : 0;
+        $td = isset($detail['info']['timestamp_ms']) ? floatval($detail['info']['timestamp_ms']) : 0;
+        if ($tl > $td) $out['info']['timestamp_ms'] = $live['info']['timestamp_ms'];
+        $a = isset($detail['info']['tr']) ? strval($detail['info']['tr']) : '';
+        $b = isset($live['info']['tr']) ? strval($live['info']['tr']) : '';
+        $out['info']['tr'] = strlen($b) > strlen($a) ? $b : $a;
+        return $out;
     }
 
     // Räume aus dem Anhang: [seg => ['name' => ..., 'type' => ..., 'hidden' => bool]]

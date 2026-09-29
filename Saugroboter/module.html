@@ -419,6 +419,18 @@
 
     h += mapBlock(v);
     h += controls(v);
+    // Station kompakt: Zustand als kleine Anzeigen, Aktionen in einer Zeile
+    var sIcon = ['drop', 'dirty', 'bag'], sShort = ['Frischwasser', 'Schmutzwasser', 'Beutel'];
+    h += '<div class="card"><div class="ch"><span>Station</span></div><div class="spills">';
+    v.station.forEach(function (s, i) {
+      var st = s[1] < 0 ? 'unk' : (s[1] > 0 ? 'warn' : 'ok');
+      h += '<span class="spill ' + st + '" title="' + esc(s[0]) + '">' + ic(sIcon[i] || 'drop', 'xs') + '<span>' + esc(sShort[i] || s[0]) + '</span><b>' + esc(s[2]) + '</b></span>';
+    });
+    h += '</div><div class="sacts">' +
+      '<button class="sact' + (isBusy('c10') ? ' pending' : '') + '" data-cmd="10">' + ic('wash', 'xs') + 'Waschen</button>' +
+      '<button class="sact' + (isBusy('c11') ? ' pending' : '') + '" data-cmd="11">' + ic('dry', 'xs') + 'Trocknen</button>' +
+      '<button class="sact' + (isBusy('c13') ? ' pending' : '') + '" data-cmd="13">' + ic('empty', 'xs') + 'Absaugen</button></div></div>';
+
     h += '</div><div class="col">';
 
     // Reinigen: Räume wählen (optional) und Programm – gestartet wird über den großen Knopf
@@ -443,18 +455,6 @@
       (v.history.length ? '<button class="lrow" data-open="hist"><span class="lk">Verlauf</span><span class="lv">' + esc(v.history[0]) + '</span><span class="chev r"></span></button>' : '') +
       (v.wear.length ? '<button class="lrow" data-open="wear"><span class="lk">Verschleiß</span><span class="lv">' + (lowN ? '<span class="badge warn">' + lowN + ' fällig</span>' : 'alles in Ordnung') + '</span><span class="chev r"></span></button>' : '') +
       '</div></div>';
-
-    // Station kompakt: Zustand als kleine Anzeigen, Aktionen in einer Zeile
-    var sIcon = ['drop', 'dirty', 'bag'], sShort = ['Frischwasser', 'Schmutzwasser', 'Beutel'];
-    h += '<div class="card"><div class="ch"><span>Station</span></div><div class="spills">';
-    v.station.forEach(function (s, i) {
-      var st = s[1] < 0 ? 'unk' : (s[1] > 0 ? 'warn' : 'ok');
-      h += '<span class="spill ' + st + '" title="' + esc(s[0]) + '">' + ic(sIcon[i] || 'drop', 'xs') + '<span>' + esc(sShort[i] || s[0]) + '</span><b>' + esc(s[2]) + '</b></span>';
-    });
-    h += '</div><div class="sacts">' +
-      '<button class="sact' + (isBusy('c10') ? ' pending' : '') + '" data-cmd="10">' + ic('wash', 'xs') + 'Waschen</button>' +
-      '<button class="sact' + (isBusy('c11') ? ' pending' : '') + '" data-cmd="11">' + ic('dry', 'xs') + 'Trocknen</button>' +
-      '<button class="sact' + (isBusy('c13') ? ' pending' : '') + '" data-cmd="13">' + ic('empty', 'xs') + 'Absaugen</button></div></div>';
 
     if (v.maintenance && v.maintenance !== '–') h += '<div class="alert warn">' + ic('wrench') + '<div class="grow"><b>Wartung fällig</b><div class="small">' + esc(v.maintenance) + '</div></div></div>';
 

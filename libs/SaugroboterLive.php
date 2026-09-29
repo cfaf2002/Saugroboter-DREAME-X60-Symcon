@@ -546,14 +546,31 @@ trait SaugroboterLive
         return $ok;
     }
 
-    private function LiveTakeBlock($b)
+    /**
+     * Neues Kartenbild übernehmen. Die schnellen Live-Bilder des X60 enthalten teils keine Wände,
+     * Möbelumrisse oder Strecke – dann liefern sie nur Roboterposition und Zeit, die Details bleiben
+     * aus dem ausführlicheren Bild (Kartendatei). Ein älteres, aber ausführlicheres Bild (Datei)
+     * frischt umgekehrt die Details auf, ohne die aktuelle Roboterposition zu verlieren.
+     */
+    protected function LiveTakeBlock($b)
     {
         $base = $this->LiveBlock();
         if ($b['type'] === 'I') {
-            // Ältere Vollbilder (z. B. eine verspätete Datei) nicht über ein neueres legen
-            if ($base !== null && $base['mapId'] == $b['mapId'] && isset($base['info']['timestamp_ms'], $b['info']['timestamp_ms'])
-                && floatval($b['info']['timestamp_ms']) < floatval($base['info']['timestamp_ms'])) return false;
             $got = $b;
+            if ($base !== null && $base['mapId'] == $b['mapId']) {
+                $f = $this->CellFormat($b);
+                $dNew = SaugroboterKarte::DetailCount($b, $f);
+                $dOld = SaugroboterKarte::DetailCount($base, $f);
+                $newer = !isset($base['info']['timestamp_ms'], $b['info']['timestamp_ms'])
+                    || floatval($b['info']['timestamp_ms']) >= floatval($base['info']['timestamp_ms']);
+                $thin = $dOld > 50 && $dNew < $dOld * 0.5;
+                if ($newer && $thin) $got = SaugroboterKarte::Overlay($base, $b);          // nur Position/Zeit übernehmen
+                elseif ($newer) $got = $b;                                                   // neueres, ausführliches Bild
+                elseif (!$thin && $dNew >= $dOld * 0.8) $got = SaugroboterKarte::Overlay($b, $base); // ältere Datei: Details auffrischen
+                else return false;
+                // Strecke nicht verlieren, wenn das neue Bild keine mitbringt
+                if (empty($got['info']['tr']) && !empty($base['info']['tr'])) $got['info']['tr'] = $base['info']['tr'];
+            }
         } elseif ($b['type'] === 'P') {
             if ($base === null || $base['mapId'] != $b['mapId']) {
                 // Kein passendes Vollbild da: Kartendatei holen
@@ -580,6 +597,8 @@ trait SaugroboterLive
         if (!$this->ReadPropertyBoolean('Active')) return;
 
         $obj = $this->GetBuffer('LiveObject');
+        // Während der Reinigung alle 2 Minuten die ausführliche Kartendatei (Wände, Möbel, Strecke) nachladen
+        if ($this->ReadAttributeInteger('Job') == 1 && intval($this->GetBuffer('FullTry')) < time() - 120) $this->SetBuffer('NeedFull', '1');
         $full = $this->GetBuffer('NeedFull') === '1' && intval($this->GetBuffer('FullTry')) < time() - 20;
         if ($obj !== '' || $full) {
             $ok = $this->Locked(function () use ($obj, $full) {

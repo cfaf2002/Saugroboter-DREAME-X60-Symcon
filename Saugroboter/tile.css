@@ -28,7 +28,7 @@ body { padding: 44px 14px 18px; height: 100vh; overflow-y: auto; scrollbar-width
 @media (min-width: 760px) {
   #app { max-width: 1280px; }
   .cols { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr); align-items: start; gap: 16px; }
-  .cols > .col:first-child { position: sticky; top: 0; }
+
   .mapwrap img { max-height: calc(100vh - 290px); min-height: 280px; }
   .mapbox { padding: 6px 0; }
 }
@@ -278,7 +278,7 @@ body.hasbg .card, body.hasbg .head { text-shadow: var(--tshadow, none); }
 .prow { border: 1px solid var(--line); border-radius: 14px; padding: 10px; margin-bottom: 10px; background: var(--card2); }
 .prow-top { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
 .prow select { flex: 1 1 0; min-width: 0; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--dlg); color: var(--fg); font: inherit; font-size: 13.5px; }
-.prow select option { color: #000; }
+
 .prow .chips { margin-bottom: 6px; }
 .chip.dim { opacity: .4; }
 .chip.off.on { background: var(--warn-soft); color: var(--warn); }
@@ -330,3 +330,11 @@ body.hasbg .card, body.hasbg .head { text-shadow: var(--tshadow, none); }
 .prow select[data-pday] { flex: 1 1 auto; }
 .ptime { flex: 0 0 110px; }
 .prow select.pprog { display: block; width: 100%; margin-bottom: 10px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--dlg); color: var(--fg); font: inherit; font-size: 13.5px; }
+
+/* Auswahllisten: Einträge im Stil der Kachel (sonst schwarz auf dunklem Grund) */
+select { color-scheme: dark; }
+select option, select optgroup { background: #262b33; color: #eef1f5; }
+@media (prefers-color-scheme: light) {
+  select { color-scheme: light; }
+  select option, select optgroup { background: #ffffff; color: #16202c; }
+}

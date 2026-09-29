@@ -506,11 +506,400 @@
             {
               "caption": "Uhrzeit",
               "name": "time",
-              "width": "90px",
+              "width": "100px",
               "add": "",
               "edit": {
-                "type": "ValidationTextBox",
-                "validate": "^([01]?\\d|2[0-3]):[0-5]\\d$|^$"
+                "type": "Select",
+                "options": [
+                  {
+                    "caption": "Standard",
+                    "value": ""
+                  },
+                  {
+                    "caption": "00:00",
+                    "value": "00:00"
+                  },
+                  {
+                    "caption": "00:15",
+                    "value": "00:15"
+                  },
+                  {
+                    "caption": "00:30",
+                    "value": "00:30"
+                  },
+                  {
+                    "caption": "00:45",
+                    "value": "00:45"
+                  },
+                  {
+                    "caption": "01:00",
+                    "value": "01:00"
+                  },
+                  {
+                    "caption": "01:15",
+                    "value": "01:15"
+                  },
+                  {
+                    "caption": "01:30",
+                    "value": "01:30"
+                  },
+                  {
+                    "caption": "01:45",
+                    "value": "01:45"
+                  },
+                  {
+                    "caption": "02:00",
+                    "value": "02:00"
+                  },
+                  {
+                    "caption": "02:15",
+                    "value": "02:15"
+                  },
+                  {
+                    "caption": "02:30",
+                    "value": "02:30"
+                  },
+                  {
+                    "caption": "02:45",
+                    "value": "02:45"
+                  },
+                  {
+                    "caption": "03:00",
+                    "value": "03:00"
+                  },
+                  {
+                    "caption": "03:15",
+                    "value": "03:15"
+                  },
+                  {
+                    "caption": "03:30",
+                    "value": "03:30"
+                  },
+                  {
+                    "caption": "03:45",
+                    "value": "03:45"
+                  },
+                  {
+                    "caption": "04:00",
+                    "value": "04:00"
+                  },
+                  {
+                    "caption": "04:15",
+                    "value": "04:15"
+                  },
+                  {
+                    "caption": "04:30",
+                    "value": "04:30"
+                  },
+                  {
+                    "caption": "04:45",
+                    "value": "04:45"
+                  },
+                  {
+                    "caption": "05:00",
+                    "value": "05:00"
+                  },
+                  {
+                    "caption": "05:15",
+                    "value": "05:15"
+                  },
+                  {
+                    "caption": "05:30",
+                    "value": "05:30"
+                  },
+                  {
+                    "caption": "05:45",
+                    "value": "05:45"
+                  },
+                  {
+                    "caption": "06:00",
+                    "value": "06:00"
+                  },
+                  {
+                    "caption": "06:15",
+                    "value": "06:15"
+                  },
+                  {
+                    "caption": "06:30",
+                    "value": "06:30"
+                  },
+                  {
+                    "caption": "06:45",
+                    "value": "06:45"
+                  },
+                  {
+                    "caption": "07:00",
+                    "value": "07:00"
+                  },
+                  {
+                    "caption": "07:15",
+                    "value": "07:15"
+                  },
+                  {
+                    "caption": "07:30",
+                    "value": "07:30"
+                  },
+                  {
+                    "caption": "07:45",
+                    "value": "07:45"
+                  },
+                  {
+                    "caption": "08:00",
+                    "value": "08:00"
+                  },
+                  {
+                    "caption": "08:15",
+                    "value": "08:15"
+                  },
+                  {
+                    "caption": "08:30",
+                    "value": "08:30"
+                  },
+                  {
+                    "caption": "08:45",
+                    "value": "08:45"
+                  },
+                  {
+                    "caption": "09:00",
+                    "value": "09:00"
+                  },
+                  {
+                    "caption": "09:15",
+                    "value": "09:15"
+                  },
+                  {
+                    "caption": "09:30",
+                    "value": "09:30"
+                  },
+                  {
+                    "caption": "09:45",
+                    "value": "09:45"
+                  },
+                  {
+                    "caption": "10:00",
+                    "value": "10:00"
+                  },
+                  {
+                    "caption": "10:15",
+                    "value": "10:15"
+                  },
+                  {
+                    "caption": "10:30",
+                    "value": "10:30"
+                  },
+                  {
+                    "caption": "10:45",
+                    "value": "10:45"
+                  },
+                  {
+                    "caption": "11:00",
+                    "value": "11:00"
+                  },
+                  {
+                    "caption": "11:15",
+                    "value": "11:15"
+                  },
+                  {
+                    "caption": "11:30",
+                    "value": "11:30"
+                  },
+                  {
+                    "caption": "11:45",
+                    "value": "11:45"
+                  },
+                  {
+                    "caption": "12:00",
+                    "value": "12:00"
+                  },
+                  {
+                    "caption": "12:15",
+                    "value": "12:15"
+                  },
+                  {
+                    "caption": "12:30",
+                    "value": "12:30"
+                  },
+                  {
+                    "caption": "12:45",
+                    "value": "12:45"
+                  },
+                  {
+                    "caption": "13:00",
+                    "value": "13:00"
+                  },
+                  {
+                    "caption": "13:15",
+                    "value": "13:15"
+                  },
+                  {
+                    "caption": "13:30",
+                    "value": "13:30"
+                  },
+                  {
+                    "caption": "13:45",
+                    "value": "13:45"
+                  },
+                  {
+                    "caption": "14:00",
+                    "value": "14:00"
+                  },
+                  {
+                    "caption": "14:15",
+                    "value": "14:15"
+                  },
+                  {
+                    "caption": "14:30",
+                    "value": "14:30"
+                  },
+                  {
+                    "caption": "14:45",
+                    "value": "14:45"
+                  },
+                  {
+                    "caption": "15:00",
+                    "value": "15:00"
+                  },
+                  {
+                    "caption": "15:15",
+                    "value": "15:15"
+                  },
+                  {
+                    "caption": "15:30",
+                    "value": "15:30"
+                  },
+                  {
+                    "caption": "15:45",
+                    "value": "15:45"
+                  },
+                  {
+                    "caption": "16:00",
+                    "value": "16:00"
+                  },
+                  {
+                    "caption": "16:15",
+                    "value": "16:15"
+                  },
+                  {
+                    "caption": "16:30",
+                    "value": "16:30"
+                  },
+                  {
+                    "caption": "16:45",
+                    "value": "16:45"
+                  },
+                  {
+                    "caption": "17:00",
+                    "value": "17:00"
+                  },
+                  {
+                    "caption": "17:15",
+                    "value": "17:15"
+                  },
+                  {
+                    "caption": "17:30",
+                    "value": "17:30"
+                  },
+                  {
+                    "caption": "17:45",
+                    "value": "17:45"
+                  },
+                  {
+                    "caption": "18:00",
+                    "value": "18:00"
+                  },
+                  {
+                    "caption": "18:15",
+                    "value": "18:15"
+                  },
+                  {
+                    "caption": "18:30",
+                    "value": "18:30"
+                  },
+                  {
+                    "caption": "18:45",
+                    "value": "18:45"
+                  },
+                  {
+                    "caption": "19:00",
+                    "value": "19:00"
+                  },
+                  {
+                    "caption": "19:15",
+                    "value": "19:15"
+                  },
+                  {
+                    "caption": "19:30",
+                    "value": "19:30"
+                  },
+                  {
+                    "caption": "19:45",
+                    "value": "19:45"
+                  },
+                  {
+                    "caption": "20:00",
+                    "value": "20:00"
+                  },
+                  {
+                    "caption": "20:15",
+                    "value": "20:15"
+                  },
+                  {
+                    "caption": "20:30",
+                    "value": "20:30"
+                  },
+                  {
+                    "caption": "20:45",
+                    "value": "20:45"
+                  },
+                  {
+                    "caption": "21:00",
+                    "value": "21:00"
+                  },
+                  {
+                    "caption": "21:15",
+                    "value": "21:15"
+                  },
+                  {
+                    "caption": "21:30",
+                    "value": "21:30"
+                  },
+                  {
+                    "caption": "21:45",
+                    "value": "21:45"
+                  },
+                  {
+                    "caption": "22:00",
+                    "value": "22:00"
+                  },
+                  {
+                    "caption": "22:15",
+                    "value": "22:15"
+                  },
+                  {
+                    "caption": "22:30",
+                    "value": "22:30"
+                  },
+                  {
+                    "caption": "22:45",
+                    "value": "22:45"
+                  },
+                  {
+                    "caption": "23:00",
+                    "value": "23:00"
+                  },
+                  {
+                    "caption": "23:15",
+                    "value": "23:15"
+                  },
+                  {
+                    "caption": "23:30",
+                    "value": "23:30"
+                  },
+                  {
+                    "caption": "23:45",
+                    "value": "23:45"
+                  }
+                ]
               }
             },
             {
