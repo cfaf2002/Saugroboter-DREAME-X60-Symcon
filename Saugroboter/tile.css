@@ -224,3 +224,12 @@ details[open] .chev { transform: rotate(225deg); margin: 4px 4px 0; }
 .setrow:hover { border-color: var(--acc); }
 .chev.r { transform: rotate(-45deg); margin: 0 4px; }
 .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: spin 1s linear infinite; }
+
+/* Eigenes Hintergrundbild (in der Instanz hochgeladen), abgedunkelt für gute Lesbarkeit */
+#bg { position: fixed; inset: 0; z-index: -1; background: center / cover no-repeat; display: none; }
+body.hasbg #bg { display: block; }
+#bg::after { content: ""; position: absolute; inset: 0; background: rgba(10,13,18,var(--dim, .45)); }
+@media (prefers-color-scheme: light) { #bg::after { background: rgba(238,241,245,var(--dim, .45)); } }
+body.hasbg .card { background: color-mix(in srgb, var(--dlg) 72%, transparent); }
+body.hasbg .head .name, body.hasbg .head .state { text-shadow: 0 1px 8px rgba(0,0,0,.35); }
+@media (prefers-color-scheme: light) { body.hasbg .head .name, body.hasbg .head .state { text-shadow: 0 1px 8px rgba(255,255,255,.6); } }

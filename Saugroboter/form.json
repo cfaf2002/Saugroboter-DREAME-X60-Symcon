@@ -2,25 +2,21 @@
   "elements": [
     {
       "type": "ExpansionPanel",
-      "caption": "Nutzungshinweis – bitte lesen",
+      "caption": "Nutzungshinweis",
       "expanded": true,
       "items": [
         {
           "type": "Label",
-          "caption": "Dieses Modul ist ein privates, inoffizielles Projekt. Es ist nicht mit Dreame verbunden und wird von Dreame weder unterstützt noch geprüft."
+          "caption": "Privates, inoffizielles Projekt – nicht von Dreame."
         },
         {
           "type": "Label",
-          "caption": "Es nutzt die nicht dokumentierte Cloud-Schnittstelle der Dreamehome-App mit deinem eigenen Konto für dein eigenes Gerät. Dreame kann die Schnittstelle jederzeit ändern oder die Nutzung untersagen; ob das mit den Nutzungsbedingungen von Dreame vereinbar ist, liegt in deiner Verantwortung."
-        },
-        {
-          "type": "Label",
-          "caption": "Das Passwort wird nicht im Klartext gespeichert. Daten fließen nur zwischen dieser Symcon-Installation und der Dreame-Cloud."
+          "caption": "Nutzt die Cloud der Dreamehome-App mit deinem Konto. Dreame kann das jederzeit ändern."
         },
         {
           "type": "CheckBox",
           "name": "Consent",
-          "caption": "Gelesen – ich nutze das Modul mit meinem eigenen Konto und auf eigene Verantwortung"
+          "caption": "Gelesen – Nutzung auf eigene Verantwortung"
         }
       ]
     },
@@ -63,7 +59,7 @@
       "items": [
         {
           "type": "Label",
-          "caption": "Zugangsdaten der Dreamehome-App. Das Passwort wird beim Übernehmen in einen Hash umgewandelt und nicht im Klartext gespeichert."
+          "caption": "Zugangsdaten der Dreamehome-App (Passwort wird nur als Hash gespeichert)."
         },
         {
           "type": "ValidationTextBox",
@@ -109,21 +105,21 @@
         {
           "type": "ValidationTextBox",
           "name": "DeviceFilter",
-          "caption": "Gerät (nur bei mehreren Robotern: Name, Modell oder did)"
+          "caption": "Gerät (nur bei mehreren Robotern)"
         },
         {
           "type": "CheckBox",
           "name": "VerifyTLS",
-          "caption": "TLS-Zertifikate prüfen"
+          "caption": "Zertifikate prüfen"
         },
         {
           "type": "CheckBox",
           "name": "Live",
-          "caption": "Live-Verbindung (Zustand, Position und Karte in Echtzeit wie in der App)"
+          "caption": "Live-Verbindung (Echtzeit)"
         },
         {
           "type": "Label",
-          "caption": "Nutzt dieselbe Push-Verbindung (MQTT) wie die App. Dafür legt das Modul automatisch einen Client Socket als übergeordnete Instanz an und stellt ihn selbst ein. Fällt die Verbindung aus, fragt das Modul wie gewohnt regelmäßig ab. Der Live-Server hat kein öffentlich prüfbares Zertifikat. Das Modul merkt sich deshalb sein Zertifikat beim ersten Kontakt und sendet die Anmeldung nur, wenn der Server später dasselbe vorzeigt."
+          "caption": "Wie in der App: Zustand und Karte sofort. Richtet sich selbst ein; bei Ausfall normale Abfrage."
         },
         {
           "type": "RowLayout",
@@ -131,7 +127,7 @@
             {
               "type": "NumberSpinner",
               "name": "Interval",
-              "caption": "Abfrage im Ruhezustand",
+              "caption": "Abfrage in Ruhe",
               "suffix": "s",
               "minimum": 30,
               "maximum": 3600
@@ -139,7 +135,7 @@
             {
               "type": "NumberSpinner",
               "name": "IntervalBusy",
-              "caption": "während der Reinigung",
+              "caption": "beim Reinigen",
               "suffix": "s",
               "minimum": 10,
               "maximum": 300
@@ -156,18 +152,18 @@
             },
             {
               "type": "Button",
-              "caption": "Gerät scannen (Diagnose)",
+              "caption": "Gerät scannen",
               "onClick": "SAUG_ScanDevice($id);",
               "confirm": "Fragt rund 2.800 Kennungen ab (ca. 20–40 Sekunden). Fortfahren?"
             },
             {
               "type": "Button",
-              "caption": "Live-Verbindung neu aufbauen",
+              "caption": "Live neu verbinden",
               "onClick": "SAUG_LiveRestart($id);"
             },
             {
               "type": "Button",
-              "caption": "Server-Zertifikat neu übernehmen",
+              "caption": "Zertifikat neu übernehmen",
               "onClick": "SAUG_LiveTrustCertificate($id);",
               "confirm": "Nur nötig, wenn Dreame das Zertifikat des Live-Servers erneuert hat. Wirklich neu übernehmen?"
             }
@@ -181,7 +177,7 @@
       "items": [
         {
           "type": "Label",
-          "caption": "Liest die in der App gespeicherten Karten mit allen Räumen. Nach Umbau oder Neukartierung erneut einlesen."
+          "caption": "Liest Karten und Räume aus der App. Nach Neukartierung erneut einlesen."
         },
         {
           "type": "RowLayout",
@@ -200,7 +196,7 @@
         },
         {
           "type": "Label",
-          "caption": "„Verwenden“ abwählen blendet Räume aus (z. B. Phantomräume hinter Glastüren). Unter „Eigener Name“ lässt sich ein Raum für Symcon umbenennen."
+          "caption": "„Verwenden“ aus = Raum ausblenden. „Eigener Name“ = Anzeigename."
         },
         {
           "type": "List",
@@ -261,7 +257,7 @@
         {
           "type": "CheckBox",
           "name": "MapImage",
-          "caption": "Kartenbild erzeugen (Medienobjekt „Karte“, für Kachel und WebFront)"
+          "caption": "Kartenbild erzeugen"
         },
         {
           "type": "Select",
@@ -293,12 +289,12 @@
         {
           "type": "CheckBox",
           "name": "MapPath",
-          "caption": "Gefahrene Strecke einzeichnen"
+          "caption": "Strecke einzeichnen"
         },
         {
           "type": "Select",
           "name": "MapFormat",
-          "caption": "Zellformat (nur ändern, wenn die Karte falsch aussieht)",
+          "caption": "Zellformat (nur bei Fehlern)",
           "options": [
             {
               "caption": "automatisch",
@@ -327,7 +323,7 @@
         {
           "type": "NumberSpinner",
           "name": "WearWarn",
-          "caption": "Verschleißteil melden ab Restlaufzeit",
+          "caption": "Verschleiß melden ab",
           "suffix": "%",
           "minimum": 0,
           "maximum": 50
@@ -343,21 +339,21 @@
     },
     {
       "type": "ExpansionPanel",
-      "caption": "Automatik: reinigen, wenn niemand zu Hause ist",
+      "caption": "Automatik (niemand zu Hause)",
       "items": [
         {
           "type": "Label",
-          "caption": "Einschalten über die Variable „Reinigen bei Abwesenheit“ (auch in der Kachel)."
+          "caption": "Ein/Aus über „Reinigen bei Abwesenheit“ – auch in der Kachel."
         },
         {
           "type": "SelectVariable",
           "name": "PresenceVariable",
-          "caption": "Anwesenheit (true = jemand zu Hause)"
+          "caption": "Anwesenheit (true = zu Hause)"
         },
         {
           "type": "CheckBox",
           "name": "PresenceInverted",
-          "caption": "Variable umkehren (true = niemand zu Hause)"
+          "caption": "Variable umkehren"
         },
         {
           "type": "NumberSpinner",
@@ -389,9 +385,35 @@
           ]
         },
         {
-          "type": "ValidationTextBox",
+          "type": "Select",
           "name": "AutoDays",
-          "caption": "an Tagen (1 = Mo … 7 = So)"
+          "caption": "Tage",
+          "options": [
+            {
+              "caption": "täglich",
+              "value": "1234567"
+            },
+            {
+              "caption": "Mo–Fr",
+              "value": "12345"
+            },
+            {
+              "caption": "Sa + So",
+              "value": "67"
+            },
+            {
+              "caption": "Mo, Mi, Fr",
+              "value": "135"
+            },
+            {
+              "caption": "Di, Do",
+              "value": "24"
+            },
+            {
+              "caption": "Mo–Sa",
+              "value": "123456"
+            }
+          ]
         },
         {
           "type": "NumberSpinner",
@@ -410,13 +432,56 @@
           "maximum": 100
         },
         {
+          "type": "Select",
+          "name": "AutoProgram",
+          "caption": "Programm",
+          "options": [
+            {
+              "caption": "wie Vorwahlen",
+              "value": 0
+            },
+            {
+              "caption": "Schnell saugen",
+              "value": 1
+            },
+            {
+              "caption": "Gründlich saugen (2×, Turbo)",
+              "value": 2
+            },
+            {
+              "caption": "Saugen und wischen",
+              "value": 3
+            },
+            {
+              "caption": "Erst saugen, dann wischen",
+              "value": 4
+            },
+            {
+              "caption": "Nur wischen",
+              "value": 5
+            },
+            {
+              "caption": "Leise (Nachtruhe)",
+              "value": 6
+            },
+            {
+              "caption": "CleanGenius Routine",
+              "value": 7
+            },
+            {
+              "caption": "CleanGenius Tiefenreinigung",
+              "value": 8
+            }
+          ]
+        },
+        {
           "type": "ValidationTextBox",
           "name": "AutoRooms",
-          "caption": "Räume (leer = alles; z. B. „Küche, Flur“) – gilt, wenn der Raumplan für heute nichts vorgibt"
+          "caption": "Räume ohne Raumplan (leer = alles)"
         },
         {
           "type": "Label",
-          "caption": "Raumplan: je Tag die Räume anhaken. Nichts angehakt = alles, „frei“ = an diesem Tag nicht reinigen. Ein bestimmter Tag geht vor Mo–Fr/Sa+So, das vor täglich. Räume einer Zeile müssen auf derselben Etage liegen."
+          "caption": "Raumplan: je Tag Räume anhaken (nichts = alles, „frei“ = nicht reinigen) und ggf. ein eigenes Programm."
         },
         {
           "type": "List",
@@ -429,7 +494,7 @@
             {
               "caption": "Tag",
               "name": "day",
-              "width": "160px",
+              "width": "110px",
               "add": 8,
               "edit": {
                 "type": "Select",
@@ -478,6 +543,57 @@
               }
             },
             {
+              "caption": "Programm",
+              "name": "prog",
+              "width": "190px",
+              "add": -1,
+              "edit": {
+                "type": "Select",
+                "options": [
+                  {
+                    "caption": "wie oben",
+                    "value": -1
+                  },
+                  {
+                    "caption": "wie Vorwahlen",
+                    "value": 0
+                  },
+                  {
+                    "caption": "Schnell saugen",
+                    "value": 1
+                  },
+                  {
+                    "caption": "Gründlich saugen (2×, Turbo)",
+                    "value": 2
+                  },
+                  {
+                    "caption": "Saugen und wischen",
+                    "value": 3
+                  },
+                  {
+                    "caption": "Erst saugen, dann wischen",
+                    "value": 4
+                  },
+                  {
+                    "caption": "Nur wischen",
+                    "value": 5
+                  },
+                  {
+                    "caption": "Leise (Nachtruhe)",
+                    "value": 6
+                  },
+                  {
+                    "caption": "CleanGenius Routine",
+                    "value": 7
+                  },
+                  {
+                    "caption": "CleanGenius Tiefenreinigung",
+                    "value": 8
+                  }
+                ]
+              }
+            },
+            {
               "caption": "Räume",
               "name": "rooms",
               "width": "auto",
@@ -491,7 +607,7 @@
         {
           "type": "CheckBox",
           "name": "AutoReturn",
-          "caption": "Kommt jemand heim: Automatik-Fahrt beenden, zurück zur Station"
+          "caption": "Bei Heimkehr zurück zur Station"
         }
       ]
     },
@@ -502,7 +618,7 @@
         {
           "type": "SelectInstance",
           "name": "NotifyTarget",
-          "caption": "Push an (Kachel-Visualisierung oder WebFront)"
+          "caption": "Push an"
         },
         {
           "type": "CheckBox",
@@ -512,7 +628,7 @@
         {
           "type": "CheckBox",
           "name": "NotifyError",
-          "caption": "Störungen und Hinweise"
+          "caption": "Störungen"
         },
         {
           "type": "CheckBox",
@@ -522,7 +638,7 @@
         {
           "type": "CheckBox",
           "name": "NotifyAuto",
-          "caption": "Start durch die Automatik"
+          "caption": "Start der Automatik"
         }
       ]
     },
@@ -532,12 +648,31 @@
       "items": [
         {
           "type": "Label",
-          "caption": "Kachel-Visualisierung: die Instanz direkt als Kachel hinzufügen."
+          "caption": "Kachel: Instanz direkt als Kachel hinzufügen."
+        },
+        {
+          "type": "SelectFile",
+          "name": "BgUpload",
+          "caption": "Hintergrundbild der Kachel",
+          "extensions": ".jpg,.jpeg,.png,.webp"
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "BgDim",
+          "caption": "Hintergrund abdunkeln",
+          "suffix": "%",
+          "minimum": 0,
+          "maximum": 90
+        },
+        {
+          "type": "Button",
+          "caption": "Hintergrund entfernen",
+          "onClick": "SAUG_RemoveBackground($id);"
         },
         {
           "type": "CheckBox",
           "name": "DashboardBox",
-          "caption": "Zusätzlich HTML-Box „Übersicht“ für WebFront/IPSView"
+          "caption": "HTML-Box „Übersicht“ (WebFront)"
         }
       ]
     }

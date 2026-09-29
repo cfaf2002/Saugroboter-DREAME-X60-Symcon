@@ -40,6 +40,19 @@ class X60Ultra extends IPSModule
         14 => 'Hinweis quittieren', 15 => 'Orten'
     ];
 
+    // Reinigungsprogramme für die Automatik: Name => Einstellungen (fehlende Werte = wie am Gerät)
+    const PROGRAMS = [
+        0 => ['wie Vorwahlen', null],
+        1 => ['Schnell saugen', ['Mode' => 0, 'Suction' => 1, 'Route' => 4]],
+        2 => ['Gründlich saugen', ['Mode' => 0, 'Suction' => 3, 'Passes' => 2, 'Route' => 2]],
+        3 => ['Saugen und wischen', ['Mode' => 2, 'Suction' => 1, 'Wetness' => 2]],
+        4 => ['Erst saugen, dann wischen', ['Mode' => 3, 'Suction' => 2, 'Wetness' => 2]],
+        5 => ['Nur wischen', ['Mode' => 1, 'Wetness' => 2]],
+        6 => ['Leise (Nachtruhe)', ['Mode' => 0, 'Suction' => 0, 'Route' => 1]],
+        7 => ['CleanGenius Routine', ['Mode' => 2, 'CleanGenius' => 1]],
+        8 => ['CleanGenius Tiefenreinigung', ['Mode' => 2, 'CleanGenius' => 2]]
+    ];
+
     // Zusatzwerte je nach Modell: Ident => [Name, siid, piid, Typ, Profil, Position]
     const EXTRAS = [
         'Charging'   => ['Lädt', 3, 2, 0, '~Switch', 14],
@@ -73,6 +86,8 @@ class X60Ultra extends IPSModule
         $this->RegisterPropertyInteger('WearWarn', 10);
         $this->RegisterPropertyInteger('HistoryCount', 5);
         $this->RegisterPropertyBoolean('DashboardBox', false);
+        $this->RegisterPropertyString('BgUpload', '');           // Hintergrundbild der Kachel (Upload, wird sofort übernommen)
+        $this->RegisterPropertyInteger('BgDim', 45);             // Abdunkeln des Hintergrunds in %
         // Automatik
         $this->RegisterPropertyInteger('PresenceVariable', 0);
         $this->RegisterPropertyBoolean('PresenceInverted', false);
@@ -84,6 +99,7 @@ class X60Ultra extends IPSModule
         $this->RegisterPropertyInteger('AutoBattery', 60);
         $this->RegisterPropertyString('AutoRooms', '');
         $this->RegisterPropertyBoolean('AutoReturn', true);
+        $this->RegisterPropertyInteger('AutoProgram', 0);        // Reinigungsprogramm der Automatik (siehe PROGRAMS)
         $this->RegisterPropertyString('AutoPlan', '[]');         // [{day, rooms}] – Räume je Wochentag
         // Benachrichtigungen
         $this->RegisterPropertyInteger('NotifyTarget', 0);
@@ -112,7 +128,8 @@ class X60Ultra extends IPSModule
         $this->RegisterAttributeInteger('PresenceWatched', 0);
         $this->RegisterAttributeString('MapMeta', '{}');    // Lage der Räume je Kartenbild (Beschriftung/Antippen)
         $this->RegisterAttributeString('LastLog', '');
-        $this->RegisterAttributeString('LivePin', '');     // gemerktes Zertifikat des Live-Servers      // Startzeit der Fahrt hinter "Letzte Reinigung"
+        $this->RegisterAttributeString('LivePin', '');
+        $this->RegisterAttributeString('BgType', 'jpeg');     // gemerktes Zertifikat des Live-Servers      // Startzeit der Fahrt hinter "Letzte Reinigung"
 
         // ---- Profile ----
         $this->Profile('SAUG.State', 1, 'Robot', '', '', SaugroboterTexte::States());
@@ -226,6 +243,15 @@ class X60Ultra extends IPSModule
 
         // Passwort nie im Klartext speichern: die Cloud erwartet ohnehin nur einen Hash.
         // Einmalig umwandeln, danach steht in den Einstellungen (und Backups) nur noch "hash:...".
+        // Hochgeladenes Hintergrundbild verkleinert als Medienobjekt ablegen und das Upload-Feld leeren
+        // (sonst stünde das ganze Bild in den Einstellungen und jedem Backup)
+        if ($this->ReadPropertyString('BgUpload') !== '') {
+            $this->StoreBackground($this->ReadPropertyString('BgUpload'));
+            IPS_SetProperty($this->InstanceID, 'BgUpload', '');
+            IPS_ApplyChanges($this->InstanceID);
+            return;
+        }
+
         $pw = $this->ReadPropertyString('Password');
         if ($pw !== '' && strpos($pw, 'hash:') !== 0) {
             IPS_SetProperty($this->InstanceID, 'Password', 'hash:' . $this->PasswordHash($pw));
@@ -281,6 +307,7 @@ class X60Ultra extends IPSModule
         $this->FormSetValues($form['elements'], 'Rooms', $rows);
         $this->FormRoomPlan($form['elements']);
         $this->FormStatus($form['elements']);
+        $this->FormCustomDays($form['elements']);
         // Versionszeile ganz unten
         $lib = json_decode(@file_get_contents(__DIR__ . '/../library.json'), true);
         if (is_array($lib)) {
@@ -289,6 +316,20 @@ class X60Ultra extends IPSModule
                 . substr(strval($lib['date']), 0, 4) . ' · © ' . $lib['author']];
         }
         return json_encode($form);
+    }
+
+    // Tage-Auswahl: eigene, ältere Angaben (z. B. "1357") als zusätzliche Option erhalten
+    private function FormCustomDays(&$elements)
+    {
+        $cur = preg_replace('/[^1-7]/', '', $this->ReadPropertyString('AutoDays'));
+        foreach ($elements as &$e) {
+            if (isset($e['items'])) $this->FormCustomDays($e['items']);
+            if (!isset($e['name']) || $e['name'] !== 'AutoDays') continue;
+            if ($cur === '' || in_array($cur, array_column($e['options'], 'value'), true)) continue;
+            $names = [1 => 'Mo', 2 => 'Di', 3 => 'Mi', 4 => 'Do', 5 => 'Fr', 6 => 'Sa', 7 => 'So'];
+            $e['options'][] = ['caption' => implode(', ', array_map(function ($d) use ($names) { return $names[intval($d)]; }, str_split($cur))), 'value' => $cur];
+        }
+        unset($e);
     }
 
     // Statusblock oben in der Instanz: Texte je Zeile
@@ -348,7 +389,7 @@ class X60Ultra extends IPSModule
             $vals = [];
             $plan = json_decode($this->ReadPropertyString('AutoPlan'), true);
             if (is_array($plan)) foreach ($plan as $row) {
-                $v = ['day' => isset($row['day']) ? intval($row['day']) : 0, 'off' => false];
+                $v = ['day' => isset($row['day']) ? intval($row['day']) : 0, 'prog' => isset($row['prog']) ? intval($row['prog']) : -1, 'off' => false];
                 $codes = $this->PlanCodes($row);
                 if ($codes === '-') $v['off'] = true;
                 foreach ($rooms as $r) $v['r' . $r['code']] = is_array($codes) && in_array($r['code'], $codes, true);
@@ -515,14 +556,18 @@ class X60Ultra extends IPSModule
     // Alles reinigen (auf der gewählten Etage)
     public function CleanAll()
     {
-        return $this->Locked(function () {
-            if (!$this->PrepareFloor($this->ActiveFloor())) return false;
-            $this->ApplyPresets();
-            $ok = $this->MiotAction(2, 1);
-            $this->Result($ok, 'Alles reinigen');
-            if ($ok) { $this->WriteAttributeInteger('JobRooms', 0); $this->PollSoon(); }
-            return $ok;
-        });
+        return $this->Locked(function () { return $this->StartAll([]); });
+    }
+
+    // Alles reinigen; $over = Einstellungen nur für diese Fahrt (leer = Vorwahlen)
+    private function StartAll($over)
+    {
+        if (!$this->PrepareFloor($this->ActiveFloor())) return false;
+        $this->ApplyPresets($over);
+        $ok = $this->MiotAction(2, 1);
+        $this->Result($ok, 'Alles reinigen');
+        if ($ok) { $this->WriteAttributeInteger('JobRooms', 0); $this->PollSoon(); }
+        return $ok;
     }
 
     /**
@@ -1783,11 +1828,14 @@ class X60Ultra extends IPSModule
         if ($why !== '') return false;
 
         $rooms = $this->AutoRoomsToday();
-        $ok = !count($rooms) ? $this->CleanAll() : $this->CleanRooms($rooms);
+        $prog = $this->AutoProgramToday();
+        $over = $this->ProgramSettings($prog);
+        if (!count($rooms)) $ok = $over === null ? $this->CleanAll() : $this->Locked(function () use ($over) { return $this->StartAll($over); });
+        else $ok = $this->CleanRoomsWith($rooms, json_encode($over === null ? [] : $over));
         if ($ok) {
             $this->WriteAttributeInteger('LastAuto', time());
             $this->WriteAttributeInteger('JobByAuto', 1);
-            $what = !count($rooms) ? 'alles' : $this->RoomNames($rooms);
+            $what = (!count($rooms) ? 'alles' : $this->RoomNames($rooms)) . ($prog > 0 ? ', ' . self::PROGRAMS[$prog][0] : '');
             $this->SetVal('AutoStatus', 'gestartet ' . date('H:i') . ' (' . $what . ')');
             if ($this->ReadPropertyBoolean('NotifyAuto')) $this->Push('Automatik', 'Niemand zu Hause – Reinigung gestartet: ' . $what . '.');
         } else {
@@ -1802,7 +1850,17 @@ class X60Ultra extends IPSModule
      * Räume für heute laut Raumplan: [] = alles, '-' = heute nicht, sonst Raumcodes.
      * Genaueste Zeile gewinnt: bestimmter Tag vor Mo–Fr/Sa+So vor täglich. Ohne passende Zeile gilt "Räume".
      */
-    private function AutoRoomsToday()
+    // "Heute: Küche, Bad · Gründlich saugen" für die Kachel
+    private function AutoTodayText()
+    {
+        $rooms = $this->AutoRoomsToday();
+        if ($rooms === '-') return 'Heute frei';
+        $p = $this->AutoProgramToday();
+        return 'Heute: ' . (count($rooms) ? $this->RoomNames($rooms) : 'alles') . ' · ' . self::PROGRAMS[$p][0];
+    }
+
+    // Passende Zeile des Raumplans für heute (genaueste gewinnt) oder null
+    private function PlanRowToday()
     {
         $rows = json_decode($this->ReadPropertyString('AutoPlan'), true);
         $dow = intval(date('N'));
@@ -1810,11 +1868,31 @@ class X60Ultra extends IPSModule
         if (is_array($rows)) foreach ($rows as $r) {
             $d = isset($r['day']) ? intval($r['day']) : 0;
             $match = $d == $dow ? 3 : (($d == 8 && $dow <= 5) || ($d == 9 && $dow >= 6) ? 2 : ($d == 0 ? 1 : 0));
-            if ($match > $rank && $match > 0) {
-                $rank = $match;
-                $best = $this->PlanCodes($r);
-            }
+            if ($match > $rank && $match > 0) { $rank = $match; $best = $r; }
         }
+        return $best;
+    }
+
+    // Programm für heute: aus dem Raumplan, sonst das allgemeine der Automatik
+    private function AutoProgramToday()
+    {
+        $row = $this->PlanRowToday();
+        $p = $row !== null && isset($row['prog']) ? intval($row['prog']) : -1;
+        if ($p < 0 || !isset(self::PROGRAMS[$p])) $p = $this->ReadPropertyInteger('AutoProgram');
+        return isset(self::PROGRAMS[$p]) ? $p : 0;
+    }
+
+    // Einstellungen eines Programms (vollständig, damit keine Vorwahl hineinrutscht); null = Vorwahlen
+    private function ProgramSettings($p)
+    {
+        if (!isset(self::PROGRAMS[$p]) || self::PROGRAMS[$p][1] === null) return null;
+        return self::PROGRAMS[$p][1] + ['Mode' => -1, 'Suction' => -1, 'Wetness' => -1, 'Passes' => 1, 'Route' => -1, 'CleanGenius' => -1];
+    }
+
+    private function AutoRoomsToday()
+    {
+        $row = $this->PlanRowToday();
+        $best = $row === null ? null : $this->PlanCodes($row);
         if ($best === null) {
             $text = trim($this->ReadPropertyString('AutoRooms'));
             $best = $text === '-' ? '-' : ($text === '' ? [] : $this->ResolveRooms($text));
@@ -1866,7 +1944,61 @@ class X60Ultra extends IPSModule
         $html = file_get_contents(__DIR__ . '/module.html');
         $html = str_replace('/*STYLE*/', file_get_contents(__DIR__ . '/tile.css'), $html);
         return str_replace('"__INIT__"', json_encode(['view' => $this->ViewModel(), 'map' => $this->MapDataUri(null, true),
-            'mapLast' => $this->MapDataUri('MapLast', true)], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), $html);
+            'mapLast' => $this->MapDataUri('MapLast', true), 'bg' => $this->BackgroundUri()], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), $html);
+    }
+
+    // ---- Hintergrundbild der Kachel ----
+    // Bild auf höchstens 1600 px verkleinern, als JPEG speichern (klein, schnell geladen)
+    private function StoreBackground($b64)
+    {
+        $raw = base64_decode(preg_replace('#^data:[^,]*,#', '', $b64), true);
+        if ($raw === false || strlen($raw) < 100 || strlen($raw) > 25 * 1048576) { $this->Note('Hintergrundbild nicht lesbar.', 'err'); return; }
+        $out = $raw; $type = 'jpeg';
+        if (function_exists('imagecreatefromstring') && ($img = @imagecreatefromstring($raw)) !== false) {
+            $w = imagesx($img); $h = imagesy($img);
+            $f = min(1, 1600 / max($w, $h));
+            $nw = max(1, intval($w * $f)); $nh = max(1, intval($h * $f));
+            $dst = imagecreatetruecolor($nw, $nh);
+            imagecopyresampled($dst, $img, 0, 0, 0, 0, $nw, $nh, $w, $h);
+            ob_start(); imagejpeg($dst, null, 80); $out = ob_get_clean();
+            imagedestroy($img); imagedestroy($dst);
+        } else {
+            // ohne GD: nur kleine Bilder unverändert übernehmen
+            if (strlen($raw) > 3 * 1048576) { $this->Note('Hintergrundbild zu groß (max. 3 MB ohne Bildbearbeitung).', 'err'); return; }
+            $type = substr($raw, 0, 4) === "\x89PNG" ? 'png' : 'jpeg';
+        }
+        $mid = @IPS_GetObjectIDByIdent('TileBackground', $this->InstanceID);
+        if (!$mid) {
+            $mid = IPS_CreateMedia(1);
+            IPS_SetParent($mid, $this->InstanceID);
+            IPS_SetIdent($mid, 'TileBackground');
+            IPS_SetName($mid, 'Kachel-Hintergrund');
+            IPS_SetPosition($mid, 4);
+            IPS_SetHidden($mid, true);
+        }
+        IPS_SetMediaFile($mid, 'media/Saugroboter_' . $this->InstanceID . '_Hintergrund.' . ($type == 'png' ? 'png' : 'jpg'), false);
+        IPS_SetMediaContent($mid, base64_encode($out));
+        $this->WriteAttributeString('BgType', $type);
+        $this->SetBuffer('BgStamp', strval(microtime(true)));
+        $this->Note('Hintergrundbild übernommen (' . round(strlen($out) / 1024) . ' KB).', 'ok');
+    }
+
+    // Button "Hintergrund entfernen"
+    public function RemoveBackground()
+    {
+        $mid = @IPS_GetObjectIDByIdent('TileBackground', $this->InstanceID);
+        if ($mid) IPS_DeleteMedia($mid, true);
+        $this->SetBuffer('BgStamp', strval(microtime(true)));
+        $this->Note('Hintergrundbild entfernt.', 'ok');
+        $this->RefreshViews();
+        return true;
+    }
+
+    private function BackgroundUri()
+    {
+        $mid = @IPS_GetObjectIDByIdent('TileBackground', $this->InstanceID);
+        $c = $mid ? @IPS_GetMediaContent($mid) : '';
+        return $c ? 'data:image/' . ($this->ReadAttributeString('BgType') ?: 'jpeg') . ';base64,' . $c : '';
     }
 
     // Kachel und HTML-Box auffrischen. Das Kartenbild geht nur nach einer Änderung mit.
@@ -1880,6 +2012,11 @@ class X60Ultra extends IPSModule
             if ($last !== $this->GetBuffer('LastSent')) {
                 $msg['mapLast'] = $this->MapDataUri('MapLast', true);
                 $this->SetBuffer('LastSent', $last);
+            }
+            $bs = $this->GetBuffer('BgStamp');
+            if ($bs !== $this->GetBuffer('BgSent')) {
+                $msg['bg'] = $this->BackgroundUri();
+                $this->SetBuffer('BgSent', $bs);
             }
             $stamp = $this->GetBuffer('MapStamp');
             if ($stamp !== $this->GetBuffer('MapSent')) {
@@ -1945,6 +2082,8 @@ class X60Ultra extends IPSModule
             'history' => array_values(array_filter(explode("\n", $this->GetValue('History')))),
             'auto' => $this->GetValue('AutoAway'), 'autoStatus' => $this->GetValue('AutoStatus'),
             'autoConfigured' => $this->Home() !== null,
+            'autoToday' => $this->AutoTodayText(),
+            'bgDim' => max(0, min(90, $this->ReadPropertyInteger('BgDim'))),
             'message' => $this->GetValue('Message'),
             'mapMeta' => $this->MapMeta($this->MapIdent()),
             'lastMeta' => $this->MapMeta('MapLast'),

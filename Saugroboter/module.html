@@ -2,6 +2,7 @@
      Das Modul schickt ein Datenpaket {view, map}; gezeichnet wird hier.
      Bedienung läuft über requestAction(Ident, Wert) zurück an das Modul. -->
 <style>/*STYLE*/</style>
+<div id="bg"></div>
 <div id="app"></div>
 <script>
 (function () {
@@ -129,6 +130,32 @@
     return h + '</div>';
   }
 
+  // Raumnamen lesbar platzieren: am Rand nach innen schieben, Überlappungen nach unten auflösen
+  function placeLabels() {
+    var wrap = document.querySelector('.mapwrap');
+    if (!wrap) return;
+    var wr = wrap.getBoundingClientRect();
+    if (!wr.width) return;
+    var placed = [];
+    Array.prototype.forEach.call(wrap.querySelectorAll('.lbl'), function (l) {
+      l.style.marginLeft = ''; l.style.marginTop = '';
+      var r = l.getBoundingClientRect(), dx = 0, dy = 0;
+      if (r.right > wr.right - 2) dx = wr.right - 2 - r.right;
+      if (r.left + dx < wr.left + 2) dx = wr.left + 2 - r.left;
+      for (var i = 0; i < 6; i++) {
+        var hit = placed.filter(function (q) {
+          return r.left + dx < q.right && r.right + dx > q.left && r.top + dy < q.bottom && r.bottom + dy > q.top;
+        })[0];
+        if (!hit) break;
+        dy = hit.bottom - r.top + 2;
+      }
+      if (r.bottom + dy > wr.bottom - 2) dy = Math.min(dy, wr.bottom - 2 - r.bottom);
+      if (dx) l.style.marginLeft = dx + 'px';
+      if (dy) l.style.marginTop = dy + 'px';
+      placed.push({ left: r.left + dx, right: r.right + dx, top: r.top + dy, bottom: r.bottom + dy });
+    });
+  }
+
   // Tippposition -> Raumcode (Drehung der Karte rückgängig machen, dann im Raster nachsehen)
   function roomAt(ev, meta) {
     var img = document.getElementById('mapimg');
@@ -237,6 +264,7 @@
 
   function render() {
     var v = view, el = document.getElementById('app');
+    if (v && v.bgDim !== undefined) document.body.style.setProperty('--dim', v.bgDim / 100);
     if (!v) { el.innerHTML = '<div class="loading"><span></span>Verbinde …</div>'; return; }
     var h = '';
 
@@ -296,7 +324,7 @@
 
     // Automatik
     if (v.autoConfigured) {
-      h += '<div class="card row between"><div class="row">' + ic('auto', 'lead') + '<div><div>Reinigen bei Abwesenheit</div><div class="small mute">' + esc(v.autoStatus) + '</div></div></div>' +
+      h += '<div class="card row between"><div class="row">' + ic('auto', 'lead') + '<div><div>Reinigen bei Abwesenheit</div><div class="small mute">' + esc(v.autoStatus) + '</div>' + (v.autoToday ? '<div class="small mute">' + esc(v.autoToday) + '</div>' : '') + '</div></div>' +
         '<button class="switch' + (v.auto ? ' on' : '') + '" data-auto="' + (v.auto ? 0 : 1) + '" aria-label="Automatik"></button></div>';
     }
 
@@ -319,17 +347,9 @@
     if (v.message) h += '<div class="msg">' + esc(v.message) + '</div>';
     h += dialogBlock(v);
     el.innerHTML = h;
-    // Raumnamen am Rand nach innen schieben, damit sie nicht über die Karte hinausragen
-    var wrap = document.querySelector('.mapwrap');
-    if (wrap) {
-      var wr = wrap.getBoundingClientRect();
-      Array.prototype.forEach.call(wrap.querySelectorAll('.lbl'), function (l) {
-        var r = l.getBoundingClientRect(), dx = 0;
-        if (r.right > wr.right - 2) dx = wr.right - 2 - r.right;
-        if (r.left + dx < wr.left + 2) dx = wr.left + 2 - r.left;
-        if (dx) l.style.marginLeft = dx + 'px';
-      });
-    }
+    placeLabels();
+    var mi = document.getElementById('mapimg');
+    if (mi && !mi.complete) mi.onload = placeLabels;
     // Roboter gleitet von der alten zur neuen Position
     var rb = document.getElementById('robot');
     if (rb) requestAnimationFrame(function () {
@@ -386,6 +406,11 @@
   // Pflichtfunktion des HTML-SDK
   window.handleMessage = function (data) {
     var d = typeof data === 'string' ? JSON.parse(data) : data;
+    if ('bg' in d) {
+      var bg = document.getElementById('bg');
+      bg.style.backgroundImage = d.bg ? 'url("' + d.bg + '")' : '';
+      document.body.classList.toggle('hasbg', !!d.bg);
+    }
     if (d.map) map = d.map;
     if (d.mapLast) mapLast = d.mapLast;
     if (d.view) {

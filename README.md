@@ -165,6 +165,11 @@ In der **Kachel-Visualisierung** die Instanz direkt als Kachel hinzufügen. Die 
 - Verschleiß (mit Zurücksetzen), Verlauf und den Schalter für die Automatik
 - **Rückmeldung** nach jedem Befehl: grün „… gesendet“, rot mit dem Grund, wenn etwas nicht geklappt hat
 
+**Hintergrundbild:** Unter *Visualisierung → Hintergrundbild der Kachel* ein Foto hochladen (JPG, PNG, WebP). Das Modul
+verkleinert es auf höchstens 1600 Pixel, legt es als verstecktes Medienobjekt „Kachel-Hintergrund“ ab und leert das
+Upload-Feld wieder – das Bild landet also nicht in den Einstellungen oder Backups. Mit *Hintergrund abdunkeln* (Standard 45 %)
+bleibt alles gut lesbar; *Hintergrund entfernen* nimmt es wieder heraus.
+
 Für **WebFront/IPSView** gibt es unter *Visualisierung* die HTML-Box „Übersicht“ (nur Anzeige) sowie das Medienobjekt „Karte“.
 
 ---
@@ -182,20 +187,33 @@ Gestartet wird, wenn **alle** Bedingungen erfüllt sind:
 - der Akku hat mindestens *n* %, der Roboter ist erreichbar, frei und ohne Störung
 - der Raumplan sieht heute eine Reinigung vor
 
-Gereinigt wird alles oder die unter *Räume* eingetragenen Räume („Küche, Flur“) – mit den aktuellen Vorwahlen.
+Gereinigt wird alles oder die unter *Räume* eingetragenen Räume („Küche, Flur“) – mit dem gewählten **Programm**:
 
-**Raumplan:** Im Raumplan hat jeder Raum eine eigene Spalte zum Anhaken (sobald die Räume eingelesen sind).
-Nichts angehakt = alles, *frei* = an diesem Tag nicht reinigen. Ein bestimmter Tag geht vor *Mo–Fr* bzw. *Sa + So*,
+| Programm | Einstellungen |
+|---|---|
+| wie Vorwahlen | die Vorwahlen aus Kachel bzw. Variablen |
+| Schnell saugen | Saugen, Standard, Route *Schnell* |
+| Gründlich saugen | Saugen, Turbo, 2 Durchgänge, Route *Intensiv* |
+| Saugen und wischen | beides gleichzeitig, Standard, feucht |
+| Erst saugen, dann wischen | nacheinander, stark, feucht |
+| Nur wischen | Wischen, feucht |
+| Leise (Nachtruhe) | Saugen, leise, Route *Standard* |
+| CleanGenius Routine / Tiefenreinigung | Roboter entscheidet selbst (Saugen und wischen) |
+
+Nicht genannte Werte bleiben wie am Gerät eingestellt. Die Vorwahlen selbst werden dabei nicht verändert.
+
+**Raumplan:** Im Raumplan hat jeder Raum eine eigene Spalte zum Anhaken (sobald die Räume eingelesen sind), dazu
+je Zeile ein eigenes *Programm* (oder *wie oben*). Nichts angehakt = alles, *frei* = an diesem Tag nicht reinigen. Ein bestimmter Tag geht vor *Mo–Fr* bzw. *Sa + So*,
 das vor *täglich*. Gibt der Plan für heute nichts vor, gilt *Räume*. Die Räume einer Zeile müssen auf derselben Etage liegen.
 
-| Tag | Wohnzimmer | Küche | Flur | frei |
-|---|---|---|---|---|
-| Mo–Fr |  | ✓ |  |  |
-| Samstag |  |  |  |  |
-| Sonntag |  |  |  | ✓ |
+| Tag | Programm | Wohnzimmer | Küche | Flur | frei |
+|---|---|---|---|---|---|
+| Mo–Fr | Schnell saugen |  | ✓ |  |  |
+| Samstag | Gründlich saugen |  |  |  |  |
+| Sonntag | wie oben |  |  |  | ✓ |
 
 Kommt jemand heim, fährt der Roboter auf Wunsch zurück zur Station. Die Variable **Automatik** zeigt jederzeit,
-worauf die Automatik gerade wartet.
+worauf die Automatik gerade wartet; die Kachel zeigt zusätzlich, was heute geplant ist („Heute: Küche · Schnell saugen“).
 
 ---
 
