@@ -118,6 +118,8 @@
     if (ov && meta && meta.dock) h += '<span class="dock" style="left:' + (meta.dock[0] * 100) + '%;top:' + (meta.dock[1] * 100) + '%">' + dockSvg() + '</span>';
     if (ov && meta && meta.robot && !last) {
       var tgt = { x: meta.robot[0] * 100, y: meta.robot[1] * 100, a: meta.robot[2] };
+      // Steht der Roboter laut Zustand in der Station, dort zeichnen (Karte kann älter sein)
+      if ((v.group === 'docked' || v.group === 'station') && meta.dock) { tgt.x = meta.dock[0] * 100; tgt.y = meta.dock[1] * 100; }
       var from = lastRobot && lastRobot.map === meta.mapId ? lastRobot : tgt;
       // kürzester Drehweg (359° -> 1° dreht 2°, nicht 358°)
       if (lastRobot) { var da = ((tgt.a - from.a) % 360 + 540) % 360 - 180; tgt.a = from.a + da; }

@@ -1225,9 +1225,17 @@ class X60Ultra extends IPSModule
                 $this->SetBuffer('SlowAt', strval(time()));
             }
             $v = $this->MiotGet($keys);
-            if ($v === null || !isset($v['2.1'])) { $this->Online(false); return false; }
-            $this->Online(true);
-            if ($this->dcFromCache) $this->Note('Roboter antwortet nicht direkt – Werte aus dem Cloud-Speicher.');
+            $partial = false;
+            if ($v === null || !isset($v['2.1'])) {
+                // Roboter antwortet nicht (z. B. beim Trocknen in der Station). Steht die Live-Verbindung,
+                // kennen wir Zustand, Fehler und Akku trotzdem – dann Auftrag und Karte weiter verfolgen.
+                if (!$this->LiveOk()) { $this->Online(false); return false; }
+                $v = ['2.1' => $this->GetValue('State'), '2.2' => $this->GetValue('Error'), '3.1' => $this->GetValue('Battery')];
+                $partial = true;
+            } else {
+                $this->Online(true);
+                if ($this->dcFromCache) $this->Note('Roboter antwortet nicht direkt – Werte aus dem Cloud-Speicher.');
+            }
 
             $state = intval($v['2.1']);
             $this->SetVal('State', $state);
@@ -1239,12 +1247,14 @@ class X60Ultra extends IPSModule
             if (isset($v['4.3'])) $this->SetVal('CleanArea', intval($v['4.3']));
 
             // Station: 27/1 meldet nur "Tank steckt", leer steht in 4/41
-            $cw = isset($v['27.1']) ? intval($v['27.1']) : -1;
-            $low = isset($v['4.41']) ? intval($v['4.41']) : 0;
-            if ($cw == 0 && $low >= 2) $cw = 3;
-            $this->SetVal('CleanWater', $cw);
-            $this->SetVal('DirtyWater', isset($v['27.2']) ? intval($v['27.2']) : -1);
-            $this->SetVal('DustBag', isset($v['27.3']) ? intval($v['27.3']) : -1);
+            if (!$partial) {
+                $cw = isset($v['27.1']) ? intval($v['27.1']) : -1;
+                $low = isset($v['4.41']) ? intval($v['4.41']) : 0;
+                if ($cw == 0 && $low >= 2) $cw = 3;
+                $this->SetVal('CleanWater', $cw);
+                $this->SetVal('DirtyWater', isset($v['27.2']) ? intval($v['27.2']) : -1);
+                $this->SetVal('DustBag', isset($v['27.3']) ? intval($v['27.3']) : -1);
+            }
 
             foreach (SaugroboterTexte::Consumables() as $ident => $c) {
                 $k = $c[1] . '.' . $c[2];
@@ -1258,8 +1268,8 @@ class X60Ultra extends IPSModule
                 else $this->SetVal($ident, intval($v[$k]));
             }
 
-            $this->SetVal('DeviceSettings', $this->DescribeSettings($v));
-            if (!$this->dcFromCache) $this->DevCfg(array_intersect_key($v, array_flip(['4.4', '4.5', '4.23', '4.50'])));
+            if (!$partial) $this->SetVal('DeviceSettings', $this->DescribeSettings($v));
+            if (!$partial && !$this->dcFromCache) $this->DevCfg(array_intersect_key($v, array_flip(['4.4', '4.5', '4.23', '4.50'])));
 
             // Auftrag verfolgen
             $group = SaugroboterTexte::StateGroup($state);
@@ -1272,7 +1282,13 @@ class X60Ultra extends IPSModule
                 $this->WriteAttributeString('JobInfo', json_encode([
                     'min' => $this->GetValue('CleanTime'), 'area' => $this->GetValue('CleanArea')
                 ]));
-                $ended = $group == 'docked' || in_array($state, [8, 22, 35, 104], true);
+                // Ende: angedockt bzw. typische Abschluss-Zustände – oder seit über 10 Minuten durchgehend an der Station
+                // (Zwischenstopps zum Mopp-Waschen während der Fahrt dauern kürzer)
+                $atStation = in_array($group, ['docked', 'station'], true);
+                if (!$atStation) $this->SetBuffer('AtStationSince', '0');
+                elseif (intval($this->GetBuffer('AtStationSince')) == 0) $this->SetBuffer('AtStationSince', strval(time()));
+                $ended = $group == 'docked' || in_array($state, [8, 22, 35, 104], true)
+                    || ($atStation && time() - intval($this->GetBuffer('AtStationSince')) > 600);
                 if ($ended) {
                     $this->WriteAttributeInteger('Job', 0);
                     $done = true;
@@ -1289,6 +1305,7 @@ class X60Ultra extends IPSModule
                 $this->FetchLiveMap(true);
             }
             if ($done) {
+                $this->SetBuffer('AtStationSince', '0');
                 $this->FetchLiveMap(true);
                 $this->LoadHistory();
                 if ($this->ReadAttributeInteger('JobRooms') == 1) {
