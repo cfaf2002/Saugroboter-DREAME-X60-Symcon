@@ -375,7 +375,9 @@ class SaugroboterKarte
             for ($x = $x0; $x <= $x1; $x++) {
                 $byte = ord($cells[$row + $x]);
                 $c = self::Cell($byte, $format);
-                if ($c == 0) { $a = self::Cell($byte, $format, true); if ($a > 0 && $a < 250) $c = $a; }
+                // Leer oder "Wand am Raum" (Möbelumrisse im Raum, MAP_V2): als Raumfläche zeichnen wie die App.
+                // Echte Wände (ohne Raumzuordnung) bleiben Wände.
+                if ($c == 0 || ($c == self::WALL && $format == 'low5')) { $a = self::Cell($byte, $format, true); if ($a > 0 && $a < 250) $c = $a; }
                 $G[$gr + $x - $x0] = $c;
             }
         }

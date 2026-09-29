@@ -673,6 +673,22 @@
           "maximum": 20
         },
         {
+          "type": "NumberSpinner",
+          "name": "CardOpacity",
+          "caption": "Deckkraft der Felder",
+          "suffix": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "CardGlass",
+          "caption": "Milchglas-Stärke",
+          "suffix": "px",
+          "minimum": 0,
+          "maximum": 40
+        },
+        {
           "type": "Button",
           "caption": "Hintergrund entfernen",
           "onClick": "SAUG_RemoveBackground($id);"

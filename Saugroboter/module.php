@@ -89,6 +89,8 @@ class X60Ultra extends IPSModule
         $this->RegisterPropertyString('BgUpload', '');           // Hintergrundbild der Kachel (Upload, wird sofort übernommen)
         $this->RegisterPropertyInteger('BgDim', 25);             // Abdunkeln des Hintergrunds in %
         $this->RegisterPropertyInteger('BgBlur', 0);             // Weichzeichnen des Hintergrunds in px
+        $this->RegisterPropertyInteger('CardOpacity', 62);       // Deckkraft der Felder über dem Hintergrund in %
+        $this->RegisterPropertyInteger('CardGlass', 18);         // Milchglas-Stärke hinter den Feldern in px
         // Automatik
         $this->RegisterPropertyInteger('PresenceVariable', 0);
         $this->RegisterPropertyBoolean('PresenceInverted', false);
@@ -2086,6 +2088,8 @@ class X60Ultra extends IPSModule
             'autoToday' => $this->AutoTodayText(),
             'bgDim' => max(0, min(90, $this->ReadPropertyInteger('BgDim'))),
             'bgBlur' => max(0, min(20, $this->ReadPropertyInteger('BgBlur'))),
+            'cardOpacity' => max(0, min(100, $this->ReadPropertyInteger('CardOpacity'))),
+            'cardGlass' => max(0, min(40, $this->ReadPropertyInteger('CardGlass'))),
             'message' => $this->GetValue('Message'),
             'mapMeta' => $this->MapMeta($this->MapIdent()),
             'lastMeta' => $this->MapMeta('MapLast'),

@@ -266,6 +266,11 @@
     var v = view, el = document.getElementById('app');
     if (v && v.bgDim !== undefined) document.body.style.setProperty('--dim', v.bgDim / 100);
     if (v && v.bgBlur !== undefined) document.body.style.setProperty('--blur', v.bgBlur + 'px');
+    if (v && v.cardOpacity !== undefined) {
+      document.body.style.setProperty('--cardop', v.cardOpacity + '%');
+      document.body.style.setProperty('--cardop-n', v.cardOpacity / 100);
+    }
+    if (v && v.cardGlass !== undefined) document.body.style.setProperty('--glass', v.cardGlass + 'px');
     if (!v) { el.innerHTML = '<div class="loading"><span></span>Verbinde …</div>'; return; }
     var h = '';
 
