@@ -343,7 +343,7 @@
       "items": [
         {
           "type": "Label",
-          "caption": "Ein/Aus und „Bei Abwesenheit“ oder „Nach Zeitplan“ in der Kachel. Nach Zeitplan startet sie im Zeitfenster, auch wenn jemand zu Hause ist."
+          "caption": "Ein/Aus, „Bei Abwesenheit“ oder „Zur Uhrzeit“ und die Uhrzeit stellst du in der Kachel ein."
         },
         {
           "type": "SelectVariable",
@@ -358,7 +358,7 @@
         {
           "type": "NumberSpinner",
           "name": "AutoDelay",
-          "caption": "Start frühestens nach",
+          "caption": "Start frühestens nach (bei Abwesenheit)",
           "suffix": "min Abwesenheit",
           "minimum": 0,
           "maximum": 240
@@ -369,7 +369,7 @@
             {
               "type": "NumberSpinner",
               "name": "AutoFrom",
-              "caption": "Zeitfenster von",
+              "caption": "Zeitfenster (bei Abwesenheit) von",
               "suffix": "Uhr",
               "minimum": 0,
               "maximum": 23
@@ -418,7 +418,7 @@
         {
           "type": "NumberSpinner",
           "name": "AutoGap",
-          "caption": "höchstens einmal in",
+          "caption": "höchstens einmal in (bei Abwesenheit)",
           "suffix": "Stunden",
           "minimum": 0,
           "maximum": 168

@@ -375,9 +375,9 @@ class SaugroboterKarte
             for ($x = $x0; $x <= $x1; $x++) {
                 $byte = ord($cells[$row + $x]);
                 $c = self::Cell($byte, $format);
-                // Leer oder "Wand am Raum" (Möbelumrisse im Raum, MAP_V2): als Raumfläche zeichnen wie die App.
-                // Echte Wände (ohne Raumzuordnung) bleiben Wände.
-                if ($c == 0 || ($c == self::WALL && $format == 'low5')) { $a = self::Cell($byte, $format, true); if ($a > 0 && $a < 250) $c = $a; }
+                // Leere/verdeckte Stellen, die zum Raum gehören, als Raumfläche zeichnen.
+                // Umrisse von Möbeln ("Wand am Raum") bleiben als Details sichtbar.
+                if ($c == 0) { $a = self::Cell($byte, $format, true); if ($a > 0 && $a < 250) $c = $a; }
                 $G[$gr + $x - $x0] = $c;
             }
         }
@@ -503,15 +503,26 @@ class SaugroboterKarte
         // L = Linie relativ zum letzten Punkt, l = Linie zu einem absoluten Punkt.
         if (!empty($opt['path']) && isset($b['info']['tr']) && is_string($b['info']['tr'])
             && preg_match_all('/([MWSLl])(-?\d+),(-?\d+)/', $b['info']['tr'], $m, PREG_SET_ORDER)) {
-            $pc = imagecolorallocatealpha($img, 0xFF, 0xFF, 0xFF, 40);
-            imagesetthickness($img, max(2, intval($K / 3)));
-            $cx = 0; $cy = 0; $last = null;
+            // Strecke gut sichtbar: dunkler Rand, darüber eine helle Linie (auf jeder Raumfarbe erkennbar)
+            $pts = [];
+            $cx = 0; $cy = 0;
             foreach ($m as $seg) {
                 if ($seg[1] == 'L') { $cx += intval($seg[2]); $cy += intval($seg[3]); }
                 else { $cx = intval($seg[2]); $cy = intval($seg[3]); }
-                $p = $toPx($cx, $cy);
-                if (($seg[1] == 'L' || $seg[1] == 'l') && $last !== null) imageline($img, $last[0], $last[1], $p[0], $p[1], $pc);
-                $last = $p;
+                $pts[] = [$seg[1] == 'L' || $seg[1] == 'l', $toPx($cx, $cy)];
+            }
+            $w1 = max(3 * $ss, intval($K * 0.55));
+            $layers = [[imagecolorallocatealpha($img, 0x1E, 0x2A, 0x3C, 80), $w1 + $ss + 1], [imagecolorallocatealpha($img, 0xFF, 0xFF, 0xFF, 10), $w1]];
+            foreach ($layers as $L) {
+                imagesetthickness($img, $L[1]);
+                $last = null;
+                foreach ($pts as $pt) {
+                    if ($pt[0] && $last !== null) {
+                        imageline($img, $last[0], $last[1], $pt[1][0], $pt[1][1], $L[0]);
+                        imagefilledellipse($img, $pt[1][0], $pt[1][1], $L[1], $L[1], $L[0]);   // runde Knicke
+                    }
+                    $last = $pt[1];
+                }
             }
             imagesetthickness($img, 1);
         }

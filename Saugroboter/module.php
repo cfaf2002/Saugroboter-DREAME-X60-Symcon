@@ -31,6 +31,9 @@ class X60Ultra extends IPSModule
     use SaugroboterApi;
     use SaugroboterLive;
 
+    // Stand der Kartendarstellung: ändert sich die Zeichnung, wird die Karte nach dem Update neu gezeichnet
+    const RENDER_VERSION = 4;
+
     // AES-IV der Kartendaten aktueller Dreame-Modelle (X40/X50/X60)
     const MAP_IV = 'NRwnBj5FsNPgBNbT';
 
@@ -135,7 +138,8 @@ class X60Ultra extends IPSModule
         $this->RegisterAttributeString('LastLog', '');
         $this->RegisterAttributeString('LivePin', '');
         $this->RegisterAttributeString('BgType', 'jpeg');
-        $this->RegisterAttributeString('CredKey', '');      // Prüfsumme der Zugangsdaten (Neuanmeldung nur bei Änderung)     // gemerktes Zertifikat des Live-Servers      // Startzeit der Fahrt hinter "Letzte Reinigung"
+        $this->RegisterAttributeString('CredKey', '');
+        $this->RegisterAttributeInteger('RenderVersion', 0);      // Prüfsumme der Zugangsdaten (Neuanmeldung nur bei Änderung)     // gemerktes Zertifikat des Live-Servers      // Startzeit der Fahrt hinter "Letzte Reinigung"
 
         // ---- Profile ----
         $this->Profile('SAUG.State', 1, 'Robot', '', '', SaugroboterTexte::States());
@@ -203,8 +207,12 @@ class X60Ultra extends IPSModule
         $newProg = @$this->GetIDForIdent('AutoProgram') === false;
         $this->RegisterVariableInteger('AutoProgram', 'Automatik-Programm', 'SAUG.Program', 52);
         $this->EnableAction('AutoProgram');
-        $this->Profile('SAUG.AutoMode', 1, 'Clock', '', '', [0 => 'bei Abwesenheit', 1 => 'nach Zeitplan']);
+        $this->Profile('SAUG.AutoMode', 1, 'Clock', '', '', [0 => 'bei Abwesenheit', 1 => 'zur Uhrzeit']);
         $this->RegisterVariableInteger('AutoMode', 'Automatik startet', 'SAUG.AutoMode', 53);
+        $newTime = @$this->GetIDForIdent('AutoTime') === false;
+        $this->RegisterVariableString('AutoTime', 'Automatik-Uhrzeit', '', 54);
+        $this->EnableAction('AutoTime');
+        if ($newTime) $this->SetVal('AutoTime', '10:00');
         $this->EnableAction('AutoMode');
         $this->RegisterVariableInteger('CleanProgram', 'Programm', 'SAUG.Program', 39);
         $this->EnableAction('CleanProgram');
@@ -468,6 +476,15 @@ class X60Ultra extends IPSModule
             case 'Mode': case 'Route': case 'Suction': case 'Wetness': case 'Passes': case 'CleanGenius':
                 if (!$this->ValidPreset($Ident, $Value)) return;
                 $this->SetVal($Ident, intval($Value));
+                $this->RefreshViews();
+                return;
+            case 'AutoTime':
+                if (!preg_match('/^(\d{1,2}):(\d{2})$/', trim(strval($Value)), $t) || intval($t[1]) > 23 || intval($t[2]) > 59) {
+                    $this->Note('Uhrzeit bitte als HH:MM angeben.', 'err'); $this->RefreshViews(); return;
+                }
+                $this->SetVal('AutoTime', sprintf('%02d:%02d', intval($t[1]), intval($t[2])));
+                $this->UpdateAutoTimer();
+                $this->Note('Automatik startet um ' . $this->GetValue('AutoTime') . ' Uhr.', 'ok');
                 $this->RefreshViews();
                 return;
             case 'AutoMode':
@@ -1242,7 +1259,9 @@ class X60Ultra extends IPSModule
             $this->TrackRoom($state, $group);
             // Nach einem Update fehlt die Raumlage zum vorhandenen Kartenbild (Beschriftung/Antippen) –
             // dann die Karte einmal frisch holen, auch wenn der Roboter an der Station steht
-            if ($this->ReadPropertyBoolean('MapImage') && $this->MapMeta('Map') === null && intval($this->GetBuffer('MetaTry')) < time() - 300) {
+            $stale = $this->ReadAttributeInteger('RenderVersion') != self::RENDER_VERSION;
+            if ($this->ReadPropertyBoolean('MapImage') && ($this->MapMeta('Map') === null || $stale) && intval($this->GetBuffer('MetaTry')) < time() - 300) {
+                $this->WriteAttributeInteger('RenderVersion', self::RENDER_VERSION);
                 $this->SetBuffer('MetaTry', strval(time()));
                 $this->FetchLiveMap(true);
             }
@@ -1875,6 +1894,35 @@ class X60Ultra extends IPSModule
         if (IPS_GetKernelRunlevel() != KR_READY) $this->RegisterMessage(0, IPS_KERNELSTARTED);
     }
 
+    // Automatik "zur Uhrzeit": '' = jetzt starten, sonst der Grund
+    private function AutoTimeBlocker()
+    {
+        $at = $this->AutoStartToday();
+        $days = preg_replace('/[^1-7]/', '', $this->ReadPropertyString('AutoDays'));
+        $today = $days === '' || strpos($days, date('N')) !== false;
+        $last = $this->ReadAttributeInteger('LastAuto');
+        if (!$today) return 'heute nicht – nächster Start an einem freigegebenen Tag um ' . date('H:i', $at);
+        if ($this->AutoRoomsToday() === '-') return 'heute laut Raumplan frei';
+        if ($last >= $at) return 'heute erledigt (' . date('H:i', $last) . ')';
+        if (time() < $at) return 'startet heute um ' . date('H:i', $at);
+        // bis zu 3 Stunden nachholen (Roboter war unterwegs, offline, Akku leer …)
+        if (time() > $at + 3 * 3600) return 'heute verpasst – morgen um ' . date('H:i', $at);
+        if (!$this->GetValue('Online')) return 'Roboter nicht erreichbar';
+        if ($this->ReadAttributeInteger('Job') == 1) return 'Roboter ist unterwegs';
+        if ($this->GetValue('Battery') < $this->ReadPropertyInteger('AutoBattery')) return 'wartet auf Akku (' . $this->GetValue('Battery') . ' %)';
+        if ($this->GetValue('Error') != 0 && !in_array($this->GetValue('Error'), SaugroboterTexte::WarningCodes(), true)) return 'Störung am Gerät';
+        if (intval($this->GetBuffer('AutoRetry')) > time()) return 'neuer Versuch ' . date('H:i', intval($this->GetBuffer('AutoRetry')));
+        return '';
+    }
+
+    // Heutiger Startzeitpunkt der Automatik "zur Uhrzeit"
+    private function AutoStartToday()
+    {
+        $t = @$this->GetIDForIdent('AutoTime') ? strval($this->GetValue('AutoTime')) : '10:00';
+        if (!preg_match('/^(\d{1,2}):(\d{2})$/', $t, $m)) $m = [0, 10, 0];
+        return mktime(intval($m[1]), intval($m[2]), 0);
+    }
+
     private function AutoByPlan()
     {
         return @$this->GetIDForIdent('AutoMode') && intval($this->GetValue('AutoMode')) == 1;
@@ -2013,8 +2061,9 @@ class X60Ultra extends IPSModule
     private function AutoBlocker()
     {
         if (!$this->GetValue('AutoAway')) return 'aus';
-        // "nach Zeitplan": startet im Zeitfenster, egal ob jemand zu Hause ist
-        if (!$this->AutoByPlan()) {
+        // "zur Uhrzeit": einmal am Tag zur festen Zeit, egal ob jemand zu Hause ist
+        if ($this->AutoByPlan()) return $this->AutoTimeBlocker();
+        {
             $home = $this->Home();
             if ($home === null) return 'keine Anwesenheitsvariable gewählt';
             if ($home) return 'wartet – jemand ist zu Hause';
@@ -2196,8 +2245,7 @@ class X60Ultra extends IPSModule
             'autoConfigured' => $this->AutoByPlan() || $this->Home() !== null,
             'autoMode' => $this->AutoByPlan() ? 1 : 0,
             'hasPresence' => $this->Home() !== null,
-            'autoWindow' => $this->ReadPropertyInteger('AutoFrom') == $this->ReadPropertyInteger('AutoTo') ? 'ganztägig'
-                : $this->ReadPropertyInteger('AutoFrom') . '–' . $this->ReadPropertyInteger('AutoTo') . ' Uhr',
+            'autoTime' => @$this->GetIDForIdent('AutoTime') ? strval($this->GetValue('AutoTime')) : '10:00',
             'cleanProgram' => intval($this->GetValue('CleanProgram')),
             'programs' => array_map(function ($id) {
                 $s = $this->ProgramSettings($id);

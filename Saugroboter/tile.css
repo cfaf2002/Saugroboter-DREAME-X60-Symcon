@@ -306,3 +306,19 @@ body.hasbg .card, body.hasbg .head { text-shadow: var(--tshadow, none); }
 .pitem .pmain b { display: block; font-size: 14px; }
 .pitem .pmain .small { display: block; font-weight: 500; }
 .pitem .iconbtn { margin-right: 8px; }
+
+/* Station kompakt */
+.spills { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.spill { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 12px; background: var(--card2); min-width: 0; font-size: 11.5px; color: var(--mute); }
+.spill .ic { margin-bottom: 2px; }
+.spill span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spill b { color: var(--fg); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spill.ok .ic { color: var(--ok); } .spill.warn { background: var(--warn-soft); } .spill.warn .ic, .spill.warn b { color: var(--warn); } .spill.unk .ic { color: var(--faint); }
+.sacts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+.sact { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 4px; border-radius: 10px; border: 1px solid var(--line);
+  background: none; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--fg); white-space: nowrap; }
+.sact:hover { border-color: var(--acc); }
+/* Uhrzeit */
+.timein { width: 100%; font: inherit; font-size: 28px; font-weight: 700; text-align: center; padding: 12px; border-radius: 14px;
+  border: 1px solid var(--line); background: var(--card2); color: var(--fg); color-scheme: dark light; }
+.tquick { margin-top: 10px; justify-content: center; }

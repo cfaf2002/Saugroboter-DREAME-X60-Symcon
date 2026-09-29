@@ -12,7 +12,7 @@ X60 Ultra, passend für die aktuellen Modelle der X-Serie (X40, X50, X60) und ve
 Die X-Modelle bieten keinen lokalen Zugang. Das Modul spricht deshalb wie die Dreamehome-App mit der
 Hersteller-Cloud – es läuft selbst aber vollständig in deiner Symcon-Instanz, ohne zusätzliche Dienste.
 
-**Version 1.2** · IP-Symcon ab 7.0 (Kachel ab 7.1) · Version und Build stehen unten in der Instanzkonfiguration
+**Version 1.3** · IP-Symcon ab 7.0 (Kachel ab 7.1) · Version und Build stehen unten in der Instanzkonfiguration
 
 ---
 
@@ -163,7 +163,7 @@ In der **Kachel-Visualisierung** die Instanz direkt als Kachel hinzufügen. Die 
   *Eigene Einstellungen* = deine Vorwahlen, über das Regler-Symbol anpassbar). Der große Startknopf zeigt, was passiert:
   „Küche reinigen · Schnell saugen“ bzw. „Alles reinigen · …“. Während einer Fahrt: *Danach reinigen*.
 - Station mit Mopp waschen, Trocknen, Absaugen
-- **Automatik** kompakt: Ein/Aus, *Bei Abwesenheit* oder *Nach Zeitplan*, Programm und Raumplan
+- **Automatik** kompakt: Ein/Aus, *Bei Abwesenheit* oder *Zur Uhrzeit*, Programm und Raumplan
 - Verschleiß (mit Zurücksetzen) und Verlauf
 - **Rückmeldung** nach jedem Befehl: grün „… gesendet“, rot mit dem Grund, wenn etwas nicht geklappt hat
 
@@ -178,14 +178,15 @@ Für **WebFront/IPSView** gibt es unter *Visualisierung* die HTML-Box „Übersi
 
 ---
 
-## Automatik: reinigen, wenn niemand zu Hause ist – oder nach Zeitplan
+## Automatik: reinigen, wenn niemand zu Hause ist – oder zur festen Uhrzeit
 
 Zwei Arten, wählbar in der Kachel oder über die Variable **Automatik startet**:
 
 - **Bei Abwesenheit**: startet, sobald niemand zu Hause ist. Dafür braucht es eine Anwesenheitsvariable
   (Boolean, *true* = jemand zu Hause; umkehrbar). Kommt jemand heim, fährt der Roboter auf Wunsch zurück.
-- **Nach Zeitplan**: startet im Zeitfenster (z. B. 9–19 Uhr) an den gewählten Tagen – auch wenn jemand zu Hause ist,
-  ganz ohne Anwesenheitsvariable.
+- **Zur Uhrzeit**: startet einmal am Tag zur eingestellten Uhrzeit (Variable **Automatik-Uhrzeit**, z. B. 10:00) an den
+  gewählten Tagen – auch wenn jemand zu Hause ist, ganz ohne Anwesenheitsvariable. Ist der Roboter gerade beschäftigt,
+  offline oder der Akku zu leer, wird der Start bis zu 3 Stunden nachgeholt.
 
 Eingeschaltet wird über die Variable **Reinigen bei Abwesenheit** (in der Kachel: Schalter *Automatik*).
 
