@@ -191,6 +191,41 @@
   function planRoomNames(v, row) {
     return v.planRooms.filter(function (r) { return row['r' + r.code]; }).map(function (r) { return r.name; });
   }
+  // Kurzfassung beliebiger Einstellungen, z. B. "Saugen · Turbo · 2×"
+  function setSummary(v, set) {
+    var out = [];
+    ['Mode', 'Suction', 'Wetness', 'Passes', 'CleanGenius'].forEach(function (k) {
+      var val = set[k], p = v.presets[k];
+      if (val === undefined || val === -1 || (k === 'Passes' && val === 1)) return;
+      if (k === 'Wetness' && set.Mode === 0) return;
+      if (k === 'Suction' && set.Mode === 1) return;
+      p.o.forEach(function (o) { if (o[0] === val) out.push(k === 'CleanGenius' ? 'CleanGenius ' + (SHORT[o[1]] || o[1]) : (SHORT[o[1]] || o[1])); });
+    });
+    return out.length ? out.join(' · ') : 'wie am Gerät';
+  }
+  // Raumplan in einer Zeile ("Mo–Fr: Küche, So: frei" bzw. "jeden Tag gleich")
+  function planShort(v) {
+    if (!v.plan.length) return 'jeden Tag gleich';
+    var short = { 0: 'Tägl.', 1: 'Mo', 2: 'Di', 3: 'Mi', 4: 'Do', 5: 'Fr', 6: 'Sa', 7: 'So', 8: 'Mo–Fr', 9: 'Sa+So' };
+    return v.plan.map(function (row) {
+      var rooms = planRoomNames(v, row);
+      return short[row.day] + ': ' + (row.off ? 'frei' : (rooms.length ? rooms.join(', ') : 'alles'));
+    }).join(' · ');
+  }
+  // Programm wählen (Untermenü); mode 'progsel' = zum Reinigen, 'autoprog' = für die Automatik
+  function progDialog(v, d) {
+    var cur = d.mode === 'autoprog' ? v.autoProgram : v.cleanProgram;
+    var h = '<div class="dlg-head"><div><div class="dlg-title">' + (d.mode === 'autoprog' ? 'Programm der Automatik' : 'Programm') + '</div><div class="small mute">' +
+      (d.mode === 'autoprog' ? 'So reinigt die Automatik (im Raumplan je Tag änderbar).' : 'Gilt für den Startknopf – für die ausgewählten Räume oder alles.') + '</div></div>' +
+      '<button class="iconbtn" data-dlg="close" aria-label="Schließen">' + ic('close') + '</button></div><div class="plist">';
+    v.programs.forEach(function (p) {
+      h += '<div class="pitem' + (p.id === cur ? ' on' : '') + '"><button class="pmain" data-pick="' + p.id + '">' + ic(PICON[p.id] || 'tune') +
+        '<span class="grow"><b>' + esc(p.name) + '</b><span class="small mute">' + esc(setSummary(v, p.set)) + '</span></span>' + (p.id === cur ? ic('check') : '') + '</button>' +
+        (p.custom ? '<button class="iconbtn sm" data-open="presets" title="Eigene Einstellungen anpassen">' + ic('tune') + '</button>' : '') + '</div>';
+    });
+    return h + '</div>';
+  }
+
   // Raumplan als kurze Liste in der Automatik-Karte
   function planSummary(v) {
     var h = '<button class="setrow plan" data-open="plan">' + ic('list', 'lead') + '<span class="grow"><span class="small mute">Raumplan</span>';
@@ -230,15 +265,7 @@
     if (!dialog) return '';
     var d = dialog, h = '<div class="dlg-back" data-dlg="close"><div class="dlg" role="dialog">';
     if (d.mode === 'plan') return h + planDialog(v, d) + '</div></div>';
-    if (d.mode === 'autoprog') {
-      h += '<div class="dlg-head"><div><div class="dlg-title">Programm der Automatik</div><div class="small mute">So reinigt der Roboter, wenn niemand zu Hause ist.</div></div>' +
-        '<button class="iconbtn" data-dlg="close" aria-label="Schließen">' + ic('close') + '</button></div><div class="plist">';
-      Object.keys(v.programNames).forEach(function (id) {
-        id = parseInt(id, 10);
-        h += '<button class="pitem' + (id === v.autoProgram ? ' on' : '') + '" data-pick="' + id + '">' + ic(PICON[id] || 'tune') + '<span class="grow">' + esc(v.programNames[id]) + '</span>' + (id === v.autoProgram ? ic('check') : '') + '</button>';
-      });
-      return h + '</div></div></div>';
-    }
+    if (d.mode === 'autoprog' || d.mode === 'progsel') return h + progDialog(v, d) + '</div></div>';
     var sub = d.mode === 'presets' ? 'Gilt für „Alles reinigen“ und als Vorschlag beim Reinigen von Räumen.'
       : d.mode === 'prog' ? (d.target ? 'Für ' + d.target : 'Für die ganze Etage') + ' – Einstellungen lassen sich hier noch anpassen.' : 'Wie soll gereinigt werden?';
     h += '<div class="dlg-head"><div><div class="dlg-title">' + esc(d.name) + '</div><div class="small mute">' + sub + '</div></div>' +
@@ -283,6 +310,8 @@
     if (!r) return;
     var vals = {};
     DLG.forEach(function (f) { vals[f[0]] = view.presets[f[0]].v; });
+    var cp = view.programs[view.cleanProgram];
+    if (cp) DLG.forEach(function (f) { if (cp.set[f[0]] !== undefined) vals[f[0]] = cp.set[f[0]]; });
     dialog = { mode: 'room', code: code, name: r.name, sel: r.sel, vals: vals };
     render();
   }
@@ -318,7 +347,13 @@
     var h = '<div class="controls">';
     if (v.group === 'working' || v.group === 'moving') h += main(2, 'pause', 'Pause') + round(4, 'stop', 'Stopp') + round(5, 'home', 'Station');
     else if (v.group === 'paused') h += main(3, 'play', 'Fortsetzen') + round(4, 'stop', 'Stopp') + round(5, 'home', 'Station');
-    else h += main(1, 'play', 'Alles reinigen') + round(5, 'home', 'Station') + round(15, 'locate', 'Orten');
+    else {
+      var sel = v.rooms.filter(function (r) { return r.sel; }).map(function (r) { return r.name; });
+      var what = sel.length ? (sel.length > 2 ? sel.length + ' Räume' : sel.join(' + ')) + ' reinigen' : 'Alles reinigen';
+      h += '<button class="btn main big start' + (isBusy('start') ? ' pending' : '') + '" data-start="1">' + ic('play') +
+        '<span class="st"><b>' + esc(what) + '</b><small>' + esc(v.programNames[v.cleanProgram] || '') + '</small></span></button>' +
+        round(5, 'home', 'Station') + round(15, 'locate', 'Orten');
+    }
     return h + '</div>';
   }
 
@@ -364,20 +399,23 @@
     h += controls(v);
     h += '</div><div class="col">';
 
-    // Räume
+    // Reinigen: Räume wählen (optional) und Programm – gestartet wird über den großen Knopf
+    var any = v.rooms.some(function (r) { return r.sel; });
+    h += '<div class="card"><div class="ch"><span>Reinigen</span>' + (any ? '<button class="link" data-cmd="8">Auswahl leeren</button>' : '<span class="small mute">Räume antippen oder alles</span>') + '</div>';
     if (v.rooms.length) {
-      var any = v.rooms.some(function (r) { return r.sel; });
-      h += '<div class="card"><div class="ch"><span>Räume</span>' + (any ? '<button class="link" data-cmd="8">Auswahl leeren</button>' : '<span class="small mute">zum Auswählen antippen</span>') + '</div><div class="chips">';
+      h += '<div class="chips">';
       v.rooms.forEach(function (r) {
         h += '<button class="chip' + (r.sel ? ' on' : '') + (isBusy('r' + r.code) ? ' pending' : '') + '" data-room="' + r.code + '">' +
           (r.sel ? ic('check', 'xs') : '') + esc(r.name) + '</button>';
       });
       h += '</div>';
-      h += '<button class="setrow" data-open="presets">' + ic('tune', 'lead') + '<span class="grow"><span class="small mute">Einstellungen</span><br>' + esc(presetSummary(v)) + '</span><span class="chev r"></span></button>';
-      if (any) h += '<button class="btn main full' + (isBusy('sel') ? ' pending' : '') + '" data-open="sel">' + (isBusy('sel') ? '<span class="spin"></span>Wird gesendet …' : ic('play') + (v.job ? 'Danach reinigen' : 'Auswahl reinigen')) + '</button>';
-      if (v.queue && v.queue !== '–') h += '<div class="queue">' + ic('list', 'xs') + '<span class="grow">Vorgemerkt: ' + esc(v.queue) + '</span><button class="iconbtn sm" data-cmd="9" title="Vormerkung verwerfen">' + ic('close') + '</button></div>';
-      h += '</div>';
     }
+    var cp = v.programs[v.cleanProgram] || v.programs[0];
+    h += '<button class="setrow" data-open="progsel">' + ic(PICON[cp.id] || 'tune', 'lead') + '<span class="grow"><span class="small mute">Programm</span><br>' +
+      esc(cp.name) + ' <span class="mute small">· ' + esc(setSummary(v, cp.set)) + '</span></span><span class="chev r"></span></button>';
+    if (any && v.job) h += '<button class="btn main full' + (isBusy('start') ? ' pending' : '') + '" data-start="1">' + ic('play') + 'Danach reinigen</button>';
+    if (v.queue && v.queue !== '–') h += '<div class="queue">' + ic('list', 'xs') + '<span class="grow">Vorgemerkt: ' + esc(v.queue) + '</span><button class="iconbtn sm" data-cmd="9" title="Vormerkung verwerfen">' + ic('close') + '</button></div>';
+    h += '</div>';
 
     // Station
     var sIcon = ['drop', 'dirty', 'bag'];
@@ -393,22 +431,16 @@
 
     if (v.maintenance && v.maintenance !== '–') h += '<div class="alert warn">' + ic('wrench') + '<div class="grow"><b>Wartung fällig</b><div class="small">' + esc(v.maintenance) + '</div></div></div>';
 
-    // Programme: Schnellstart mit festen Einstellungen
-    if (v.programs && v.programs.length) {
-      var nsel = v.rooms.filter(function (r) { return r.sel; }).length;
-      h += '<div class="card"><div class="ch"><span>Programme</span><span class="small mute">' + (nsel ? 'für ' + nsel + (nsel === 1 ? ' Raum' : ' Räume') : 'für alles') + '</span></div><div class="progs">';
-      v.programs.forEach(function (p) {
-        h += '<button class="prog' + (isBusy('prog') ? ' pending' : '') + '" data-prog="' + p.id + '">' + ic(PICON[p.id] || 'play') + '<span>' + esc(p.name) + '</span></button>';
-      });
-      h += '</div></div>';
-    }
-
-    // Automatik
-    h += '<div class="card"><div class="row between"><div class="row">' + ic('auto', 'lead') + '<div><div>Reinigen bei Abwesenheit</div><div class="small mute">' +
-      (v.autoConfigured ? esc(v.autoStatus) : 'Anwesenheitsvariable in der Instanz wählen') + '</div>' + (v.autoConfigured && v.autoToday ? '<div class="small mute">' + esc(v.autoToday) + '</div>' : '') + '</div></div>' +
-      (v.autoConfigured ? '<button class="switch' + (v.auto ? ' on' : '') + '" data-auto="' + (v.auto ? 0 : 1) + '" aria-label="Automatik"></button>' : '') + '</div>' +
-      '<button class="setrow" data-open="autoprog">' + ic(PICON[v.autoProgram] || 'tune', 'lead') + '<span class="grow"><span class="small mute">Programm der Automatik</span><br>' +
-      esc(v.programNames[v.autoProgram] || '') + '</span><span class="chev r"></span></button>' + planSummary(v) + '</div>';
+    // Automatik, kompakt: Schalter, wann sie startet, Programm, Raumplan
+    var ap = v.programs[v.autoProgram] || v.programs[0];
+    var astat = v.autoMode === 0 && !v.hasPresence ? 'Anwesenheitsvariable in der Instanz wählen' : v.autoStatus;
+    h += '<div class="card"><div class="row between"><div class="row">' + ic('auto', 'lead') + '<div><div class="ctitle">Automatik</div><div class="small mute">' + esc(astat) + '</div></div></div>' +
+      (v.autoMode === 1 || v.hasPresence ? '<button class="switch' + (v.auto ? ' on' : '') + '" data-auto="' + (v.auto ? 0 : 1) + '" aria-label="Automatik"></button>' : '') + '</div>' +
+      '<div class="seg full amode"><button class="' + (v.autoMode === 0 ? 'on' : '') + '" data-amode="0">Bei Abwesenheit</button>' +
+      '<button class="' + (v.autoMode === 1 ? 'on' : '') + '" data-amode="1">Nach Zeitplan (' + esc(v.autoWindow) + ')</button></div>' +
+      '<div class="rows"><button class="lrow" data-open="autoprog"><span class="lk">Programm</span><span class="lv">' + esc(ap.name) + '</span><span class="chev r"></span></button>' +
+      '<button class="lrow" data-open="plan"><span class="lk">Raumplan</span><span class="lv">' + esc(planShort(v)) + '</span><span class="chev r"></span></button></div>' +
+      (v.auto && v.autoToday ? '<div class="small mute" style="margin-top:8px">' + esc(v.autoToday) + '</div>' : '') + '</div>';
 
     if (v.wear.length) {
       var low = v.wear.filter(function (w) { return w.v <= v.wearWarn; }).length;
@@ -467,7 +499,10 @@
       }
     }
     var pk = e.target.closest('[data-pick]');
-    if (pk && dialog) { dialog = null; act('AutoProgram', parseInt(pk.dataset.pick, 10)); return; }
+    if (pk && dialog) {
+      var which = dialog.mode === 'autoprog' ? 'AutoProgram' : 'CleanProgram';
+      dialog = null; act(which, parseInt(pk.dataset.pick, 10)); return;
+    }
     var dl = e.target.closest('[data-dlg]');
     if (dl && dialog) {
       var a = dl.dataset.dlg;
@@ -488,7 +523,9 @@
     var t = e.target.closest('button');
     if (t && t.dataset.view) { showLast = t.dataset.view === 'last'; render(); return; }
     if (!t || t.disabled) return;
-    if (t.dataset.open === 'autoprog') { dialog = { mode: 'autoprog' }; render(); return; }
+    if (t.dataset.open === 'autoprog' || t.dataset.open === 'progsel') { dialog = { mode: t.dataset.open }; render(); return; }
+    if (t.dataset.start) { act('TileStart', 1, 'start'); flash('Wird gesendet …', 'wait', 30000); return; }
+    if (t.dataset.amode) { act('AutoMode', parseInt(t.dataset.amode, 10)); return; }
     if (t.dataset.open === 'plan') { dialog = { mode: 'plan', rows: JSON.parse(JSON.stringify(view.plan)) }; render(); return; }
     if (t.dataset.prog) {
       var pr = view.programs.filter(function (p) { return p.id === parseInt(t.dataset.prog, 10); })[0];

@@ -284,3 +284,25 @@ body.hasbg .card, body.hasbg .head { text-shadow: var(--tshadow, none); }
 .chip.off.on { background: var(--warn-soft); color: var(--warn); }
 .prow select[data-pday] { flex: 0 0 34%; }
 .prow select[data-pprog] { flex: 1 1 auto; }
+
+/* Startknopf mit Programm */
+.btn.start { justify-content: center; }
+.btn.start .st { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; min-width: 0; }
+.btn.start .st b { font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.btn.start .st small { font-size: 11.5px; font-weight: 600; opacity: .85; }
+/* Automatik kompakt */
+.ctitle { font-weight: 650; font-size: 15px; }
+.amode { margin-top: 12px; }
+.rows { margin-top: 10px; border-top: 1px solid var(--line); }
+.lrow { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 2px; background: none; border: 0; border-bottom: 1px solid var(--line);
+  cursor: pointer; text-align: left; font-size: 13.5px; }
+.lrow:last-child { border-bottom: 0; }
+.lrow .lk { color: var(--mute); flex: none; width: 82px; }
+.lrow .lv { flex: 1 1 auto; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Programmliste */
+.pitem { padding: 0; gap: 0; }
+.pitem .pmain { display: flex; align-items: center; gap: 12px; flex: 1 1 auto; min-width: 0; padding: 11px 14px; background: none; border: 0; cursor: pointer; text-align: left; color: inherit; }
+.pitem .pmain .ic:first-child { color: var(--acc); }
+.pitem .pmain b { display: block; font-size: 14px; }
+.pitem .pmain .small { display: block; font-weight: 500; }
+.pitem .iconbtn { margin-right: 8px; }

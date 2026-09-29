@@ -159,10 +159,12 @@ In der **Kachel-Visualisierung** die Instanz direkt als Kachel hinzufügen. Die 
   *Nach der laufenden Fahrt*) und *Nur auswählen*. Die Einstellungen gelten nur für diese Fahrt.
 - Umschalter *Live* / *Letzte* (Karte der letzten Reinigung) und Etagenwahl direkt über der Karte
 - passende Knöpfe je nach Lage (in Ruhe: *Alles reinigen*; während der Fahrt: *Pause*, *Stopp*, *Station*)
-- **Räume** zum Anhaken, darunter die **Einstellungen** (Vorwahlen) als eine Zeile – antippen zum Ändern.
-  *Auswahl reinigen* fragt ebenfalls nach, wie gereinigt werden soll (während einer Fahrt: *Danach reinigen*).
+- **Reinigen**: Räume antippen (oder keinen = alles) und darunter das **Programm** wählen (Untermenü mit allen Programmen;
+  *Eigene Einstellungen* = deine Vorwahlen, über das Regler-Symbol anpassbar). Der große Startknopf zeigt, was passiert:
+  „Küche reinigen · Schnell saugen“ bzw. „Alles reinigen · …“. Während einer Fahrt: *Danach reinigen*.
 - Station mit Mopp waschen, Trocknen, Absaugen
-- Verschleiß (mit Zurücksetzen), Verlauf und den Schalter für die Automatik
+- **Automatik** kompakt: Ein/Aus, *Bei Abwesenheit* oder *Nach Zeitplan*, Programm und Raumplan
+- Verschleiß (mit Zurücksetzen) und Verlauf
 - **Rückmeldung** nach jedem Befehl: grün „… gesendet“, rot mit dem Grund, wenn etwas nicht geklappt hat
 
 **Hintergrundbild:** Unter *Visualisierung → Hintergrundbild der Kachel* ein Foto hochladen (JPG, PNG, WebP). Das Modul
@@ -176,14 +178,20 @@ Für **WebFront/IPSView** gibt es unter *Visualisierung* die HTML-Box „Übersi
 
 ---
 
-## Automatik: reinigen, wenn niemand zu Hause ist
+## Automatik: reinigen, wenn niemand zu Hause ist – oder nach Zeitplan
 
-Voraussetzung ist eine Anwesenheitsvariable (Boolean, *true* = jemand zu Hause; umkehrbar).
-Eingeschaltet wird über die Variable **Reinigen bei Abwesenheit** – auch direkt in der Kachel.
+Zwei Arten, wählbar in der Kachel oder über die Variable **Automatik startet**:
+
+- **Bei Abwesenheit**: startet, sobald niemand zu Hause ist. Dafür braucht es eine Anwesenheitsvariable
+  (Boolean, *true* = jemand zu Hause; umkehrbar). Kommt jemand heim, fährt der Roboter auf Wunsch zurück.
+- **Nach Zeitplan**: startet im Zeitfenster (z. B. 9–19 Uhr) an den gewählten Tagen – auch wenn jemand zu Hause ist,
+  ganz ohne Anwesenheitsvariable.
+
+Eingeschaltet wird über die Variable **Reinigen bei Abwesenheit** (in der Kachel: Schalter *Automatik*).
 
 Gestartet wird, wenn **alle** Bedingungen erfüllt sind:
 
-- niemand ist seit mindestens *n* Minuten zu Hause
+- *Bei Abwesenheit*: niemand ist seit mindestens *n* Minuten zu Hause
 - die Uhrzeit liegt im Zeitfenster, der Wochentag ist freigegeben
 - die letzte Automatik-Fahrt liegt mindestens *n* Stunden zurück
 - der Akku hat mindestens *n* %, der Roboter ist erreichbar, frei und ohne Störung
@@ -193,7 +201,7 @@ Gereinigt wird alles oder die unter *Räume* eingetragenen Räume („Küche, Fl
 
 | Programm | Einstellungen |
 |---|---|
-| wie Vorwahlen | die Vorwahlen aus Kachel bzw. Variablen |
+| Eigene Einstellungen | deine Vorwahlen (in der Kachel über das Regler-Symbol anpassbar) |
 | Schnell saugen | Saugen, Standard, Route *Schnell* |
 | Gründlich saugen | Saugen, Turbo, 2 Durchgänge, Route *Intensiv* |
 | Saugen und wischen | beides gleichzeitig, Standard, feucht |
@@ -204,12 +212,11 @@ Gereinigt wird alles oder die unter *Räume* eingetragenen Räume („Küche, Fl
 
 Nicht genannte Werte bleiben wie am Gerät eingestellt. Die Vorwahlen selbst werden dabei nicht verändert.
 
-Auch der **Raumplan** lässt sich in der Kachel ansehen und bearbeiten (Karte *Reinigen bei Abwesenheit → Raumplan*):
+Auch der **Raumplan** lässt sich in der Kachel ansehen und bearbeiten (Karte *Automatik → Raumplan*):
 je Zeile Tag, Programm und Räume antippen, *frei* für Tage ohne Automatik, *Speichern*. Er ist derselbe wie in der Instanz.
 
-Das **Programm der Automatik** wählst du direkt in der Kachel (Karte *Reinigen bei Abwesenheit → Programm der Automatik*)
-oder über die Variable **Automatik-Programm**. In der Kachel stehen die Programme außerdem als **Schnellstart** bereit:
-antippen, Einstellungen bei Bedarf anpassen, *Jetzt starten* – für die ausgewählten Räume oder, ohne Auswahl, für alles.
+Das **Programm der Automatik** wählst du direkt in der Kachel (Karte *Automatik → Programm*)
+oder über die Variable **Automatik-Programm**. Dieselben Programme wählst du in der Kachel auch fürs manuelle Reinigen (Karte *Reinigen → Programm*).
 
 **Raumplan:** Im Raumplan hat jeder Raum eine eigene Spalte zum Anhaken (sobald die Räume eingelesen sind), dazu
 je Zeile ein eigenes *Programm* (oder *Standard* = Programm der Automatik). Nichts angehakt = alles, *frei* = an diesem Tag nicht reinigen. Ein bestimmter Tag geht vor *Mo–Fr* bzw. *Sa + So*,

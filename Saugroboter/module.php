@@ -44,7 +44,7 @@ class X60Ultra extends IPSModule
 
     // Reinigungsprogramme für die Automatik: Name => Einstellungen (fehlende Werte = wie am Gerät)
     const PROGRAMS = [
-        0 => ['wie Vorwahlen', null],
+        0 => ['Eigene Einstellungen', null],
         1 => ['Schnell saugen', ['Mode' => 0, 'Suction' => 1, 'Route' => 4]],
         2 => ['Gründlich saugen', ['Mode' => 0, 'Suction' => 3, 'Passes' => 2, 'Route' => 2]],
         3 => ['Saugen und wischen', ['Mode' => 2, 'Suction' => 1, 'Wetness' => 2]],
@@ -203,6 +203,11 @@ class X60Ultra extends IPSModule
         $newProg = @$this->GetIDForIdent('AutoProgram') === false;
         $this->RegisterVariableInteger('AutoProgram', 'Automatik-Programm', 'SAUG.Program', 52);
         $this->EnableAction('AutoProgram');
+        $this->Profile('SAUG.AutoMode', 1, 'Clock', '', '', [0 => 'bei Abwesenheit', 1 => 'nach Zeitplan']);
+        $this->RegisterVariableInteger('AutoMode', 'Automatik startet', 'SAUG.AutoMode', 53);
+        $this->EnableAction('AutoMode');
+        $this->RegisterVariableInteger('CleanProgram', 'Programm', 'SAUG.Program', 39);
+        $this->EnableAction('CleanProgram');
         // bisher als Instanz-Einstellung gespeichert: einmalig übernehmen
         if ($newProg) $this->SetVal('AutoProgram', $this->ReadPropertyInteger('AutoProgram'));
 
@@ -463,6 +468,26 @@ class X60Ultra extends IPSModule
             case 'Mode': case 'Route': case 'Suction': case 'Wetness': case 'Passes': case 'CleanGenius':
                 if (!$this->ValidPreset($Ident, $Value)) return;
                 $this->SetVal($Ident, intval($Value));
+                $this->RefreshViews();
+                return;
+            case 'AutoMode':
+                $this->SetVal('AutoMode', intval($Value) == 1 ? 1 : 0);
+                $this->UpdateAutoTimer();
+                $this->RefreshViews();
+                return;
+            case 'CleanProgram':
+                if (!isset(self::PROGRAMS[intval($Value)])) return;
+                $this->SetVal('CleanProgram', intval($Value));
+                $this->RefreshViews();
+                return;
+            case 'TileStart':
+                // Kachel: Hauptknopf – ausgewählte Räume, sonst alles; mit dem gewählten Programm
+                $over = $this->ProgramSettings(intval($this->GetValue('CleanProgram')));
+                if ($over === null) $over = $this->PresetValues();
+                $sel = $this->SelectedRooms();
+                if (count($sel)) $this->CleanRoomsWith($sel, json_encode($over));
+                elseif ($this->ReadAttributeInteger('Job') == 1) $this->Note('Es läuft bereits eine Reinigung.', 'err');
+                else $this->Locked(function () use ($over) { return $this->StartAll($over); });
                 $this->RefreshViews();
                 return;
             case 'AutoProgram':
@@ -1850,6 +1875,11 @@ class X60Ultra extends IPSModule
         if (IPS_GetKernelRunlevel() != KR_READY) $this->RegisterMessage(0, IPS_KERNELSTARTED);
     }
 
+    private function AutoByPlan()
+    {
+        return @$this->GetIDForIdent('AutoMode') && intval($this->GetValue('AutoMode')) == 1;
+    }
+
     private function Home()
     {
         $vid = $this->ReadPropertyInteger('PresenceVariable');
@@ -1860,7 +1890,7 @@ class X60Ultra extends IPSModule
 
     private function PresenceChanged()
     {
-        if ($this->Home() === true && $this->ReadAttributeInteger('JobByAuto') == 1
+        if (!$this->AutoByPlan() && $this->Home() === true && $this->ReadAttributeInteger('JobByAuto') == 1
             && $this->ReadAttributeInteger('Job') == 1 && $this->ReadPropertyBoolean('AutoReturn')) {
             $this->Dock();
             $this->WriteAttributeInteger('JobByAuto', 0);
@@ -1871,7 +1901,7 @@ class X60Ultra extends IPSModule
 
     private function UpdateAutoTimer()
     {
-        $on = $this->GetValue('AutoAway') && $this->ReadPropertyBoolean('Active') && $this->Home() !== null;
+        $on = $this->GetValue('AutoAway') && $this->ReadPropertyBoolean('Active') && ($this->AutoByPlan() || $this->Home() !== null);
         $this->SetTimerInterval('Auto', $on ? 60000 : 0);
         $why = $this->AutoBlocker();
         $this->SetVal('AutoStatus', $why === '' ? 'startet bei der nächsten Prüfung' : $why);
@@ -1953,6 +1983,14 @@ class X60Ultra extends IPSModule
         return isset(self::PROGRAMS[$p]) ? $p : 0;
     }
 
+    // Aktuelle Vorwahlen als Einstellungen ("Eigene Einstellungen")
+    private function PresetValues()
+    {
+        $o = [];
+        foreach (['Mode', 'Suction', 'Wetness', 'Passes', 'Route', 'CleanGenius'] as $k) $o[$k] = intval($this->GetValue($k));
+        return $o;
+    }
+
     // Einstellungen eines Programms (vollständig, damit keine Vorwahl hineinrutscht); null = Vorwahlen
     private function ProgramSettings($p)
     {
@@ -1975,13 +2013,16 @@ class X60Ultra extends IPSModule
     private function AutoBlocker()
     {
         if (!$this->GetValue('AutoAway')) return 'aus';
-        $home = $this->Home();
-        if ($home === null) return 'keine Anwesenheitsvariable gewählt';
-        if ($home) return 'wartet – jemand ist zu Hause';
-        $vid = $this->ReadPropertyInteger('PresenceVariable');
-        $since = IPS_GetVariable($vid)['VariableChanged'];
-        $delay = $this->ReadPropertyInteger('AutoDelay') * 60;
-        if (time() - $since < $delay) return 'wartet bis ' . date('H:i', $since + $delay);
+        // "nach Zeitplan": startet im Zeitfenster, egal ob jemand zu Hause ist
+        if (!$this->AutoByPlan()) {
+            $home = $this->Home();
+            if ($home === null) return 'keine Anwesenheitsvariable gewählt';
+            if ($home) return 'wartet – jemand ist zu Hause';
+            $vid = $this->ReadPropertyInteger('PresenceVariable');
+            $since = IPS_GetVariable($vid)['VariableChanged'];
+            $delay = $this->ReadPropertyInteger('AutoDelay') * 60;
+            if (time() - $since < $delay) return 'wartet bis ' . date('H:i', $since + $delay);
+        }
         $last = $this->ReadAttributeInteger('LastAuto');
         $gap = $this->ReadPropertyInteger('AutoGap') * 3600;
         if ($last > 0 && time() - $last < $gap) return 'erledigt (' . $this->Weekday($last) . ' ' . date('H:i', $last) . ')';
@@ -2152,11 +2193,16 @@ class X60Ultra extends IPSModule
             'maintenance' => $this->GetValue('Maintenance'),
             'history' => array_values(array_filter(explode("\n", $this->GetValue('History')))),
             'auto' => $this->GetValue('AutoAway'), 'autoStatus' => $this->GetValue('AutoStatus'),
-            'autoConfigured' => $this->Home() !== null,
-            'programs' => array_values(array_filter(array_map(function ($id) {
+            'autoConfigured' => $this->AutoByPlan() || $this->Home() !== null,
+            'autoMode' => $this->AutoByPlan() ? 1 : 0,
+            'hasPresence' => $this->Home() !== null,
+            'autoWindow' => $this->ReadPropertyInteger('AutoFrom') == $this->ReadPropertyInteger('AutoTo') ? 'ganztägig'
+                : $this->ReadPropertyInteger('AutoFrom') . '–' . $this->ReadPropertyInteger('AutoTo') . ' Uhr',
+            'cleanProgram' => intval($this->GetValue('CleanProgram')),
+            'programs' => array_map(function ($id) {
                 $s = $this->ProgramSettings($id);
-                return $s === null ? null : ['id' => $id, 'name' => self::PROGRAMS[$id][0], 'set' => $s];
-            }, array_keys(self::PROGRAMS)))),
+                return ['id' => $id, 'name' => self::PROGRAMS[$id][0], 'set' => $s === null ? $this->PresetValues() : $s, 'custom' => $s === null];
+            }, array_keys(self::PROGRAMS)),
             'programNames' => array_map(function ($p) { return $p[0]; }, self::PROGRAMS),
             'autoProgram' => intval($this->GetValue('AutoProgram')),
             'plan' => $this->PlanView(),

@@ -339,16 +339,16 @@
     },
     {
       "type": "ExpansionPanel",
-      "caption": "Automatik (niemand zu Hause)",
+      "caption": "Automatik",
       "items": [
         {
           "type": "Label",
-          "caption": "Ein/Aus über „Reinigen bei Abwesenheit“ – auch in der Kachel."
+          "caption": "Ein/Aus und „Bei Abwesenheit“ oder „Nach Zeitplan“ in der Kachel. Nach Zeitplan startet sie im Zeitfenster, auch wenn jemand zu Hause ist."
         },
         {
           "type": "SelectVariable",
           "name": "PresenceVariable",
-          "caption": "Anwesenheit (true = zu Hause)"
+          "caption": "Anwesenheit (true = zu Hause, nur „Bei Abwesenheit“)"
         },
         {
           "type": "CheckBox",
@@ -369,7 +369,7 @@
             {
               "type": "NumberSpinner",
               "name": "AutoFrom",
-              "caption": "zwischen",
+              "caption": "Zeitfenster von",
               "suffix": "Uhr",
               "minimum": 0,
               "maximum": 23
@@ -377,7 +377,7 @@
             {
               "type": "NumberSpinner",
               "name": "AutoTo",
-              "caption": "und",
+              "caption": "bis",
               "suffix": "Uhr",
               "minimum": 0,
               "maximum": 24
