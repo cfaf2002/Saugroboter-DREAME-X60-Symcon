@@ -32,7 +32,7 @@ class X60Ultra extends IPSModule
     use SaugroboterLive;
 
     // Stand der Kartendarstellung: ändert sich die Zeichnung, wird die Karte nach dem Update neu gezeichnet
-    const RENDER_VERSION = 5;
+    const RENDER_VERSION = 6;
 
     // AES-IV der Kartendaten aktueller Dreame-Modelle (X40/X50/X60)
     const MAP_IV = 'NRwnBj5FsNPgBNbT';
@@ -1129,6 +1129,9 @@ class X60Ultra extends IPSModule
             . ', Roboter ' . (isset($meta['robot']) ? implode('/', $meta['robot']) : '–') . ', Station ' . (isset($meta['dock']) ? implode('/', $meta['dock']) : '–')
             . ', Datei zuletzt ' . (intval($this->GetBuffer('FullTry')) ? date('H:i:s', intval($this->GetBuffer('FullTry'))) : '–')
             . ', Nacharbeit zuletzt ' . (intval($this->GetBuffer('WorkRanAt')) ? date('H:i:s', intval($this->GetBuffer('WorkRanAt'))) : '–');
+        $lr = json_decode($this->GetBuffer('LiveRobot'), true);
+        $r[] = 'Roboter-Symbol live: ' . (is_array($lr) ? implode('/', $lr['robot']) . ' um ' . date('H:i:s', $lr['at']) : (isset($meta['tf']) ? 'noch keine Position' : 'Umrechnung fehlt (Karte wird beim nächsten Abruf neu gezeichnet)'));
+        if ($this->GetBuffer('LastErr') !== '') $r[] = 'Letzter Fehler: ' . $this->GetBuffer('LastErr');
         $out = implode("\n", $r);
         $this->SendDebug('Kartendiagnose', $out, 0);
         return $out;
@@ -1569,6 +1572,16 @@ class X60Ultra extends IPSModule
     {
         $dev = json_decode($this->ReadAttributeString('Device'), true);
         return is_array($dev) && !empty($dev['model']) ? strval($dev['model']) : '';
+    }
+
+    // Raumlage des angezeigten Bilds, Roboter aus dem jüngsten Live-Bild (während einer Fahrt)
+    private function MapMetaLive()
+    {
+        $ident = $this->MapIdent();
+        $meta = $this->MapMeta($ident);
+        $lr = json_decode($this->GetBuffer('LiveRobot'), true);
+        if (is_array($meta) && is_array($lr) && $lr['ident'] === $ident && time() - intval($lr['at']) < 300) $meta['robot'] = $lr['robot'];
+        return $meta;
     }
 
     private function MapMeta($ident)
@@ -2422,7 +2435,7 @@ class X60Ultra extends IPSModule
             'cardGlass' => max(0, min(40, $this->ReadPropertyInteger('CardGlass'))),
             'theme' => max(0, min(2, $this->ReadPropertyInteger('Theme'))),
             'message' => $this->GetValue('Message'),
-            'mapMeta' => $this->MapMeta($this->MapIdent()),
+            'mapMeta' => $this->MapMetaLive(),
             'lastMeta' => $this->MapMeta('MapLast'),
             // Roboter/Station als Symbole über die Karte legen, wenn es die Kartenfassung ohne sie gibt
             'overlay' => $this->GetBuffer('Clean' . $this->MapIdent()) !== '',

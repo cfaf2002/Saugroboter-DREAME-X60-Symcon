@@ -605,12 +605,31 @@ trait SaugroboterLive
         $b = SaugroboterKarte::Decode($text, self::MAP_IV);
         if ($b === null) { $this->SetBuffer('LiveCntX', strval(intval($this->GetBuffer('LiveCntX')) + 1)); return false; }
         // für die Kartendiagnose: letztes Voll- und Teilbild im Rohformat merken
+        $this->LiveRobotMove($b);
         $t = $b['type'] === 'I' ? 'I' : 'P';
         $this->SetBuffer('LiveRaw' . $t, base64_encode(gzcompress($text)));
         $this->SetBuffer('LiveCnt' . $t, strval(intval($this->GetBuffer('LiveCnt' . $t)) + 1));
         $ok = $this->LiveTakeBlock($b, true);
         if (!$ok) $this->SetBuffer('LiveCntX', strval(intval($this->GetBuffer('LiveCntX')) + 1));
         return $ok;
+    }
+
+    // Roboter-Symbol sofort versetzen: Position aus dem Live-Bild über die Umrechnung des angezeigten
+    // Kartenbilds – unabhängig davon, ob die Karte selbst gerade neu gezeichnet werden kann.
+    private function LiveRobotMove($b)
+    {
+        if (empty($b['robot']) || ($b['robot'][0] == 0 && $b['robot'][1] == 0)) return;
+        $meta = json_decode($this->ReadAttributeString('MapMeta'), true);
+        $ident = $this->MapIdent();
+        if (!is_array($meta) || !isset($meta[$ident]['tf'])) return;
+        $p = SaugroboterKarte::Place($meta[$ident]['tf'], $b['robot'][0], $b['robot'][1], $b['robot'][2]);
+        if ($p === null || $p[0] < -0.2 || $p[0] > 1.2 || $p[1] < -0.2 || $p[1] > 1.2) return;   // passt nicht zu diesem Bild
+        $this->SetBuffer('LiveRobot', json_encode(['ident' => $ident, 'robot' => $p, 'at' => time()]));
+        // Kachel höchstens alle 2 s direkt auffrischen – ohne auf die Nacharbeit zu warten
+        if (microtime(true) - floatval($this->GetBuffer('RobotSentAt')) >= 2) {
+            $this->SetBuffer('RobotSentAt', strval(microtime(true)));
+            try { $this->RefreshViews(); } catch (\Throwable $e) { $this->SetBuffer('LastErr', date('H:i:s') . ' Anzeige: ' . $e->getMessage()); }
+        }
     }
 
     /**
@@ -717,6 +736,7 @@ trait SaugroboterLive
         $full = $this->GetBuffer('NeedFull') === '1' && intval($this->GetBuffer('FullTry')) < time() - 20;
         if ($obj !== '' || $full) {
             $ok = $this->Locked(function () use ($obj, $full) {
+              try {
                 if ($obj !== '') {
                     // Objektname kann den Schlüssel mitbringen: "pfad/datei,schlüssel"
                     $parts = explode(',', $obj, 2);
@@ -730,6 +750,9 @@ trait SaugroboterLive
                     $this->FetchLiveMap(true);
                     $this->SetBuffer('NeedFull', '0');
                 }
+              } catch (\Throwable $e) {
+                $this->SetBuffer('LastErr', date('H:i:s') . ' Karte: ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')');
+              }
                 return true;
             }, true);
             if ($ok === null) { $this->LiveKick(2000); return; }   // anderer Zugriff läuft – gleich nochmal

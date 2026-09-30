@@ -388,7 +388,19 @@ class SaugroboterKarte
         $robot = $pos($b['robot'][0], $b['robot'][1]);
         $robot[] = round(-$b['robot'][2] + $rot, 1);
         return ['mapId' => $b['mapId'], 'rot' => $rot, 'rooms' => $rooms, 'gw' => $gw, 'gh' => $gh, 'grid' => $grid,
-            'robot' => $robot, 'dock' => $pos($b['dock'][0], $b['dock'][1])];
+            'robot' => $robot, 'dock' => $pos($b['dock'][0], $b['dock'][1]),
+            // Umrechnung Kartenkoordinate -> Bildanteil, damit Live-Positionen ohne Neuzeichnen gesetzt werden können
+            'tf' => [$b['left'], $b['top'], $b['grid'], $x0, $y1, $cw, $ch, $rot]];
+    }
+
+    // Kartenkoordinate (mm) über die gespeicherte Umrechnung in Bildanteil + Blickrichtung
+    public static function Place($tf, $mx, $my, $angle)
+    {
+        list($left, $top, $grid, $x0, $y1, $cw, $ch, $rot) = $tf;
+        if ($grid <= 0 || $cw <= 0 || $ch <= 0) return null;
+        $p = self::Rotate((($mx - $left) / $grid - $x0) / $cw, ($y1 - ($my - $top) / $grid) / $ch, $rot);
+        $p[] = round(-$angle + $rot, 1);
+        return $p;
     }
 
     // Anteilskoordinaten im Uhrzeigersinn drehen (passend zu Render)
