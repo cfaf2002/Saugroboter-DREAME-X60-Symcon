@@ -622,7 +622,9 @@ trait SaugroboterLive
     // Abbrüche (Zeitlimit, Speicher) festhalten – die kann try/catch nicht fangen
     protected function CatchFatal($where)
     {
-        @set_time_limit(120);
+        // Symcon schaltet einige PHP-Funktionen ab (u. a. set_time_limit) – nur nutzen, wenn vorhanden
+        if (function_exists('set_time_limit')) @set_time_limit(120);
+        if (!function_exists('register_shutdown_function') || !function_exists('error_get_last')) return;
         $id = $this->InstanceID;
         register_shutdown_function(function () use ($where, $id) {
             $e = error_get_last();
