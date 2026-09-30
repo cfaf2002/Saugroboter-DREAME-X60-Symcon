@@ -664,8 +664,27 @@ trait SaugroboterLive
             $this->SetBuffer('LiveSeq', strval($b['frameId']));
             $this->SetBuffer('LiveMapAt', strval(time()));
         }
+        return $this->LiveStore($got);
+    }
+
+    // Nur behalten, was Zeichnen und Raumlage brauchen: die Kartendateien des X60 tragen viele große
+    // Anhänge (Hindernisse, Möbel-Listen, Teppiche …) – zusammen sprengen sie sonst das Puffer-Limit
+    // von Symcon (1 MB), und die Karte wird gar nicht gespeichert.
+    private function LiveStore($got)
+    {
+        if (isset($got['info']) && is_array($got['info'])) $got['info'] = array_intersect_key($got['info'], array_flip(['timestamp_ms', 'tr', 'seg_inf', 'fsm', 'sa', 'delsr', 'curid']));
+        $data = base64_encode(gzcompress(serialize($got)));
+        if (strlen($data) > 900000) {
+            $this->SetBuffer('LiveStoreErr', date('H:i:s') . ': Karte zu groß (' . round(strlen($data) / 1024) . ' kB)');
+            return false;
+        }
+        $this->SetBuffer('LiveBlock', $data);
+        if ($this->GetBuffer('LiveBlock') !== $data) {
+            $this->SetBuffer('LiveStoreErr', date('H:i:s') . ': Puffer nicht geschrieben (' . round(strlen($data) / 1024) . ' kB)');
+            return false;
+        }
+        $this->SetBuffer('LiveStoreErr', '');
         $this->SetBuffer('LiveFrame', strval($got['frameId']));
-        $this->SetBuffer('LiveBlock', base64_encode(gzcompress(serialize($got))));
         $this->SetBuffer('MapDirty', '1');
         return true;
     }

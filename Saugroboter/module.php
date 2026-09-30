@@ -1112,8 +1112,22 @@ class X60Ultra extends IPSModule
             $raw = $this->GetBuffer($buf);
             if ($raw !== '') $r[] = $label . ': ' . $this->BlockReport(gzuncompress(base64_decode($raw)));
         }
+        $raw = $this->GetBuffer('LiveRawP');
+        if ($raw !== '' && ($pb = SaugroboterKarte::Decode(gzuncompress(base64_decode($raw)), self::MAP_IV)) !== null) {
+            $r[] = '      Inhalt: ' . substr(json_encode($pb['info'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 0, 400);
+        }
         $lb = $this->LiveBlock();
-        if ($lb !== null) $r[] = 'Live-Karte (zusammengesetzt): ' . $this->BlockReport(null, $lb);
+        $r[] = 'Live-Karte (zusammengesetzt): ' . ($lb !== null ? $this->BlockReport(null, $lb) : 'fehlt');
+        if ($this->GetBuffer('LiveStoreErr') !== '') $r[] = 'Speichern: ' . $this->GetBuffer('LiveStoreErr');
+        // Fahrt: was die Kachel gerade bekommt
+        $state = intval($this->GetValue('State'));
+        $r[] = 'Zustand: ' . $state . ' (' . SaugroboterTexte::StateGroup($state) . '), Auftrag ' . ($this->ReadAttributeInteger('Job') == 1 ? 'läuft' : 'keiner')
+            . ', Live ' . ($this->LiveOk() ? 'verbunden' : 'aus');
+        $meta = $this->MapMeta($this->MapIdent());
+        $ms = floatval($this->GetBuffer('MapStamp'));
+        $r[] = 'Kachel: Bild ' . $this->MapIdent() . ($ms ? ' gezeichnet ' . date('H:i:s', intval($ms)) . ' (vor ' . (time() - intval($ms)) . ' s)' : ' noch nicht gezeichnet')
+            . ', Roboter ' . (isset($meta['robot']) ? implode('/', $meta['robot']) : '–') . ', Station ' . (isset($meta['dock']) ? implode('/', $meta['dock']) : '–')
+            . ', Datei zuletzt ' . (intval($this->GetBuffer('FullTry')) ? date('H:i:s', intval($this->GetBuffer('FullTry'))) : '–');
         $out = implode("\n", $r);
         $this->SendDebug('Kartendiagnose', $out, 0);
         return $out;
@@ -1135,7 +1149,7 @@ class X60Ultra extends IPSModule
         $sc = SaugroboterKarte::FormatScores($b);
         $age = isset($b['info']['timestamp_ms']) ? ', Stand ' . date('H:i:s', intval($b['info']['timestamp_ms'] / 1000))
             . ' (vor ' . max(0, time() - intval($b['info']['timestamp_ms'] / 1000)) . ' s)' : '';
-        return 'Typ ' . $b['type'] . $age . ', Karte ' . $b['mapId'] . ', ' . $b['w'] . '×' . $b['h'] . ', Raster ' . $b['grid']
+        return 'Typ ' . $b['type'] . ' Nr. ' . $b['frameId'] . $age . ', Roboter ' . implode('/', $b['robot']) . ', Karte ' . $b['mapId'] . ', ' . $b['w'] . '×' . $b['h'] . ', Raster ' . $b['grid']
             . ', fsm ' . (isset($b['info']['fsm']) ? $b['info']['fsm'] : '–') . ', Räume ' . $segs
             . "\n      Anhang: " . implode(', ', array_keys($b['info']))
             . "\n      Häufigste Bytes: " . implode(' ', $top)
@@ -1429,6 +1443,7 @@ class X60Ultra extends IPSModule
         $got['type'] = 'I';
         if (!$this->LiveTakeBlock($got)) return $base;
         $got = $this->LiveBlock();
+        if ($got === null) return $base;
         if ($this->ReadPropertyBoolean('MapImage')) $this->StoreMapImage($got, $got['mapId'], 'Map');
         return $got;
     }
