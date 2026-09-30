@@ -516,6 +516,9 @@ trait SaugroboterLive
             case 9: // SUBACK
                 if (strpos(substr($body, 2), "\x80") !== false) {
                     $this->Note('Live-Verbindung: Das Abonnement wurde abgelehnt.');
+                } elseif ($this->ReadPropertyBoolean('Active')) {
+                    // Während der Lücke kann ein Zustandswechsel verloren gegangen sein -> gleich einmal abfragen
+                    $this->SetTimerInterval('Poll', 3000);
                 }
                 return;
             case 13: // PINGRESP
@@ -552,7 +555,7 @@ trait SaugroboterLive
         $this->SetBuffer('FreshAt', strval(time()));
 
         // merken, welche Werte live kamen (die haben Vorrang vor dem Cloud-Speicher)
-        foreach (['2.1', '2.2', '3.1', '4.2', '4.3', '4.63'] as $k) if (isset($v[$k])) $this->SetBuffer('LiveSeen' . $k, '1');
+        foreach (['2.1', '2.2', '3.1', '4.2', '4.3', '4.63'] as $k) if (isset($v[$k])) $this->SetBuffer('LiveSeen' . $k, strval(time()));
         $poll = false;
         if (isset($v['2.1'])) {
             $state = intval($v['2.1']);

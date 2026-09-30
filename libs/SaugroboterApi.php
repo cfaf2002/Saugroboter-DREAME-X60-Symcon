@@ -23,7 +23,8 @@ trait SaugroboterApi
     private $dcLastError = '';
     // true, wenn die letzten Werte aus dem Cloud-Speicher statt direkt vom Roboter kamen
     protected $dcFromCache = false;
-    protected $dcSkipDirect = false;   // Abruf: Roboter antwortete zuletzt nicht direkt -> gleich Cloud-Speicher
+    protected $dcSkipDirect = false;
+    protected $dcCacheTimes = [];      // Cloud-Speicher: Zeitpunkt je Wert (Sekunden), falls geliefert   // Abruf: Roboter antwortete zuletzt nicht direkt -> gleich Cloud-Speicher
 
     // ---- Anmeldung --------------------------------------------------------
 
@@ -268,8 +269,14 @@ trait SaugroboterApi
         $d = $this->CloudCall('dreame-user-iot/iotstatus/props', ['did' => $dev['did'], 'keys' => implode(',', $list)]);
         if (!isset($d['data']) || !is_array($d['data'])) return null;
         $out = [];
+        $this->dcCacheTimes = [];
         foreach ($d['data'] as $k => $e) {
-            if (is_array($e) && isset($e['key'])) { $key = strval($e['key']); $val = isset($e['value']) ? $e['value'] : null; }
+            if (is_array($e) && isset($e['key'])) {
+                $key = strval($e['key']); $val = isset($e['value']) ? $e['value'] : null;
+                foreach (['updateTime', 'update_time', 'time', 'ts'] as $tk) {
+                    if (isset($e[$tk]) && is_numeric($e[$tk]) && $e[$tk] > 0) { $t = floatval($e[$tk]); $this->dcCacheTimes[$key] = $t > 1e11 ? $t / 1000 : $t; break; }
+                }
+            }
             else { $key = strval($k); $val = $e; }
             if ($val === null || !preg_match('/^\d+\.\d+$/', $key)) continue;
             $out[$key] = $val;

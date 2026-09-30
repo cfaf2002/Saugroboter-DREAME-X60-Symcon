@@ -1290,9 +1290,16 @@ class X60Ultra extends IPSModule
                 $this->Online(true);
                 // Cloud-Speicher kann Stunden alt sein (z. B. noch "lädt" von gestern). Was die Live-Verbindung
                 // gemeldet hat, ist neuer – das darf der alte Speicherstand nicht überschreiben.
-                if ($this->dcFromCache && $this->LiveOk() && time() - intval($this->GetBuffer('LiveDevAt')) < 3600) {
+                // Welcher Stand ist neuer? Liefert der Speicher Zeitstempel, entscheiden die. Sonst gilt Live nur,
+                // solange der Roboter gerade live meldet (letzte Meldung < 2 min) – nach einer Verbindungslücke
+                // (z. B. "Lädt" verpasst) hat der Speicher den neueren Stand.
+                if ($this->dcFromCache) {
+                    $chatty = $this->LiveOk() && time() - intval($this->GetBuffer('LiveDevAt')) < 120;
                     foreach (['2.1' => 'State', '2.2' => 'Error', '3.1' => 'Battery', '4.2' => 'CleanTime', '4.3' => 'CleanArea', '4.63' => 'Progress'] as $k => $ident) {
-                        if (@$this->GetIDForIdent($ident) && $this->GetBuffer('LiveSeen' . $k) === '1') $v[$k] = $this->GetValue($ident);
+                        $seen = intval($this->GetBuffer('LiveSeen' . $k));
+                        if (!$seen || !@$this->GetIDForIdent($ident)) continue;
+                        $liveNewer = isset($this->dcCacheTimes[$k]) ? $seen >= $this->dcCacheTimes[$k] : $chatty;
+                        if ($liveNewer) $v[$k] = $this->GetValue($ident);
                     }
                 }
                 if ($this->dcFromCache) $this->Note('Roboter antwortet nicht direkt – Werte aus dem Cloud-Speicher.');
