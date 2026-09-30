@@ -598,46 +598,71 @@ trait SaugroboterLive
         $t = $b['type'] === 'I' ? 'I' : 'P';
         $this->SetBuffer('LiveRaw' . $t, base64_encode(gzcompress($text)));
         $this->SetBuffer('LiveCnt' . $t, strval(intval($this->GetBuffer('LiveCnt' . $t)) + 1));
-        $ok = $this->LiveTakeBlock($b);
+        $ok = $this->LiveTakeBlock($b, true);
         if (!$ok) $this->SetBuffer('LiveCntX', strval(intval($this->GetBuffer('LiveCntX')) + 1));
         return $ok;
     }
 
     /**
-     * Neues Kartenbild übernehmen. Die schnellen Live-Bilder des X60 enthalten teils keine Wände,
-     * Möbelumrisse oder Strecke – dann liefern sie nur Roboterposition und Zeit, die Details bleiben
-     * aus dem ausführlicheren Bild (Kartendatei). Ein älteres, aber ausführlicheres Bild (Datei)
-     * frischt umgekehrt die Details auf, ohne die aktuelle Roboterposition zu verlieren.
+     * Neues Kartenbild übernehmen.
+     * $live = true: Bild kam gerade über die Live-Verbindung (6/1) – es ist immer der neueste Stand,
+     * Roboterposition und Strecke werden übernommen, egal welche Zeitstempel die Dateien tragen.
+     * $live = false: Kartendatei aus der Cloud. Sie liefert Wände, Möbelumrisse und Strecke; solange
+     * Live-Bilder kommen, bleibt die Roboterposition die aus der Live-Verbindung.
+     * Die schnellen Live-Bilder des X60 enthalten teils keine Wände – dann bleiben die Details aus der Datei.
      */
-    protected function LiveTakeBlock($b)
+    protected function LiveTakeBlock($b, $live = false)
     {
         $base = $this->LiveBlock();
+        $same = $base !== null && $base['mapId'] == $b['mapId'];
+        // kamen in der letzten Minute Live-Kartenbilder? Dann ist deren Position maßgeblich
+        $liveRecent = time() - intval($this->GetBuffer('LiveMapAt')) < 60;
         if ($b['type'] === 'I') {
             $got = $b;
-            if ($base !== null && $base['mapId'] == $b['mapId']) {
+            if ($same) {
                 $f = $this->CellFormat($b);
                 $dNew = SaugroboterKarte::DetailCount($b, $f);
                 $dOld = SaugroboterKarte::DetailCount($base, $f);
-                $newer = !isset($base['info']['timestamp_ms'], $b['info']['timestamp_ms'])
-                    || floatval($b['info']['timestamp_ms']) >= floatval($base['info']['timestamp_ms']);
                 $thin = $dOld > 50 && $dNew < $dOld * 0.5;
-                if ($newer && $thin) $got = SaugroboterKarte::Overlay($base, $b);          // nur Position/Zeit übernehmen
-                elseif ($newer) $got = $b;                                                   // neueres, ausführliches Bild
-                elseif (!$thin && $dNew >= $dOld * 0.8) $got = SaugroboterKarte::Overlay($b, $base); // ältere Datei: Details auffrischen
-                else return false;
+                $rich = $dOld <= 50 || $dNew >= $dOld * 0.8;
+                if ($live) {
+                    $got = $thin ? SaugroboterKarte::Overlay($base, $b) : $b;              // Position immer übernehmen
+                } elseif ($liveRecent) {
+                    if (!$rich) return false;                                                 // Datei bringt nichts Neues
+                    $got = SaugroboterKarte::Overlay($b, $base);                              // Details ja, Position bleibt live
+                } else {
+                    $newer = !isset($base['info']['timestamp_ms'], $b['info']['timestamp_ms'])
+                        || floatval($b['info']['timestamp_ms']) >= floatval($base['info']['timestamp_ms']);
+                    if ($newer && $thin) $got = SaugroboterKarte::Overlay($base, $b);
+                    elseif ($newer) $got = $b;
+                    elseif ($rich) $got = SaugroboterKarte::Overlay($b, $base);
+                    else return false;
+                }
                 // Strecke nicht verlieren, wenn das neue Bild keine mitbringt
                 if (empty($got['info']['tr']) && !empty($base['info']['tr'])) $got['info']['tr'] = $base['info']['tr'];
             }
         } elseif ($b['type'] === 'P') {
-            if ($base === null || $base['mapId'] != $b['mapId']) {
+            if (!$same) {
                 // Kein passendes Vollbild da: Kartendatei holen
                 $this->SetBuffer('NeedFull', '1');
                 return false;
             }
-            if (intval($b['frameId']) <= intval($base['frameId']) && intval($base['frameId']) - intval($b['frameId']) < 1000) return false;
+            $fid = intval($b['frameId']);
+            if ($live) {
+                // nur doppelte oder verspätete Teilbilder verwerfen – gezählt wird nach den Live-Bildern,
+                // nicht nach der Datei (deren Bildnummern laufen anders)
+                $seq = $this->GetBuffer('LiveSeq');
+                if ($seq !== '' && $fid <= intval($seq) && intval($seq) - $fid < 1000) return false;
+            } elseif ($fid <= intval($base['frameId']) && intval($base['frameId']) - $fid < 1000) {
+                return false;
+            }
             $got = SaugroboterKarte::Merge($base, $b, $this->IsV2());
         } else {
             return false;
+        }
+        if ($live) {
+            $this->SetBuffer('LiveSeq', strval($b['frameId']));
+            $this->SetBuffer('LiveMapAt', strval(time()));
         }
         $this->SetBuffer('LiveFrame', strval($got['frameId']));
         $this->SetBuffer('LiveBlock', base64_encode(gzcompress(serialize($got))));
@@ -655,7 +680,9 @@ trait SaugroboterLive
 
         $obj = $this->GetBuffer('LiveObject');
         // Während der Reinigung alle 2 Minuten die ausführliche Kartendatei (Wände, Möbel, Strecke) nachladen
-        if ($this->ReadAttributeInteger('Job') == 1 && intval($this->GetBuffer('FullTry')) < time() - 120) $this->SetBuffer('NeedFull', '1');
+        // Kommen keine Live-Kartenbilder (nur Zustand), die Datei alle 30 s holen, damit der Roboter trotzdem fährt
+        $every = time() - intval($this->GetBuffer('LiveMapAt')) < 60 ? 120 : 30;
+        if ($this->ReadAttributeInteger('Job') == 1 && intval($this->GetBuffer('FullTry')) < time() - $every) $this->SetBuffer('NeedFull', '1');
         $full = $this->GetBuffer('NeedFull') === '1' && intval($this->GetBuffer('FullTry')) < time() - 20;
         if ($obj !== '' || $full) {
             $ok = $this->Locked(function () use ($obj, $full) {

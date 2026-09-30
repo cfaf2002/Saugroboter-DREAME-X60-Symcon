@@ -176,6 +176,7 @@ und *Milchglas-Stärke* (Standard 18 px, 0 = klares Glas) die Felder darüber; *
 
 **Design:** Unter *Visualisierung → Design* steht standardmäßig *Dunkel* – so sieht die Kachel auf Handy, Tablet und
 PC gleich aus. *Wie Gerät* folgt der Hell-/Dunkel-Einstellung des jeweiligen Geräts, *Hell* erzwingt das helle Design.
+
 Für **WebFront/IPSView** gibt es unter *Visualisierung* die HTML-Box „Übersicht“ (nur Anzeige) sowie das Medienobjekt „Karte“.
 
 ---
@@ -295,12 +296,16 @@ Alle Befehle geben `true`/`false` zurück; der Grund eines Fehlschlags steht in 
   umgesetzt, es braucht keine Zusatzbibliothek und keinen eigenen MQTT-Server. Kartenbilder kommen als Voll- oder
   Differenzbild direkt in der Nachricht; Differenzbilder werden auf das letzte Vollbild gelegt. Enthalten die Live-Bilder keine Wände/Möbel/Strecke,
   liefern sie nur Position und Zeit; die Details kommen aus der Kartendatei, die während der Reinigung alle 2 Minuten
-  nachgeladen wird. Die Verbindung heilt sich selbst: nach 150 s ohne Daten, bei getrenntem Socket (nach 60 s, dann in
+  nachgeladen wird. Die Roboterposition kommt immer aus dem jüngsten Live-Bild – eine Kartendatei mit abweichender
+  Uhrzeit oder Bildnummer kann sie nicht mehr „einfrieren“. Schickt das Gerät live nur den Zustand und keine
+  Kartenbilder, holt das Modul während der Reinigung die Kartendatei im kurzen Takt (*Abfrage während Reinigung*,
+  spätestens alle 30 s), damit der Roboter in der Kachel trotzdem fährt. Die *Kartendiagnose* zeigt dazu
+  „Letztes Live-Kartenbild“. Die Verbindung heilt sich selbst: nach 150 s ohne Daten, bei getrenntem Socket (nach 60 s, dann in
   wachsenden Abständen bis 10 min), bei 3 Minuten ohne Meldung während einer Reinigung und kurz vor Ablauf des Zugangstokens
   baut das Modul sie neu auf. Der Status-Block zeigt, wie oft das heute nötig war und warum; wird die Anmeldung dreimal abgelehnt, pausiert es 10 Minuten.
 - **Abfrage**: alle *n* Sekunden im Ruhezustand, schneller während einer Reinigung und kurz nach jedem Befehl.
-  Steht die Live-Verbindung, reicht eine ruhige Abfrage (höchstens jede Minute) für Station und Verschleiß, und
-  Kartendateien werden gar nicht mehr geladen.
+  Steht die Live-Verbindung und kommen darüber Kartenbilder, reicht eine ruhige Abfrage (höchstens jede Minute) für
+  Station und Verschleiß.
   Abgefragt werden nur Werte, die das Modell kennt – in Paketen, wie die Cloud sie annimmt.
 - **Modellunabhängig**: Beim ersten Kontakt fragt das Modul alle bekannten Verschleiß- und Zusatzwerte ab und legt
   nur Variablen für die an, die der Roboter liefert. *Verbindung testen* ermittelt sie neu.

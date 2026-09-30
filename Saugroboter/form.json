@@ -1042,6 +1042,7 @@
             { "caption": "Hell", "value": 2 }
           ]
         },
+        {
           "type": "NumberSpinner",
           "name": "CardOpacity",
           "caption": "Deckkraft der Felder",

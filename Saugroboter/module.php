@@ -1106,6 +1106,8 @@ class X60Ultra extends IPSModule
         // Live-Verbindung: zuletzt empfangene Bilder und das daraus zusammengesetzte
         $r[] = 'Live empfangen: ' . intval($this->GetBuffer('LiveCntI')) . ' Vollbilder, ' . intval($this->GetBuffer('LiveCntP')) . ' Teilbilder, '
             . intval($this->GetBuffer('LiveCntX')) . ' verworfen';
+        $at = intval($this->GetBuffer('LiveMapAt'));
+        $r[] = 'Letztes Live-Kartenbild: ' . ($at ? date('d.m. H:i:s', $at) . ' (vor ' . (time() - $at) . ' s)' : 'noch keins – Karte kommt aus den Cloud-Dateien');
         foreach (['LiveRawI' => 'Live-Vollbild', 'LiveRawP' => 'Live-Teilbild'] as $buf => $label) {
             $raw = $this->GetBuffer($buf);
             if ($raw !== '') $r[] = $label . ': ' . $this->BlockReport(gzuncompress(base64_decode($raw)));
@@ -1397,8 +1399,9 @@ class X60Ultra extends IPSModule
     // werden auf das letzte Vollbild gelegt – sonst stünde die Karte während der Fahrt still.
     private function FetchLiveMap($force)
     {
-        // Live-Verbindung liefert die Karte laufend – dann keine Dateien abrufen
-        if (!$force && $this->LiveOk() && ($lb = $this->LiveBlock()) !== null) return $lb;
+        // Live-Verbindung liefert die Karte laufend – dann keine Dateien abrufen.
+        // Nur wenn tatsächlich Kartenbilder kommen: manche Geräte melden live nur den Zustand.
+        if (!$force && $this->LiveOk() && time() - intval($this->GetBuffer('LiveMapAt')) < 60 && ($lb = $this->LiveBlock()) !== null) return $lb;
         $last = intval($this->GetBuffer('LiveAt'));
         if (!$force && time() - $last < 12) return $this->LiveBlock();
         $this->SetBuffer('LiveAt', strval(time()));
@@ -2505,7 +2508,9 @@ class X60Ultra extends IPSModule
         // Mindestabstände schonen die Cloud (und das Konto)
         $s = max(30, $this->ReadPropertyInteger('Interval'));
         // Während eines Auftrags schneller abfragen – außer die Live-Verbindung liefert ohnehin alles sofort
-        if ($this->ReadAttributeInteger('Job') == 1) $s = $this->LiveOk() ? min($s, 60) : max(10, min($s, $this->ReadPropertyInteger('IntervalBusy')));
+        // (Kartenbilder eingeschlossen – meldet das Gerät live nur den Zustand, Karte im kurzen Takt holen)
+        $liveMap = $this->LiveOk() && time() - intval($this->GetBuffer('LiveMapAt')) < 60;
+        if ($this->ReadAttributeInteger('Job') == 1) $s = $liveMap ? min($s, 60) : max(10, min($s, $this->ReadPropertyInteger('IntervalBusy')));
         if (intval($this->GetBuffer('FastUntil')) > time() && !$this->LiveOk()) $s = 10;
         $this->SetTimerInterval('Poll', $s * 1000);
     }

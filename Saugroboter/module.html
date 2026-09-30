@@ -393,7 +393,8 @@
     if (v && v.bgDim !== undefined) document.body.style.setProperty('--dim', v.bgDim / 100);
     if (v && v.bgBlur !== undefined) document.body.style.setProperty('--blur', v.bgBlur + 'px');
     if (v && v.theme !== undefined) theme = v.theme | 0;
-    if (v && v.cardOpacity !== undefined) { cardOp = v.cardOpacity / 100; applyGlass(); }
+    if (v && v.cardOpacity !== undefined) cardOp = v.cardOpacity / 100;
+    if (v) applyGlass();
     if (v && v.cardGlass !== undefined) document.body.style.setProperty('--glass', v.cardGlass + 'px');
     if (!v) { el.innerHTML = '<div class="loading"><span></span>Verbinde …</div>'; return; }
     var h = '';
