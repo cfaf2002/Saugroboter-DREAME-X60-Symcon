@@ -565,6 +565,11 @@ trait SaugroboterLive
         if (isset($v['2.1'])) {
             $state = intval($v['2.1']);
             if ($this->GetValue('State') !== $state) { $poll = true; $this->SetVal('State', $state); $this->CmdPendingCheck(true); }
+            // Fahrt beginnt: sofort als Auftrag führen (nicht erst beim nächsten Abruf)
+            if (in_array(SaugroboterTexte::StateGroup($state), ['working', 'paused'], true) && $this->ReadAttributeInteger('Job') == 0) {
+                $this->WriteAttributeInteger('Job', 1);
+                $this->Trace('Live', 'Fahrt erkannt – Auftrag läuft');
+            }
         }
         if (isset($v['2.2'])) {
             $err = intval($v['2.2']);
@@ -816,6 +821,8 @@ trait SaugroboterLive
                 // nur doppelte oder verspätete Teilbilder verwerfen – gezählt wird nach den Live-Bildern,
                 // nicht nach der Datei (deren Bildnummern laufen anders)
                 $seq = $this->GetBuffer('LiveSeq');
+                // Neue Fahrt/Karte: Bildnummern beginnen von vorn -> Zähler zurücksetzen
+                if ($this->GetBuffer('LiveSeqMap') !== strval($b['mapId']) || time() - intval($this->GetBuffer('LiveMapAt')) > 120) $seq = '';
                 if ($seq !== '' && $fid <= intval($seq) && intval($seq) - $fid < 1000) return false;
             } elseif ($fid <= intval($base['frameId']) && intval($base['frameId']) - $fid < 1000) {
                 return false;
@@ -826,6 +833,7 @@ trait SaugroboterLive
         }
         if ($live) {
             $this->SetBuffer('LiveSeq', strval($b['frameId']));
+            $this->SetBuffer('LiveSeqMap', strval($b['mapId']));
             $this->SetBuffer('LiveMapAt', strval(time()));
         }
         return $this->LiveStore($got);
