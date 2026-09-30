@@ -2428,7 +2428,10 @@ class X60Ultra extends IPSModule
             'name' => IPS_GetName($this->InstanceID),
             'online' => $this->GetValue('Online'),
             // Seit wann nichts Frisches mehr vom Roboter kam (weder direkt noch live) – dann ist der Stand veraltet
-            'staleSince' => intval($this->GetBuffer('FreshAt')) > 0 && time() - intval($this->GetBuffer('FreshAt')) > 300 ? date('H:i', intval($this->GetBuffer('FreshAt'))) : '',
+            // An der Station schläft der Roboter und meldet sich kaum – mit Live-Verbindung ist das kein veralteter Stand
+            'staleSince' => intval($this->GetBuffer('FreshAt')) > 0 && time() - intval($this->GetBuffer('FreshAt')) > 300
+                && !($this->LiveOk() && in_array(SaugroboterTexte::StateGroup($state), ['docked', 'station'], true))
+                ? date('H:i', intval($this->GetBuffer('FreshAt'))) : '',
             'live' => $this->ReadPropertyBoolean('Live') ? $this->LiveOk() : null,
             'state' => $state, 'stateText' => GetValueFormatted($this->GetIDForIdent('State')),
             'group' => SaugroboterTexte::StateGroup($state),
@@ -2549,7 +2552,7 @@ class X60Ultra extends IPSModule
         // Schlafender Roboter: Die Cloud meldet eine Zeitüberschreitung, stellt den Befehl aber oft trotzdem zu,
         // sobald er aufwacht. Mit Live-Verbindung erst abwarten, ob er reagiert, statt gleich "fehlgeschlagen".
         if ($this->LiveOk() && strpos($this->dcLastError, 'antwortet nicht direkt') !== false) {
-            $this->SetBuffer('CmdPending', json_encode(['label' => $label, 'at' => time(), 'state' => $this->GetValue('State')]));
+            $this->SetBuffer('CmdPending', json_encode(['label' => $label, 'at' => time(), 'state' => $this->GetValue('State'), 'error' => $this->GetValue('Error')]));
             $this->Note($label . ' – Roboter wacht auf, Befehl ist unterwegs …', 'wait');
             return;
         }
@@ -2564,7 +2567,9 @@ class X60Ultra extends IPSModule
         if ($changed) {
             $this->SetBuffer('CmdPending', '');
             $this->Online(true);
-            $this->Note($p['label'] . ' – Roboter hat reagiert (' . (SaugroboterTexte::States()[intval($this->GetValue('State'))] ?? 'Zustand ' . intval($this->GetValue('State'))) . ').', 'ok');
+            $err = intval($this->GetValue('Error'));
+            $this->Note($p['label'] . ' – Roboter hat reagiert (' . ($err == 0 && intval($p['error'] ?? 0) != 0 ? 'Hinweis ist weg'
+                : (SaugroboterTexte::States()[intval($this->GetValue('State'))] ?? 'Zustand ' . intval($this->GetValue('State')))) . ').', 'ok');
         } elseif (time() - intval($p['at']) > 120) {
             $this->SetBuffer('CmdPending', '');
             $this->Note($p['label'] . ': keine Reaktion vom Roboter nach 2 Minuten. Ist er in der Dreame-App erreichbar?', 'err');

@@ -568,9 +568,11 @@ trait SaugroboterLive
         }
         if (isset($v['2.2'])) {
             $err = intval($v['2.2']);
-            if ($this->GetValue('Error') !== $err) $poll = true;
+            $errChanged = $this->GetValue('Error') !== $err;
+            if ($errChanged) $poll = true;
             $this->SetVal('Error', $err);
             $this->SetVal('ErrorHint', SaugroboterTexte::ErrorHint($err));
+            if ($errChanged) $this->CmdPendingCheck(true);   // z. B. Hinweis quittiert
         }
         if (isset($v['3.1'])) $this->SetVal('Battery', intval($v['3.1']));
         if (isset($v['3.2']) && @$this->GetIDForIdent('Charging')) $this->SetVal('Charging', intval($v['3.2']) == 1);
