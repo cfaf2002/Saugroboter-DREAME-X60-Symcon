@@ -201,14 +201,7 @@ trait SaugroboterLive
         if ($state === '1' && time() - intval($this->GetBuffer('LiveConnectAt')) > 20) { $this->LiveReconnect('keine Antwort auf die Anmeldung'); return false; }
         if ($state === '2') {
             if (time() - intval($this->GetBuffer('LiveRx')) > self::$LV_SILENT) { $this->LiveReconnect('keine Daten mehr'); return false; }
-            // Während einer Reinigung meldet sich der Roboter laufend – 3 Minuten Stille: Abo erneuern (höchstens alle 10 min)
-            $up = intval($this->GetBuffer('LiveSince'));
-            $dev = max($up, intval($this->GetBuffer('LiveDevAt')));
-            if ($this->ReadAttributeInteger('Job') == 1 && time() - $dev > 180 && time() - intval($this->GetBuffer('LiveQuietFix')) > 600) {
-                $this->SetBuffer('LiveQuietFix', strval(time()));
-                $this->LiveReconnect('keine Meldungen vom Roboter während der Reinigung');
-                return false;
-            }
+            if ($this->LiveQuietCheck()) return false;
             // Zugangstoken läuft bald ab: erneuern und in Ruhe neu anmelden, bevor der Server trennt
             $t = json_decode($this->ReadAttributeString('Token'), true);
             if (is_array($t) && intval($t['until'] ?? 0) > 0 && intval($t['until']) - time() < 300) {
@@ -620,6 +613,24 @@ trait SaugroboterLive
         $ok = $this->LiveTakeBlock($b, true);
         if (!$ok) $this->SetBuffer('LiveCntX', strval(intval($this->GetBuffer('LiveCntX')) + 1));
         return $ok;
+    }
+
+    /**
+     * Unterwegs meldet sich der Roboter live mehrmals pro Sekunde. Ist er laut Zustand unterwegs (auch wenn
+     * das der Abruf aus dem Cloud-Speicher erfahren hat), aber live kommt seit 40 s nichts, ist das Abo
+     * eingeschlafen (kommt nach langer Ruhe an der Station vor) -> sofort neu verbinden, höchstens alle 3 Minuten.
+     */
+    protected function LiveQuietCheck()
+    {
+        if (!$this->LiveOk()) return false;
+        $group = SaugroboterTexte::StateGroup(intval($this->GetValue('State')));
+        $moving = in_array($group, ['working', 'moving'], true) || $this->ReadAttributeInteger('Job') == 1 && $group !== 'docked' && $group !== 'station';
+        if (!$moving) return false;
+        $dev = max(intval($this->GetBuffer('LiveSince')), intval($this->GetBuffer('LiveDevAt')));
+        if (time() - $dev <= 40 || time() - intval($this->GetBuffer('LiveQuietFix')) <= 180) return false;
+        $this->SetBuffer('LiveQuietFix', strval(time()));
+        $this->LiveReconnect('Roboter ist unterwegs, aber live kam nichts');
+        return true;
     }
 
     // Abbrüche (Zeitlimit, Speicher) festhalten – die kann try/catch nicht fangen

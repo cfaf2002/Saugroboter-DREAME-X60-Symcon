@@ -1365,6 +1365,7 @@ class X60Ultra extends IPSModule
             }
 
             $this->TrackRoom($state, $group);
+            $this->LiveQuietCheck();
             // Nach einem Update fehlt die Raumlage zum vorhandenen Kartenbild (Beschriftung/Antippen) –
             // dann die Karte einmal frisch holen, auch wenn der Roboter an der Station steht
             $stale = $this->ReadAttributeInteger('RenderVersion') != self::RENDER_VERSION;
