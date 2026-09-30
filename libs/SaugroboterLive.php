@@ -145,6 +145,10 @@ trait SaugroboterLive
     public function LiveCheck()
     {
         $this->SetTimerInterval('LiveCheck', 30000);
+        $this->Trace('Prüfung', 'Live ' . ($this->LiveOk() ? 'ok' : 'nicht bereit') . ', letzte Meldung vor ' . (time() - intval($this->GetBuffer('LiveDevAt'))) . ' s'
+            . ', Abruf zuletzt ' . (intval($this->GetBuffer('PollAt')) ? date('H:i:s', intval($this->GetBuffer('PollAt'))) : '–')
+            . ', Nacharbeit zuletzt ' . (intval($this->GetBuffer('WorkRanAt')) ? date('H:i:s', intval($this->GetBuffer('WorkRanAt'))) : '–')
+            . ', Zeitgeber Poll ' . $this->TimerInfo('Poll'));
         $this->CmdPendingCheck(false);
         // Wächter: Nacharbeit angestoßen, aber seit über 20 s nicht gelaufen -> jetzt selbst ausführen
         $due = floatval($this->GetBuffer('WorkDue'));
@@ -326,6 +330,7 @@ trait SaugroboterLive
     private function LiveReconnect($why)
     {
         $this->SendDebug('Live', 'Neu verbinden: ' . $why, 0);
+        $this->Trace('Verbindung', 'neu verbinden: ' . $why);
         $this->LiveCountDrop($why);
         $this->SetBuffer('MqttState', '0');
         $pid = $this->LiveParent();
@@ -475,6 +480,7 @@ trait SaugroboterLive
                     if ($sub !== '') $this->LiveSend(self::MqttPacket(0x82, pack('n', 1) . $sub));
                     $this->SetVal('Live', true);
                     $this->SendDebug('Live', 'Verbunden, abonniert: ' . implode(' ', $this->LiveTopics()), 0);
+                    $this->Trace('Verbindung', 'angemeldet, abonniert');
                     $this->SetPollInterval();
                     $this->UpdateStatusForm();
                     return;
@@ -510,6 +516,7 @@ trait SaugroboterLive
                 if (strpos(substr($body, 2), "\x80") !== false) {
                     $this->Note('Live-Verbindung: Das Abonnement wurde abgelehnt.');
                 } elseif ($this->ReadPropertyBoolean('Active')) {
+                    $this->Trace('Verbindung', 'Abo bestätigt');
                     // Während der Lücke kann ein Zustandswechsel verloren gegangen sein -> gleich einmal abfragen
                     $this->SetTimerInterval('Poll', 3000);
                 }
@@ -542,6 +549,11 @@ trait SaugroboterLive
         $this->SendDebug('Live', json_encode(array_map(function ($x) {
             return is_string($x) && strlen($x) > 60 ? substr($x, 0, 60) . '…' : $x;
         }, $v), JSON_UNESCAPED_UNICODE), 0);
+        if ($this->TraceOn()) {
+            $this->Trace('Live', implode(' ', array_map(function ($k, $x) {
+                return $k . '=' . (is_string($x) && strlen($x) > 24 ? '[' . strlen($x) . ' Z.]' : json_encode($x));
+            }, array_keys($v), $v)));
+        }
         $this->Online(true);
         $this->SetBuffer('LiveDevAt', strval(time()));
         $this->SetBuffer('LiveDevCnt', strval(intval($this->GetBuffer('LiveDevCnt')) + 1));
@@ -596,6 +608,7 @@ trait SaugroboterLive
         // Lauf bereits geplant (und noch nicht gelaufen): nicht neu stellen – Symcon-Zeitgeber feuern teils
         // verspätet, ein erneutes Stellen würde ihn dann wieder hinausschieben. Nur nach 15 s neu anstoßen.
         if ($cur > 0 && $cur <= $due && $now - $cur < 15) return;
+        if ($cur > 0) $this->Trace('Zeitgeber', 'Nacharbeit war für ' . date('H:i:s', intval($cur)) . ' geplant und ist nicht gelaufen – neu gestellt');
         $this->SetBuffer('WorkDue', strval($due));
         $this->SetTimerInterval('LiveWork', max(1, $ms));
     }
@@ -604,14 +617,16 @@ trait SaugroboterLive
     private function LiveMapFrame($text)
     {
         $b = SaugroboterKarte::Decode($text, self::MAP_IV);
-        if ($b === null) { $this->SetBuffer('LiveCntX', strval(intval($this->GetBuffer('LiveCntX')) + 1)); return false; }
+        if ($b === null) { $this->SetBuffer('LiveCntX', strval(intval($this->GetBuffer('LiveCntX')) + 1)); $this->Trace('Bild', 'nicht dekodierbar (' . strlen($text) . ' Zeichen)'); return false; }
         // für die Kartendiagnose: letztes Voll- und Teilbild im Rohformat merken
         $this->LiveRobotMove($b);
+        $this->Trace('Bild', $b['type'] . ' Nr. ' . $b['frameId'] . ', Karte ' . $b['mapId'] . ', ' . $b['w'] . '×' . $b['h'] . ', Roboter ' . implode('/', $b['robot']));
         $t = $b['type'] === 'I' ? 'I' : 'P';
         $this->SetBuffer('LiveRaw' . $t, base64_encode(gzcompress($text)));
         $this->SetBuffer('LiveCnt' . $t, strval(intval($this->GetBuffer('LiveCnt' . $t)) + 1));
         $ok = $this->LiveTakeBlock($b, true);
         if (!$ok) $this->SetBuffer('LiveCntX', strval(intval($this->GetBuffer('LiveCntX')) + 1));
+        $this->Trace('Bild', $ok ? 'in Live-Karte übernommen' : 'verworfen (' . ($this->LiveBlock() === null ? 'keine Grundkarte – Datei wird geholt' : 'älter/doppelt') . ')');
         return $ok;
     }
 
@@ -633,6 +648,73 @@ trait SaugroboterLive
         return true;
     }
 
+    // ---- Testprotokoll ------------------------------------------------------------
+    // Schreibt Live-Meldungen, Zeitgeber-Läufe und was die Kachel anzeigt in eine Textdatei im
+    // Symcon-Log-Ordner. Läuft nur, wenn in der Instanz gestartet, und endet nach 2 Stunden selbst.
+
+    protected function TraceOn()
+    {
+        return $this->ReadAttributeInteger('TraceUntil') > time();
+    }
+
+    protected function TraceFile()
+    {
+        $dir = function_exists('IPS_GetLogDir') ? IPS_GetLogDir() : (function_exists('IPS_GetKernelDir') ? IPS_GetKernelDir() . 'logs' . DIRECTORY_SEPARATOR : '');
+        if ($dir === '' || !is_dir($dir) || !is_writable($dir)) $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR;
+        return rtrim($dir, '/\\') . DIRECTORY_SEPARATOR . 'saugroboter_' . $this->InstanceID . '_test.log';
+    }
+
+    protected function Trace($what, $text)
+    {
+        if (!$this->TraceOn()) return;
+        $t = microtime(true);
+        $line = date('H:i:s', intval($t)) . sprintf('.%03d', ($t - floor($t)) * 1000) . ' ' . str_pad($what, 9) . ' ' . $text . "\n";
+        $f = $this->TraceFile();
+        if (@filesize($f) > 3000000) @rename($f, $f . '.alt');
+        @file_put_contents($f, $line, FILE_APPEND | LOCK_EX);
+    }
+
+    public function TraceStart()
+    {
+        $this->WriteAttributeInteger('TraceUntil', time() + 7200);
+        @unlink($this->TraceFile());
+        $this->Trace('Start', 'Testprotokoll gestartet (läuft bis ' . date('H:i', time() + 7200) . ') – Live ' . ($this->LiveOk() ? 'verbunden' : 'aus')
+            . ', Zustand ' . intval($this->GetValue('State')) . ', Auftrag ' . $this->ReadAttributeInteger('Job')
+            . ', Zeitgeber Poll ' . $this->TimerInfo('Poll') . ', LiveWork ' . $this->TimerInfo('LiveWork') . ', LiveCheck ' . $this->TimerInfo('LiveCheck'));
+        $this->RefreshViews();
+        echo "Testprotokoll läuft (2 Stunden). Datei: " . $this->TraceFile() . "\nJetzt den Roboter fahren lassen und danach „Testprotokoll anzeigen“ drücken.";
+    }
+
+    public function TraceStop()
+    {
+        $this->Trace('Ende', 'Testprotokoll beendet');
+        $this->WriteAttributeInteger('TraceUntil', 0);
+        $this->RefreshViews();
+        echo 'Testprotokoll beendet. Die Datei bleibt liegen: ' . $this->TraceFile();
+    }
+
+    public function TraceShow()
+    {
+        $f = $this->TraceFile();
+        $txt = @file_get_contents($f);
+        if ($txt === false || $txt === '') { echo 'Noch kein Testprotokoll vorhanden (' . $f . ').'; return; }
+        $lines = explode("\n", rtrim($txt));
+        $n = count($lines);
+        echo 'Datei: ' . $f . ' (' . $n . ' Zeilen, hier die letzten ' . min($n, 300) . ")\n\n" . implode("\n", array_slice($lines, -300));
+    }
+
+    private function TimerInfo($ident)
+    {
+        if (!function_exists('IPS_GetTimerList') || !function_exists('IPS_GetTimer')) return '?';
+        foreach (@IPS_GetTimerList() ?: [] as $tid) {
+            $t = @IPS_GetTimer($tid);
+            if (is_array($t) && ($t['InstanceID'] ?? 0) == $this->InstanceID && ($t['Name'] ?? '') == $ident) {
+                return ($t['Interval'] ?? 0) . ' ms' . (isset($t['NextRun']) && $t['NextRun'] ? ', nächster ' . date('H:i:s', $t['NextRun']) : '');
+            }
+        }
+        return '?';
+    }
+
     // Abbrüche (Zeitlimit, Speicher) festhalten – die kann try/catch nicht fangen
     protected function CatchFatal($where)
     {
@@ -644,6 +726,7 @@ trait SaugroboterLive
             $e = error_get_last();
             if ($e && in_array($e['type'], [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true) && IPS_InstanceExists($id)) {
                 $this->SetBuffer('LastErr', date('d.m. H:i:s') . ' ' . $where . ': ' . $e['message'] . ' (' . basename($e['file']) . ':' . $e['line'] . ')');
+                $this->Trace('FEHLER', $this->GetBuffer('LastErr'));
             }
         });
     }
@@ -655,10 +738,11 @@ trait SaugroboterLive
         if (empty($b['robot']) || ($b['robot'][0] == 0 && $b['robot'][1] == 0)) return;
         $meta = json_decode($this->ReadAttributeString('MapMeta'), true);
         $ident = $this->MapIdent();
-        if (!is_array($meta) || !isset($meta[$ident]['tf'])) return;
+        if (!is_array($meta) || !isset($meta[$ident]['tf'])) { $this->Trace('Symbol', 'keine Umrechnung für Bild „' . $ident . '“ – Karte noch nicht neu gezeichnet'); return; }
         $p = SaugroboterKarte::Place($meta[$ident]['tf'], $b['robot'][0], $b['robot'][1], $b['robot'][2]);
-        if ($p === null || $p[0] < -0.2 || $p[0] > 1.2 || $p[1] < -0.2 || $p[1] > 1.2) return;   // passt nicht zu diesem Bild
+        if ($p === null || $p[0] < -0.2 || $p[0] > 1.2 || $p[1] < -0.2 || $p[1] > 1.2) { $this->Trace('Symbol', 'Position außerhalb des Bilds: ' . json_encode($p)); return; }   // passt nicht zu diesem Bild
         $this->SetBuffer('LiveRobot', json_encode(['ident' => $ident, 'robot' => $p, 'at' => time()]));
+        $this->Trace('Symbol', 'Roboter -> ' . implode('/', $p) . ' (Bild ' . $ident . ')');
         // Kachel höchstens alle 2 s direkt auffrischen – ohne auf die Nacharbeit zu warten
         if (microtime(true) - floatval($this->GetBuffer('RobotSentAt')) >= 2) {
             $this->SetBuffer('RobotSentAt', strval(microtime(true)));
@@ -761,6 +845,8 @@ trait SaugroboterLive
         $this->SetBuffer('WorkDue', '0');
         $this->SetBuffer('WorkRanAt', strval(time()));
         $this->CatchFatal('Nacharbeit');
+        $t0 = microtime(true);
+        $this->Trace('Nacharbeit', 'Start (NeedFull ' . $this->GetBuffer('NeedFull') . ', MapDirty ' . $this->GetBuffer('MapDirty') . ', Objekt ' . ($this->GetBuffer('LiveObject') !== '' ? 'ja' : 'nein') . ')');
         if (!$this->ReadPropertyBoolean('Active')) return;
 
         $obj = $this->GetBuffer('LiveObject');
@@ -787,17 +873,18 @@ trait SaugroboterLive
                 }
               } catch (\Throwable $e) {
                 $this->SetBuffer('LastErr', date('H:i:s') . ' Karte: ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')');
+                $this->Trace('FEHLER', $this->GetBuffer('LastErr'));
               }
                 return true;
             }, true);
-            if ($ok === null) { $this->LiveKick(2000); return; }   // anderer Zugriff läuft – gleich nochmal
+            if ($ok === null) { $this->Trace('Nacharbeit', 'Instanz belegt (Abruf/Befehl läuft) – in 2 s nochmal'); $this->LiveKick(2000); return; }   // anderer Zugriff läuft – gleich nochmal
             $this->SetBuffer('LiveObject', '');
         }
 
         if ($this->GetBuffer('MapDirty') === '1') {
             // höchstens alle 3 s neu zeichnen
             $wait = 3 - (microtime(true) - floatval($this->GetBuffer('LiveDrawAt')));
-            if ($wait > 0) { $this->LiveKick(intval($wait * 1000) + 50); return; }
+            if ($wait > 0) { $this->Trace('Nacharbeit', 'Zeichnen erst in ' . round($wait, 1) . ' s (höchstens alle 3 s)'); $this->LiveKick(intval($wait * 1000) + 50); return; }
             $b = $this->LiveBlock();
             $this->SetBuffer('MapDirty', '0');
             if ($b !== null) {
@@ -811,5 +898,6 @@ trait SaugroboterLive
             $this->SetBuffer('ViewDirty', '0');
             $this->RefreshViews();
         }
+        $this->Trace('Nacharbeit', 'Ende nach ' . round(microtime(true) - $t0, 1) . ' s, Live-Karte ' . ($this->LiveBlock() !== null ? 'vorhanden' : 'fehlt'));
     }
 }

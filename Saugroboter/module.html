@@ -388,6 +388,20 @@
     return '<div class="stat"><div class="sv">' + value + '</div><div class="sl">' + label + '</div></div>';
   }
 
+  // Testprotokoll: der Instanz melden, was die Kachel anzeigt (nur wenn eingeschaltet, höchstens alle 3 s)
+  var traceAt = 0, traceLast = '';
+  function tileTrace(v, rb) {
+    if (!v || !v.trace) return;
+    var sel = document.querySelector('.seg button.on[data-view]');
+    var t = 'zeigt „' + (v.stateText || '') + '“, Ansicht ' + (sel ? sel.getAttribute('data-view') : '–') +
+      ', Roboter ' + (rb ? (Math.round(rb.dataset.x * 10) / 1000) + '/' + (Math.round(rb.dataset.y * 10) / 1000) : 'nicht gezeichnet') +
+      ', Karte ' + (document.getElementById('mapimg') ? 'da' : 'fehlt') + ', ' + (window.innerWidth || 0) + ' px breit';
+    var now = Date.now();
+    if (t === traceLast && now - traceAt < 30000) return;
+    if (now - traceAt < 3000) return;
+    traceAt = now; traceLast = t;
+    try { requestAction('TileTrace', t); } catch (e) {}
+  }
   function render() {
     var v = view, el = document.getElementById('app');
     if (v && v.bgDim !== undefined) document.body.style.setProperty('--dim', v.bgDim / 100);
@@ -488,6 +502,7 @@
     if (mi && !mi.complete) mi.onload = placeLabels;
     // Roboter gleitet von der alten zur neuen Position
     var rb = document.getElementById('robot');
+    tileTrace(v, rb);
     if (rb) requestAnimationFrame(function () {
       requestAnimationFrame(function () {
         rb.style.left = rb.dataset.x + '%'; rb.style.top = rb.dataset.y + '%';

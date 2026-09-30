@@ -1037,9 +1037,18 @@
           "name": "Theme",
           "caption": "Design",
           "options": [
-            { "caption": "Dunkel", "value": 0 },
-            { "caption": "Wie Gerät (hell/dunkel)", "value": 1 },
-            { "caption": "Hell", "value": 2 }
+            {
+              "caption": "Dunkel",
+              "value": 0
+            },
+            {
+              "caption": "Wie Gerät (hell/dunkel)",
+              "value": 1
+            },
+            {
+              "caption": "Hell",
+              "value": 2
+            }
           ]
         },
         {
@@ -1099,6 +1108,26 @@
           "type": "Button",
           "caption": "Status abrufen",
           "onClick": "SAUG_Refresh($id);"
+        }
+      ]
+    },
+    {
+      "type": "RowLayout",
+      "items": [
+        {
+          "type": "Button",
+          "caption": "Testprotokoll starten (2 h)",
+          "onClick": "SAUG_TraceStart($id);"
+        },
+        {
+          "type": "Button",
+          "caption": "Testprotokoll anzeigen",
+          "onClick": "SAUG_TraceShow($id);"
+        },
+        {
+          "type": "Button",
+          "caption": "Testprotokoll beenden",
+          "onClick": "SAUG_TraceStop($id);"
         }
       ]
     },

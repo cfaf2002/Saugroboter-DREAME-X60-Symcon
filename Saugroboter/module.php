@@ -138,6 +138,7 @@ class X60Ultra extends IPSModule
         $this->RegisterAttributeString('MapMeta', '{}');    // Lage der Räume je Kartenbild (Beschriftung/Antippen)
         $this->RegisterAttributeString('LastLog', '');
         $this->RegisterAttributeString('LivePin', '');
+        $this->RegisterAttributeInteger('TraceUntil', 0);
         $this->RegisterAttributeString('BgType', 'jpeg');
         $this->RegisterAttributeString('CredKey', '');
         $this->RegisterAttributeInteger('RenderVersion', 0);
@@ -475,6 +476,10 @@ class X60Ultra extends IPSModule
     public function RequestAction($Ident, $Value)
     {
         switch ($Ident) {
+            case 'TileTrace':
+                // Testprotokoll: was die Kachel gerade tatsächlich anzeigt
+                $this->Trace('Kachel', substr(strval($Value), 0, 300));
+                return;
             case 'Command':
                 $this->RunCommand(intval($Value));
                 return;
@@ -1254,6 +1259,8 @@ class X60Ultra extends IPSModule
         if (!$this->ReadPropertyBoolean('Active')) return false;
         $this->CatchFatal('Abruf');
         $this->SetBuffer('PollAt', strval(time()));
+        $this->Trace('Abruf', 'Start' . ($User ? ' (Knopf)' : ''));
+        $tp = microtime(true);
         $done = false;
         $ok = $this->Locked(function () use (&$done, $User) {
           try {
@@ -1387,13 +1394,16 @@ class X60Ultra extends IPSModule
             $this->CheckError($err);
             $this->CheckMaintenance();
             $this->SetBuffer('PollOkAt', strval(time()));
+            $this->Trace('Abruf', 'fertig: Zustand ' . $state . ' (' . $group . '), Auftrag ' . $this->ReadAttributeInteger('Job') . ', Quelle ' . ($partial ? 'nur Live' : ($this->dcFromCache ? 'Cloud-Speicher' : 'Roboter direkt')));
             return true;
           } catch (\Throwable $e) {
             $this->SetBuffer('LastErr', date('d.m. H:i:s') . ' Abruf: ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')');
+            $this->Trace('FEHLER', $this->GetBuffer('LastErr'));
             return false;
           }
         }, !$User);
-        if ($ok === null) return false;   // übersprungen: anderer Zugriff läuft
+        if ($ok === null) { $this->Trace('Abruf', 'übersprungen – Instanz belegt (Befehl/Nacharbeit läuft)'); return false; }   // übersprungen: anderer Zugriff läuft
+        $this->Trace('Abruf', 'Ende nach ' . round(microtime(true) - $tp, 1) . ' s' . ($ok ? '' : ' – ohne Ergebnis: ' . $this->dcLastError));
         if ($done) {
             $this->JobFinished();
         }
@@ -2380,6 +2390,11 @@ class X60Ultra extends IPSModule
                 $this->SetBuffer('MapSent', $stamp);
             }
             $this->UpdateVisualizationValue(json_encode($msg));
+            if ($this->TraceOn()) {
+                $mm = $vm['mapMeta'];
+                $this->Trace('an Kachel', 'Zustand „' . ($vm['stateText'] ?? '?') . '“ (' . ($vm['group'] ?? '?') . '), Roboter ' . (isset($mm['robot']) ? implode('/', $mm['robot']) : '–')
+                    . (isset($msg['map']) ? ', neues Kartenbild' : '') . (isset($vm['toast']['text']) && $vm['toast']['age'] < 5 ? ', Meldung „' . $vm['toast']['text'] . '“' : ''));
+            }
         }
         if (@$this->GetIDForIdent('Dashboard')) $this->SetVal('Dashboard', $this->RenderBox($vm));
     }
@@ -2458,6 +2473,7 @@ class X60Ultra extends IPSModule
             'cardOpacity' => max(0, min(100, $this->ReadPropertyInteger('CardOpacity'))),
             'cardGlass' => max(0, min(40, $this->ReadPropertyInteger('CardGlass'))),
             'theme' => max(0, min(2, $this->ReadPropertyInteger('Theme'))),
+            'trace' => $this->TraceOn(),
             'message' => $this->GetValue('Message'),
             'mapMeta' => $this->MapMetaLive(),
             'lastMeta' => $this->MapMeta('MapLast'),
