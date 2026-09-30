@@ -83,10 +83,16 @@ Hersteller-Cloud – es läuft selbst aber vollständig in deiner Symcon-Instanz
 
 **Über das Module Control**
 1. In der Verwaltungskonsole *Kern Instanzen → Modules* öffnen.
-2. Die Git-URL dieses Repositorys hinzufügen.
+2. Über *Hinzufügen* diese URL eintragen:
+   `https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon`
+
+**Umzug von der alten Adresse:** Wer das Modul noch über die frühere Repository-Adresse eingebunden hat, entfernt im
+Module Control zuerst den alten Eintrag und fügt dann die neue URL hinzu – nie beide gleichzeitig, weil sie dieselben
+Modul-IDs tragen. Die Modul-IDs sind unverändert, vorhandene Instanzen werden dadurch wieder zugeordnet. Vorher ein
+Backup anlegen schadet nicht.
 
 **Ohne Git**
-1. Den Ordner `SymconSaugroboter` in das `modules`-Verzeichnis von Symcon kopieren
+1. Das Repository als ZIP herunterladen (https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon) und den Ordner in das `modules`-Verzeichnis von Symcon kopieren
    (z. B. `/var/lib/symcon/modules/` bzw. `C:\ProgramData\Symcon\modules\`).
 2. In der Verwaltungskonsole *Kern Instanzen → Modules* das Modulverzeichnis neu laden.
 
