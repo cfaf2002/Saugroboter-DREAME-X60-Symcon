@@ -608,7 +608,7 @@ trait SaugroboterLive
         // Lauf bereits geplant (und noch nicht gelaufen): nicht neu stellen – Symcon-Zeitgeber feuern teils
         // verspätet, ein erneutes Stellen würde ihn dann wieder hinausschieben. Nur nach 15 s neu anstoßen.
         if ($cur > 0 && $cur <= $due && $now - $cur < 15) return;
-        if ($cur > 0) $this->Trace('Zeitgeber', 'Nacharbeit war für ' . date('H:i:s', intval($cur)) . ' geplant und ist nicht gelaufen – neu gestellt');
+        if ($cur > 0 && $now - $cur >= 15) $this->Trace('Zeitgeber', 'Nacharbeit war für ' . date('H:i:s', intval($cur)) . ' geplant und ist nicht gelaufen – neu gestellt');
         $this->SetBuffer('WorkDue', strval($due));
         $this->SetTimerInterval('LiveWork', max(1, $ms));
     }
@@ -700,7 +700,22 @@ trait SaugroboterLive
         if ($txt === false || $txt === '') { echo 'Noch kein Testprotokoll vorhanden (' . $f . ').'; return; }
         $lines = explode("\n", rtrim($txt));
         $n = count($lines);
-        echo 'Datei: ' . $f . ' (' . $n . ' Zeilen, hier die letzten ' . min($n, 300) . ")\n\n" . implode("\n", array_slice($lines, -300));
+        // Zusammenfassung über die ganze Datei: alle wichtigen Ereignisse, Position und Kachel höchstens alle 15 s
+        $out = []; $last = [];
+        foreach ($lines as $l) {
+            $sec = substr($l, 0, 8); $cat = trim(substr($l, 13, 10));
+            $keep = in_array($cat, ['Start', 'Ende', 'Verbindung', 'FEHLER', 'Zeitgeber', 'Prüfung'], true)
+                || ($cat === 'Live' && preg_match('/\b2\.1=/', $l))
+                || ($cat === 'Abruf' && (strpos($l, 'übersprungen') !== false || strpos($l, 'fertig') !== false || strpos($l, 'ohne Ergebnis') !== false))
+                || ($cat === 'Bild' && strpos($l, 'verworfen') !== false);
+            if (!$keep && in_array($cat, ['Symbol', 'Kachel'], true)) {
+                $t = strtotime($sec);
+                if (!isset($last[$cat]) || $t - $last[$cat] >= 15 || $t < $last[$cat]) { $keep = true; $last[$cat] = $t; }
+            }
+            if ($keep) $out[] = $l;
+        }
+        $cut = count($out) > 400 ? array_merge(array_slice($out, 0, 200), ['…'], array_slice($out, -200)) : $out;
+        echo 'Datei: ' . $f . ' (' . $n . " Zeilen)\nZusammenfassung: Zustandswechsel, Verbindung, Abrufe, Fehler; Position und Kachel alle 15 s\n\n" . implode("\n", $cut);
     }
 
     private function TimerInfo($ident)
