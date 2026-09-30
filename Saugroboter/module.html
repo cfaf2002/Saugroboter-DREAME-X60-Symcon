@@ -608,7 +608,7 @@
       // Rückmeldung des Moduls (gesendet / fehlgeschlagen) einblenden, aber nur frische
       var t = view.toast;
       if (t && t.id !== lastToast) {
-        if (lastToast !== null || t.age < 8) { render(); flash(t.text, t.kind, t.kind === 'err' ? 6000 : 3200); lastToast = t.id; return; }
+        if (lastToast !== null || t.age < 8) { render(); flash(t.text, t.kind, t.kind === 'err' ? 6000 : (t.kind === 'wait' ? 90000 : 3200)); lastToast = t.id; return; }
       }
       if (t) lastToast = t.id;
       else if (lastToast === null) lastToast = '';

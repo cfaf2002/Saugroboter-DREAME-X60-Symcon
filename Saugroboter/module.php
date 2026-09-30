@@ -2521,8 +2521,30 @@ class X60Ultra extends IPSModule
 
     private function Result($ok, $label)
     {
-        if ($ok) { $this->Online(true); $this->Note($label . ' – gesendet.', 'ok'); }
-        else $this->Note($label . ' fehlgeschlagen: ' . ($this->dcLastError !== '' ? $this->dcLastError : 'unbekannter Fehler'), 'err');
+        if ($ok) { $this->Online(true); $this->Note($label . ' – gesendet.', 'ok'); return; }
+        // Schlafender Roboter: Die Cloud meldet eine Zeitüberschreitung, stellt den Befehl aber oft trotzdem zu,
+        // sobald er aufwacht. Mit Live-Verbindung erst abwarten, ob er reagiert, statt gleich "fehlgeschlagen".
+        if ($this->LiveOk() && strpos($this->dcLastError, 'antwortet nicht direkt') !== false) {
+            $this->SetBuffer('CmdPending', json_encode(['label' => $label, 'at' => time(), 'state' => $this->GetValue('State')]));
+            $this->Note($label . ' – Roboter wacht auf, Befehl ist unterwegs …', 'wait');
+            return;
+        }
+        $this->Note($label . ' fehlgeschlagen: ' . ($this->dcLastError !== '' ? $this->dcLastError : 'unbekannter Fehler'), 'err');
+    }
+
+    // Wartet ein Befehl auf den aufwachenden Roboter? $changed: Live hat einen neuen Zustand gemeldet
+    protected function CmdPendingCheck($changed)
+    {
+        $p = json_decode($this->GetBuffer('CmdPending'), true);
+        if (!is_array($p)) return;
+        if ($changed) {
+            $this->SetBuffer('CmdPending', '');
+            $this->Online(true);
+            $this->Note($p['label'] . ' – Roboter hat reagiert (' . (SaugroboterTexte::States()[intval($this->GetValue('State'))] ?? 'Zustand ' . intval($this->GetValue('State'))) . ').', 'ok');
+        } elseif (time() - intval($p['at']) > 120) {
+            $this->SetBuffer('CmdPending', '');
+            $this->Note($p['label'] . ': keine Reaktion vom Roboter nach 2 Minuten. Ist er in der Dreame-App erreichbar?', 'err');
+        }
     }
 
     // Kurzzeitige Aussetzer der Cloud nicht sofort als "getrennt" melden (erst ab dem 3. Fehlversuch)

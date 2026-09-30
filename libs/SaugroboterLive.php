@@ -145,6 +145,7 @@ trait SaugroboterLive
     public function LiveCheck()
     {
         $this->SetTimerInterval('LiveCheck', 30000);
+        $this->CmdPendingCheck(false);
         // Wächter: Nacharbeit angestoßen, aber seit über 20 s nicht gelaufen -> jetzt selbst ausführen
         $due = floatval($this->GetBuffer('WorkDue'));
         if ($due > 0 && microtime(true) - $due > 20) { $this->SetBuffer('WorkLate', strval(intval($this->GetBuffer('WorkLate')) + 1)); $this->LiveWork(); }
@@ -555,8 +556,7 @@ trait SaugroboterLive
         $poll = false;
         if (isset($v['2.1'])) {
             $state = intval($v['2.1']);
-            if ($this->GetValue('State') !== $state) $poll = true;
-            $this->SetVal('State', $state);
+            if ($this->GetValue('State') !== $state) { $poll = true; $this->SetVal('State', $state); $this->CmdPendingCheck(true); }
         }
         if (isset($v['2.2'])) {
             $err = intval($v['2.2']);
