@@ -41,6 +41,7 @@ trait SaugroboterLive
         } else {
             $this->SetTimerInterval('LiveCheck', 0);
             $this->SetTimerInterval('LiveWork', 0);
+            $this->SetBuffer('WorkDue', '0');
             $this->LiveSocketOpen(false);
             $this->SetVal('Live', false);
         }
@@ -546,6 +547,8 @@ trait SaugroboterLive
         $this->SetBuffer('LiveDevCnt', strval(intval($this->GetBuffer('LiveDevCnt')) + 1));
         $this->SetBuffer('FreshAt', strval(time()));
 
+        // merken, welche Werte live kamen (die haben Vorrang vor dem Cloud-Speicher)
+        foreach (['2.1', '2.2', '3.1', '4.2', '4.3', '4.63'] as $k) if (isset($v[$k])) $this->SetBuffer('LiveSeen' . $k, '1');
         $poll = false;
         if (isset($v['2.1'])) {
             $state = intval($v['2.1']);
@@ -584,9 +587,16 @@ trait SaugroboterLive
         $this->LiveKick(500);
     }
 
+    // Nacharbeit anstoßen. Ein schon früher geplanter Lauf wird NICHT verschoben – sonst würde der Timer
+    // bei vielen Live-Nachrichten (der X60 schickt mehrere pro Sekunde) immer wieder neu gestellt und liefe nie.
     private function LiveKick($ms)
     {
-        $this->SetTimerInterval('LiveWork', $ms);
+        $now = microtime(true);
+        $due = $now + $ms / 1000;
+        $cur = floatval($this->GetBuffer('WorkDue'));
+        if ($cur > $now && $cur <= $due) return;
+        $this->SetBuffer('WorkDue', strval($due));
+        $this->SetTimerInterval('LiveWork', max(1, $ms));
     }
 
     // Kartenbild aus der Nachricht übernehmen (Vollbild ersetzt, Differenzbild wird aufgelegt)
@@ -695,6 +705,8 @@ trait SaugroboterLive
     public function LiveWork()
     {
         $this->SetTimerInterval('LiveWork', 0);
+        $this->SetBuffer('WorkDue', '0');
+        $this->SetBuffer('WorkRanAt', strval(time()));
         if (!$this->ReadPropertyBoolean('Active')) return;
 
         $obj = $this->GetBuffer('LiveObject');

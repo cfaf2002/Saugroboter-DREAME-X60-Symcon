@@ -183,6 +183,8 @@ class SaugroboterKarte
     public static function Merge($base, $p, $v2)
     {
         $g = $base['grid'];
+        // Teilbild ohne Zellen (X60: nur Position, Zeit und Strecke im Anhang) – Kartenrahmen bleibt
+        if ($p['w'] * $p['h'] == 0) { $p['left'] = $base['left']; $p['top'] = $base['top']; $p['grid'] = $g; }
         if ($p['grid'] != $g) return $base;
         $left = min($base['left'], $p['left']);
         $top = min($base['top'], $p['top']);

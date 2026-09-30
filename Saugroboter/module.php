@@ -1127,7 +1127,8 @@ class X60Ultra extends IPSModule
         $ms = floatval($this->GetBuffer('MapStamp'));
         $r[] = 'Kachel: Bild ' . $this->MapIdent() . ($ms ? ' gezeichnet ' . date('H:i:s', intval($ms)) . ' (vor ' . (time() - intval($ms)) . ' s)' : ' noch nicht gezeichnet')
             . ', Roboter ' . (isset($meta['robot']) ? implode('/', $meta['robot']) : '–') . ', Station ' . (isset($meta['dock']) ? implode('/', $meta['dock']) : '–')
-            . ', Datei zuletzt ' . (intval($this->GetBuffer('FullTry')) ? date('H:i:s', intval($this->GetBuffer('FullTry'))) : '–');
+            . ', Datei zuletzt ' . (intval($this->GetBuffer('FullTry')) ? date('H:i:s', intval($this->GetBuffer('FullTry'))) : '–')
+            . ', Nacharbeit zuletzt ' . (intval($this->GetBuffer('WorkRanAt')) ? date('H:i:s', intval($this->GetBuffer('WorkRanAt'))) : '–');
         $out = implode("\n", $r);
         $this->SendDebug('Kartendiagnose', $out, 0);
         return $out;
@@ -1272,6 +1273,13 @@ class X60Ultra extends IPSModule
                 $partial = true;
             } else {
                 $this->Online(true);
+                // Cloud-Speicher kann Stunden alt sein (z. B. noch "lädt" von gestern). Was die Live-Verbindung
+                // gemeldet hat, ist neuer – das darf der alte Speicherstand nicht überschreiben.
+                if ($this->dcFromCache && $this->LiveOk() && time() - intval($this->GetBuffer('LiveDevAt')) < 3600) {
+                    foreach (['2.1' => 'State', '2.2' => 'Error', '3.1' => 'Battery', '4.2' => 'CleanTime', '4.3' => 'CleanArea', '4.63' => 'Progress'] as $k => $ident) {
+                        if (@$this->GetIDForIdent($ident) && $this->GetBuffer('LiveSeen' . $k) === '1') $v[$k] = $this->GetValue($ident);
+                    }
+                }
                 if ($this->dcFromCache) $this->Note('Roboter antwortet nicht direkt – Werte aus dem Cloud-Speicher.');
                 else $this->SetBuffer('FreshAt', strval(time()));     // Werte direkt vom Roboter
             }
