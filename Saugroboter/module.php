@@ -1980,7 +1980,7 @@ class X60Ultra extends IPSModule
     {
         if ($code == $this->ReadAttributeInteger('LastErrorCode')) return;
         $this->WriteAttributeInteger('LastErrorCode', $code);
-        if ($code == 0 || !$this->ReadPropertyBoolean('NotifyError')) return;
+        if ($code == 0 || !$this->ReadPropertyBoolean('NotifyError') || in_array($code, SaugroboterTexte::SilentCodes(), true)) return;
         $hint = SaugroboterTexte::ErrorHint($code);
         $this->Push(in_array($code, SaugroboterTexte::WarningCodes(), true) ? 'Hinweis' : 'Störung',
             SaugroboterTexte::ErrorText($code) . ($hint !== '' ? ' – ' . $hint : ''));
@@ -2404,6 +2404,7 @@ class X60Ultra extends IPSModule
     {
         $state = $this->GetValue('State');
         $err = $this->GetValue('Error');
+        if (in_array($err, SaugroboterTexte::SilentCodes(), true)) $err = 0;   // zeigt die App auch nicht an
         $floor = $this->ActiveFloor();
         $multi = count($this->Maps()) > 1;
         $rooms = [];

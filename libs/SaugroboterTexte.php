@@ -206,6 +206,13 @@ class SaugroboterTexte
         return [9, 10, 20, 47, 51, 56, 68, 70, 71, 72, 75, 82, 85, 107, 114, 117, 121, 122, 123, 129, 213, 214];
     }
 
+    // Reine Info-Meldungen, die die Dreame-App gar nicht anzeigt (der X60 meldet z. B. 68 "Wischen beendet"
+    // nach jeder Wischfahrt und hält sie stehen). Werden weder in der Kachel noch als Benachrichtigung gezeigt.
+    public static function SilentCodes()
+    {
+        return [68];
+    }
+
     // Hinweise, die sich am Gerät quittieren lassen (wie in der App)
     public static function ClearableCodes()
     {
