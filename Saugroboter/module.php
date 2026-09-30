@@ -1128,7 +1128,11 @@ class X60Ultra extends IPSModule
         $r[] = 'Kachel: Bild ' . $this->MapIdent() . ($ms ? ' gezeichnet ' . date('H:i:s', intval($ms)) . ' (vor ' . (time() - intval($ms)) . ' s)' : ' noch nicht gezeichnet')
             . ', Roboter ' . (isset($meta['robot']) ? implode('/', $meta['robot']) : '–') . ', Station ' . (isset($meta['dock']) ? implode('/', $meta['dock']) : '–')
             . ', Datei zuletzt ' . (intval($this->GetBuffer('FullTry')) ? date('H:i:s', intval($this->GetBuffer('FullTry'))) : '–')
-            . ', Nacharbeit zuletzt ' . (intval($this->GetBuffer('WorkRanAt')) ? date('H:i:s', intval($this->GetBuffer('WorkRanAt'))) : '–');
+            . ', Nacharbeit zuletzt ' . (intval($this->GetBuffer('WorkRanAt')) ? date('H:i:s', intval($this->GetBuffer('WorkRanAt'))) : '–')
+            . ' (verspätet ' . intval($this->GetBuffer('WorkLate')) . '×)';
+        $r[] = 'Abruf: zuletzt gestartet ' . (intval($this->GetBuffer('PollAt')) ? date('H:i:s', intval($this->GetBuffer('PollAt'))) : '–')
+            . ', zuletzt fertig ' . (intval($this->GetBuffer('PollOkAt')) ? date('H:i:s', intval($this->GetBuffer('PollOkAt'))) : '–')
+            . ', Direktabfrage ' . (intval($this->GetBuffer('DirectFailAt')) > time() - 300 ? 'ausgesetzt (Roboter antwortet nicht direkt)' : 'aktiv');
         $lr = json_decode($this->GetBuffer('LiveRobot'), true);
         $r[] = 'Roboter-Symbol live: ' . (is_array($lr) ? implode('/', $lr['robot']) . ' um ' . date('H:i:s', $lr['at']) : (isset($meta['tf']) ? 'noch keine Position' : 'Umrechnung fehlt (Karte wird beim nächsten Abruf neu gezeichnet)'));
         if ($this->GetBuffer('LastErr') !== '') $r[] = 'Letzter Fehler: ' . $this->GetBuffer('LastErr');
@@ -1248,8 +1252,11 @@ class X60Ultra extends IPSModule
     private function DoPoll($User)
     {
         if (!$this->ReadPropertyBoolean('Active')) return false;
+        $this->CatchFatal('Abruf');
+        $this->SetBuffer('PollAt', strval(time()));
         $done = false;
-        $ok = $this->Locked(function () use (&$done) {
+        $ok = $this->Locked(function () use (&$done, $User) {
+          try {
             if ($this->ReadAttributeString('Caps') === '') $this->ProbeCapabilities();
 
             // Laufend nötig: Zustand, Fehler, Akku, Auftrag, Station. Verschleiß und Statistik ändern
@@ -1266,7 +1273,12 @@ class X60Ultra extends IPSModule
                 foreach (SaugroboterTexte::Consumables() as $c) if ($this->HasCap($caps, $c[1], $c[2])) $keys[] = [$c[1], $c[2]];
                 $this->SetBuffer('SlowAt', strval(time()));
             }
+            // Antwortet der Roboter nicht direkt, kostet jeder Versuch ~20 s Wartezeit (und blockiert die Karte).
+            // Mit Live-Verbindung dann 5 Minuten lang gleich den Cloud-Speicher nehmen.
+            $this->dcSkipDirect = !$User && $this->LiveOk() && intval($this->GetBuffer('DirectFailAt')) > time() - 300;
             $v = $this->MiotGet($keys);
+            if (!$this->dcSkipDirect) $this->SetBuffer('DirectFailAt', $this->dcFromCache ? strval(time()) : '0');
+            $this->dcSkipDirect = false;
             $partial = false;
             if ($v === null || !isset($v['2.1'])) {
                 // Roboter antwortet nicht (z. B. beim Trocknen in der Station). Steht die Live-Verbindung,
@@ -1350,9 +1362,8 @@ class X60Ultra extends IPSModule
             // dann die Karte einmal frisch holen, auch wenn der Roboter an der Station steht
             $stale = $this->ReadAttributeInteger('RenderVersion') != self::RENDER_VERSION;
             if ($this->ReadPropertyBoolean('MapImage') && ($this->MapMeta('Map') === null || $stale) && intval($this->GetBuffer('MetaTry')) < time() - 300) {
-                $this->WriteAttributeInteger('RenderVersion', self::RENDER_VERSION);
                 $this->SetBuffer('MetaTry', strval(time()));
-                $this->FetchLiveMap(true);
+                if ($this->FetchLiveMap(true) !== null && $this->MapMeta('Map') !== null) $this->WriteAttributeInteger('RenderVersion', self::RENDER_VERSION);
             }
             if ($done) {
                 $this->SetBuffer('AtStationSince', '0');
@@ -1367,7 +1378,12 @@ class X60Ultra extends IPSModule
             }
             $this->CheckError($err);
             $this->CheckMaintenance();
+            $this->SetBuffer('PollOkAt', strval(time()));
             return true;
+          } catch (\Throwable $e) {
+            $this->SetBuffer('LastErr', date('d.m. H:i:s') . ' Abruf: ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')');
+            return false;
+          }
         }, !$User);
         if ($ok === null) return false;   // übersprungen: anderer Zugriff läuft
         if ($done) {

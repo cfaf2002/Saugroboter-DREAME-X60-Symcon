@@ -23,6 +23,7 @@ trait SaugroboterApi
     private $dcLastError = '';
     // true, wenn die letzten Werte aus dem Cloud-Speicher statt direkt vom Roboter kamen
     protected $dcFromCache = false;
+    protected $dcSkipDirect = false;   // Abruf: Roboter antwortete zuletzt nicht direkt -> gleich Cloud-Speicher
 
     // ---- Anmeldung --------------------------------------------------------
 
@@ -285,7 +286,7 @@ trait SaugroboterApi
         $out = [];
         $any = false;
         $this->dcFromCache = false;
-        foreach (array_chunk($keys, self::$DC_BATCH) as $i => $chunk) {
+        foreach ($this->dcSkipDirect ? [] : array_chunk($keys, self::$DC_BATCH) as $i => $chunk) {
             $params = [];
             foreach ($chunk as $k) $params[] = ['siid' => intval($k[0]), 'piid' => intval($k[1])];
             $res = $this->CloudCommand('get_properties', $params);

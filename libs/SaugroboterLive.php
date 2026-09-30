@@ -145,6 +145,9 @@ trait SaugroboterLive
     public function LiveCheck()
     {
         $this->SetTimerInterval('LiveCheck', 30000);
+        // Wächter: Nacharbeit angestoßen, aber seit über 20 s nicht gelaufen -> jetzt selbst ausführen
+        $due = floatval($this->GetBuffer('WorkDue'));
+        if ($due > 0 && microtime(true) - $due > 20) { $this->SetBuffer('WorkLate', strval(intval($this->GetBuffer('WorkLate')) + 1)); $this->LiveWork(); }
         $this->UpdateStatusForm();
         if (!$this->LiveWanted()) { $this->SetTimerInterval('LiveCheck', 0); return false; }
 
@@ -594,7 +597,9 @@ trait SaugroboterLive
         $now = microtime(true);
         $due = $now + $ms / 1000;
         $cur = floatval($this->GetBuffer('WorkDue'));
-        if ($cur > $now && $cur <= $due) return;
+        // Lauf bereits geplant (und noch nicht gelaufen): nicht neu stellen – Symcon-Zeitgeber feuern teils
+        // verspätet, ein erneutes Stellen würde ihn dann wieder hinausschieben. Nur nach 15 s neu anstoßen.
+        if ($cur > 0 && $cur <= $due && $now - $cur < 15) return;
         $this->SetBuffer('WorkDue', strval($due));
         $this->SetTimerInterval('LiveWork', max(1, $ms));
     }
@@ -612,6 +617,19 @@ trait SaugroboterLive
         $ok = $this->LiveTakeBlock($b, true);
         if (!$ok) $this->SetBuffer('LiveCntX', strval(intval($this->GetBuffer('LiveCntX')) + 1));
         return $ok;
+    }
+
+    // Abbrüche (Zeitlimit, Speicher) festhalten – die kann try/catch nicht fangen
+    protected function CatchFatal($where)
+    {
+        @set_time_limit(120);
+        $id = $this->InstanceID;
+        register_shutdown_function(function () use ($where, $id) {
+            $e = error_get_last();
+            if ($e && in_array($e['type'], [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true) && IPS_InstanceExists($id)) {
+                $this->SetBuffer('LastErr', date('d.m. H:i:s') . ' ' . $where . ': ' . $e['message'] . ' (' . basename($e['file']) . ':' . $e['line'] . ')');
+            }
+        });
     }
 
     // Roboter-Symbol sofort versetzen: Position aus dem Live-Bild über die Umrechnung des angezeigten
@@ -726,6 +744,7 @@ trait SaugroboterLive
         $this->SetTimerInterval('LiveWork', 0);
         $this->SetBuffer('WorkDue', '0');
         $this->SetBuffer('WorkRanAt', strval(time()));
+        $this->CatchFatal('Nacharbeit');
         if (!$this->ReadPropertyBoolean('Active')) return;
 
         $obj = $this->GetBuffer('LiveObject');
