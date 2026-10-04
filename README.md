@@ -3,7 +3,7 @@
 [![Symcon](https://img.shields.io/badge/Symcon-7.0%20bis%209.0-1f6feb)](https://www.symcon.de)
 [![Kachel](https://img.shields.io/badge/Kachel--Visualisierung-ab%207.1-0aa5a5)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/html-sdk/)
 [![PHP](https://img.shields.io/badge/PHP-8.x%20(inkl.%208.5)-777bb4?logo=php&logoColor=white)](https://www.php.net)
-[![Version](https://img.shields.io/badge/Version-1.3%20%C2%B7%20Build%2028-2ea44f)](library.json)
+[![Version](https://img.shields.io/badge/Version-1.3%20%C2%B7%20Build%2027-2ea44f)](library.json)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-yellow)](LICENSE)
 [![Letzter Commit](https://img.shields.io/github/last-commit/cfaf2002/Saugroboter-DREAME-X60-Symcon)](https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon/commits)
 
