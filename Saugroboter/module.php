@@ -32,7 +32,7 @@ class X60Ultra extends IPSModule
     use SaugroboterLive;
 
     // Stand der Kartendarstellung: ändert sich die Zeichnung, wird die Karte nach dem Update neu gezeichnet
-    const RENDER_VERSION = 6;
+    const RENDER_VERSION = 7;
 
     // AES-IV der Kartendaten aktueller Dreame-Modelle (X40/X50/X60)
     const MAP_IV = 'NRwnBj5FsNPgBNbT';
@@ -95,7 +95,7 @@ class X60Ultra extends IPSModule
         $this->RegisterPropertyInteger('BgDim', 25);             // Abdunkeln des Hintergrunds in %
         $this->RegisterPropertyInteger('BgBlur', 0);             // Weichzeichnen des Hintergrunds in px
         $this->RegisterPropertyInteger('CardOpacity', 62);       // Deckkraft der Felder über dem Hintergrund in %
-        $this->RegisterPropertyInteger('Theme', 0);              // Design der Kachel: 0 dunkel, 1 wie Gerät, 2 hell
+        $this->RegisterPropertyInteger('Theme', 0);              // Design der Kachel: 0 dunkel, 1 wie Gerät, 2 hell, 3 wie Symcon-Visualisierung
         $this->RegisterPropertyInteger('CardGlass', 18);         // Milchglas-Stärke hinter den Feldern in px
         // Automatik
         $this->RegisterPropertyInteger('PresenceVariable', 0);
@@ -478,7 +478,7 @@ class X60Ultra extends IPSModule
         switch ($Ident) {
             case 'TileTrace':
                 // Testprotokoll: was die Kachel gerade tatsächlich anzeigt
-                $this->Trace('Kachel', substr(strval($Value), 0, 300));
+                if ($this->TraceOn()) $this->Trace('Kachel', substr(preg_replace('/[\x00-\x1F\x7F]+/', ' ', strval($Value)), 0, 300));
                 return;
             case 'Command':
                 $this->RunCommand(intval($Value));
@@ -1548,6 +1548,10 @@ class X60Ultra extends IPSModule
         ]);
         if ($out === null) return;
         list($png, $clean) = $out;
+        // Unverändertes Bild (Roboter steht, nur Zeitstempel neu): nicht erneut speichern und nicht an die Kachel schicken
+        $md5 = md5($png);
+        $same = $this->GetBuffer('ImgMd5' . $ident) === $md5 && $this->GetBuffer('Clean' . $ident) !== '';
+        $this->SetBuffer('ImgMd5' . $ident, $md5);
         $this->SetBuffer('Clean' . $ident, base64_encode($clean));
         $names = ['Map' => 'Karte', 'MapLast' => 'Karte letzte Reinigung'];
         $mid = @IPS_GetObjectIDByIdent($ident, $this->InstanceID);
@@ -1560,17 +1564,23 @@ class X60Ultra extends IPSModule
             IPS_SetHidden($mid, $ident != 'Map');
             IPS_SetMediaFile($mid, 'media/Saugroboter_' . $this->InstanceID . '_' . $ident . '.png', false);
         }
-        IPS_SetMediaContent($mid, base64_encode($png));
+        if (!$same) IPS_SetMediaContent($mid, base64_encode($png));
 
-        $meta = json_decode($this->ReadAttributeString('MapMeta'), true);
-        if (!is_array($meta)) $meta = [];
+        $meta = $this->MetaAll();
         $layout = SaugroboterKarte::Layout($b, $format, $rot);
         if ($layout !== null) {
             if (!isset($this->Maps()[$layout['mapId']])) $layout['mapId'] = $this->ActiveFloor();
             $meta[$ident] = $layout;
-            $this->WriteAttributeString('MapMeta', json_encode($meta));
+            // Laufend nur im Speicher; dauerhaft (Einstellungsdatei) nur bei neuer Raumlage bzw. höchstens jede Minute
+            $this->SetBuffer('MapMetaJ', json_encode($meta));
+            $struct = function ($m) { foreach ($m as &$l) unset($l['robot']); return md5(json_encode($m)); };
+            $old = json_decode($this->ReadAttributeString('MapMeta'), true);
+            if (!is_array($old) || $struct($old) !== $struct($meta) || time() - intval($this->GetBuffer('MetaSavedAt')) > 60) {
+                $this->WriteAttributeString('MapMeta', json_encode($meta));
+                $this->SetBuffer('MetaSavedAt', strval(time()));
+            }
         }
-        $this->SetBuffer($ident == 'MapLast' ? 'LastStamp' : 'MapStamp', strval(microtime(true)));
+        if (!$same) $this->SetBuffer($ident == 'MapLast' ? 'LastStamp' : 'MapStamp', strval(microtime(true)));
     }
 
     // Bild für die Anzeige: Live-Karte, sonst das Bild der gewählten Etage
@@ -1618,9 +1628,16 @@ class X60Ultra extends IPSModule
         return $meta;
     }
 
+    private function MetaAll()
+    {
+        $meta = json_decode($this->GetBuffer('MapMetaJ'), true);
+        if (!is_array($meta)) $meta = json_decode($this->ReadAttributeString('MapMeta'), true);
+        return is_array($meta) ? $meta : [];
+    }
+
     private function MapMeta($ident)
     {
-        $meta = json_decode($this->ReadAttributeString('MapMeta'), true);
+        $meta = $this->MetaAll();
         return is_array($meta) && isset($meta[$ident]) ? $meta[$ident] : null;
     }
 
@@ -2327,7 +2344,7 @@ class X60Ultra extends IPSModule
             $dst = imagecreatetruecolor($nw, $nh);
             imagecopyresampled($dst, $img, 0, 0, 0, 0, $nw, $nh, $w, $h);
             ob_start(); imagejpeg($dst, null, 80); $out = ob_get_clean();
-            imagedestroy($img); imagedestroy($dst);
+            unset($img, $dst);
         } else {
             // ohne GD: nur kleine Bilder unverändert übernehmen
             if (strlen($raw) > 3 * 1048576) { $this->Note('Hintergrundbild zu groß (max. 3 MB ohne Bildbearbeitung).', 'err'); return; }
@@ -2476,7 +2493,7 @@ class X60Ultra extends IPSModule
             'bgBlur' => max(0, min(20, $this->ReadPropertyInteger('BgBlur'))),
             'cardOpacity' => max(0, min(100, $this->ReadPropertyInteger('CardOpacity'))),
             'cardGlass' => max(0, min(40, $this->ReadPropertyInteger('CardGlass'))),
-            'theme' => max(0, min(2, $this->ReadPropertyInteger('Theme'))),
+            'theme' => max(0, min(3, $this->ReadPropertyInteger('Theme'))),
             'trace' => $this->TraceOn(),
             'message' => $this->GetValue('Message'),
             'mapMeta' => $this->MapMetaLive(),

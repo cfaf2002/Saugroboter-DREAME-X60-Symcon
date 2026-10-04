@@ -349,3 +349,11 @@ body.light select option, body.light select optgroup { background: #ffffff; colo
   .batt .cell { display: none; }
   .batt b { font-size: 12.5px; }
 }
+
+/* Karte: dezente Bühne mit Punktraster, damit der Grundriss schwebt */
+.mapbox { position: relative; border-radius: 14px; padding: 14px 8px;
+  background-image: radial-gradient(rgba(255,255,255,.07) 1px, transparent 1.2px); background-size: 14px 14px; }
+body.light .mapbox { background-image: radial-gradient(rgba(22,32,44,.09) 1px, transparent 1.2px); }
+.mapwrap img { filter: drop-shadow(0 10px 22px rgba(0,0,0,.35)) drop-shadow(0 2px 4px rgba(0,0,0,.2)); }
+body.light .mapwrap img { filter: drop-shadow(0 8px 18px rgba(22,32,44,.18)); }
+.lbl .ic.xs { width: 13px; height: 13px; opacity: .9; }

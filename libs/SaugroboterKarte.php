@@ -477,7 +477,8 @@ class SaugroboterKarte
         list($x0, $y0, $x1, $y1) = self::Bounds($b, $format);
         if ($x1 < 0) return null;
         $cw = $x1 - $x0 + 1; $ch = $y1 - $y0 + 1;
-        $size = isset($opt['size']) ? intval($opt['size']) : 560;
+        // Größer zeichnen, damit die Karte in der Kachel scharf bleibt (mind. 3 Bildpunkte je Zelle)
+        $size = isset($opt['size']) ? intval($opt['size']) : 900;
         $k = max(1, min(10, intval(floor($size / max($cw, $ch)))));
         // Doppelt so groß zeichnen und danach verkleinern: glatte Kanten statt Treppen
         $ss = ($cw * $ch * $k * $k * 4 <= 6000000) ? 2 : 1;
@@ -488,57 +489,75 @@ class SaugroboterKarte
         imagesavealpha($img, true);
         imagefill($img, 0, 0, imagecolorallocatealpha($img, 0, 0, 0, 127));
 
-        // Ruhige Pastelltöne, die auf hellem und dunklem Hintergrund funktionieren
+        // Kräftige, aber weiche Raumfarben – harmonieren mit dunklem und hellem Hintergrund
         $palette = [
-            [0x8F, 0xB8, 0xEA], [0x92, 0xD4, 0xB0], [0xF1, 0xC8, 0x8E], [0xEB, 0xA9, 0xB6], [0xB9, 0xAB, 0xE8],
-            [0x86, 0xD0, 0xCB], [0xF0, 0xB4, 0x96], [0xC9, 0xD9, 0x8F], [0xA6, 0xBD, 0xF2], [0xDD, 0xAE, 0xD6]
+            [0x7A, 0xA7, 0xF0], [0x6F, 0xCF, 0xA8], [0xF4, 0xB8, 0x6A], [0xF0, 0x8F, 0x9A], [0xA9, 0x96, 0xF2],
+            [0x5F, 0xC6, 0xD1], [0xF2, 0x9E, 0x7C], [0xB5, 0xD3, 0x72], [0x8E, 0xB2, 0xF5], [0xD9, 0x9B, 0xD8]
         ];
         $hl  = isset($opt['highlight']) ? intval($opt['highlight']) : 0;
         $sel = isset($opt['selected']) && is_array($opt['selected']) ? $opt['selected'] : [];
-        $col = []; $edge = [];
-        $wall = imagecolorallocate($img, 0x6E, 0x78, 0x87);
-        $floor = imagecolorallocate($img, 0xCF, 0xD5, 0xDD);
+        $base = [];
+        $outer = imagecolorallocate($img, 0x2E, 0x36, 0x42);     // Außenwände: dunkel und klar
+        $floorRgb = [0xC6, 0xCD, 0xD7];
         // Zellen einmal einordnen und Lücken schließen (Möbel, verdeckte Stellen) – wie in der App
         $G = self::Classes($b, $format, $x0, $y0, $x1, $y1);
+        $at = function ($x, $y) use ($G, $x0, $y0, $x1, $y1, $cw) {
+            return ($x < $x0 || $x > $x1 || $y < $y0 || $y > $y1) ? 0 : $G[($y - $y0) * $cw + $x - $x0];
+        };
+        $isRoom = function ($c) { return $c > 0 && $c != self::WALL && $c != self::FLOOR; };
+        $rgbOf = function ($c) use (&$base, $palette, $hl, $sel) {
+            if (!isset($base[$c])) {
+                $p = $palette[($c - 1) % count($palette)];
+                // ausgewählte Räume kräftiger (Richtung Akzentblau)
+                if ($c == $hl || in_array($c, $sel, true)) $p = [intval($p[0] * .5 + 0x3F * .5), intval($p[1] * .5 + 0x86 * .5), intval($p[2] * .5 + 0xFF * .5)];
+                $base[$c] = $p;
+            }
+            return $base[$c];
+        };
+        $shade = function ($rgb, $f) use ($img) {
+            return imagecolorallocate($img, max(0, min(255, intval($rgb[0] * $f))), max(0, min(255, intval($rgb[1] * $f))), max(0, min(255, intval($rgb[2] * $f))));
+        };
         for ($y = $y0; $y <= $y1; $y++) {
             $py = ($y1 - $y) * $K;                 // Kartenachse zeigt nach oben
             $gr = ($y - $y0) * $cw;
+            $f = 1.07 - 0.14 * (($y1 - $y) / max(1, $ch - 1));   // sanfter Verlauf: oben heller, unten dunkler
             for ($x = $x0; $x <= $x1; $x++) {
                 $c = $G[$gr + $x - $x0];
                 if ($c == 0) continue;
-                if ($c == self::WALL) $color = $wall;
-                elseif ($c == self::FLOOR) $color = $floor;
-                else {
-                    if (!isset($col[$c])) {
-                        $p = $palette[($c - 1) % count($palette)];
-                        // ausgewählte Räume kräftiger (Richtung Akzentblau)
-                        if ($c == $hl || in_array($c, $sel, true)) $p = [intval($p[0] * .55 + 0x4C * .45), intval($p[1] * .55 + 0x8D * .45), intval($p[2] * .55 + 0xFF * .45)];
-                        $col[$c] = imagecolorallocate($img, $p[0], $p[1], $p[2]);
-                        $edge[$c] = imagecolorallocate($img, intval($p[0] * .8), intval($p[1] * .8), intval($p[2] * .8));
+                if ($c == self::WALL) {
+                    // Außenwand (grenzt an „nichts“) dunkel; Möbel/Innenkanten im dunkleren Ton des Raums
+                    $nb = [$at($x + 1, $y), $at($x - 1, $y), $at($x, $y + 1), $at($x, $y - 1)];
+                    if (in_array(0, $nb, true)) $color = $outer;
+                    else {
+                        $room = 0;
+                        foreach ($nb as $n) if ($isRoom($n)) { $room = $n; break; }
+                        $color = $room ? $shade($rgbOf($room), 0.68 * $f) : $shade($floorRgb, 0.7);
                     }
-                    $color = $col[$c];
-                }
+                } elseif ($c == self::FLOOR) $color = $shade($floorRgb, $f);
+                else $color = $shade($rgbOf($c), $f);
                 $px = ($x - $x0) * $K;
                 imagefilledrectangle($img, $px, $py, $px + $K - 1, $py + $K - 1, $color);
             }
         }
-        // Feine Linien zwischen Räumen bzw. zur Außenkante (erst ab lesbarer Größe)
-        if ($k >= 3) {
-            $t = $ss;                              // Linienstärke im großen Bild
-            $at = function ($x, $y) use ($G, $x0, $y0, $x1, $y1, $cw) {
-                return ($x < $x0 || $x > $x1 || $y < $y0 || $y > $y1) ? 0 : $G[($y - $y0) * $cw + $x - $x0];
-            };
+        // Feine helle Linien zwischen benachbarten Räumen (wie Türschwellen in der App)
+        if ($k >= 2) {
+            $t = $ss;
+            $seam = imagecolorallocatealpha($img, 0xFF, 0xFF, 0xFF, 40);
+            imagealphablending($img, true);
             for ($y = $y0; $y <= $y1; $y++) {
                 $py = ($y1 - $y) * $K;
                 for ($x = $x0; $x <= $x1; $x++) {
                     $c = $at($x, $y);
-                    if (!isset($edge[$c])) continue;
+                    if (!$isRoom($c)) continue;
                     $px = ($x - $x0) * $K;
                     $r = $at($x + 1, $y); $u = $at($x, $y + 1); $l = $at($x - 1, $y); $d = $at($x, $y - 1);
-                    if ($r != $c && $r != self::WALL) imagefilledrectangle($img, $px + $K - $t, $py, $px + $K - 1, $py + $K - 1, $edge[$c]);
-                    if ($l != $c && $l != self::WALL && !isset($edge[$l])) imagefilledrectangle($img, $px, $py, $px + $t - 1, $py + $K - 1, $edge[$c]);
-                    if ($u != $c && $u != self::WALL) imagefilledrectangle($img, $px, $py, $px + $K - 1, $py + $t - 1, $edge[$c]);
-                    if ($d != $c && $d != self::WALL && !isset($edge[$d])) imagefilledrectangle($img, $px, $py + $K - $t, $px + $K - 1, $py + $K - 1, $edge[$c]);
+                    if ($isRoom($r) && $r != $c) imagefilledrectangle($img, $px + $K - $t, $py, $px + $K - 1, $py + $K - 1, $seam);
+                    if ($isRoom($u) && $u != $c) imagefilledrectangle($img, $px, $py, $px + $K - 1, $py + $t - 1, $seam);
+                    // Außenkante: klare dunkle Kontur, wo kein Wandpixel erkannt wurde
+                    if ($r === 0) imagefilledrectangle($img, $px + $K - $t, $py, $px + $K - 1, $py + $K - 1, $outer);
+                    if ($l === 0) imagefilledrectangle($img, $px, $py, $px + $t - 1, $py + $K - 1, $outer);
+                    if ($u === 0) imagefilledrectangle($img, $px, $py, $px + $K - 1, $py + $t - 1, $outer);
+                    if ($d === 0) imagefilledrectangle($img, $px, $py + $K - $t, $px + $K - 1, $py + $K - 1, $outer);
                 }
             }
         }
@@ -563,15 +582,16 @@ class SaugroboterKarte
                 else { $cx = intval($seg[2]); $cy = intval($seg[3]); }
                 $pts[] = [$seg[1] == 'L' || $seg[1] == 'l', $toPx($cx, $cy)];
             }
-            $w1 = max(3 * $ss, intval($K * 0.55));
-            $layers = [[imagecolorallocatealpha($img, 0x1E, 0x2A, 0x3C, 80), $w1 + $ss + 1], [imagecolorallocatealpha($img, 0xFF, 0xFF, 0xFF, 10), $w1]];
+            // Gereinigte Bahn als zarter heller Streifen (etwa Roboterbreite), darauf eine feine Linie
+            $swath = max(3 * $ss, intval($K * 300 / max(1, $b['grid']) * 0.5));
+            $layers = [[imagecolorallocatealpha($img, 0xFF, 0xFF, 0xFF, 104), $swath], [imagecolorallocatealpha($img, 0xFF, 0xFF, 0xFF, 30), max($ss, intval($K * 0.35))]];
             foreach ($layers as $L) {
                 imagesetthickness($img, $L[1]);
                 $last = null;
                 foreach ($pts as $pt) {
                     if ($pt[0] && $last !== null) {
                         imageline($img, $last[0], $last[1], $pt[1][0], $pt[1][1], $L[0]);
-                        imagefilledellipse($img, $pt[1][0], $pt[1][1], $L[1], $L[1], $L[0]);   // runde Knicke
+                        if ($L[1] > 2 * $ss) imagefilledellipse($img, $pt[1][0], $pt[1][1], $L[1], $L[1], $L[0]);   // runde Knicke
                     }
                     $last = $pt[1];
                 }
@@ -625,20 +645,20 @@ class SaugroboterKarte
             imagesavealpha($small, true);
             imagefill($small, 0, 0, imagecolorallocatealpha($small, 0, 0, 0, 127));
             imagecopyresampled($small, $img, 0, 0, 0, 0, $w, $h, imagesx($img), imagesy($img));
-            imagedestroy($img);
+            unset($img);
             $img = $small;
         }
         if ($rot != 0) {
             $t = imagecolorallocatealpha($img, 0, 0, 0, 127);
             $img2 = imagerotate($img, -$rot, $t);   // imagerotate dreht gegen den Uhrzeigersinn
-            imagedestroy($img);
+            unset($img);
             $img = $img2;
             imagesavealpha($img, true);
         }
         ob_start();
         imagepng($img, null, 6);
         $png = ob_get_clean();
-        imagedestroy($img);
+        unset($img);
         return $png;
     }
 }

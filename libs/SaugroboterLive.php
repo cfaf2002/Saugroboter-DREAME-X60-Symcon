@@ -758,7 +758,7 @@ trait SaugroboterLive
     private function LiveRobotMove($b)
     {
         if (empty($b['robot']) || ($b['robot'][0] == 0 && $b['robot'][1] == 0)) return;
-        $meta = json_decode($this->ReadAttributeString('MapMeta'), true);
+        $meta = $this->MetaAll();
         $ident = $this->MapIdent();
         if (!is_array($meta) || !isset($meta[$ident]['tf'])) { $this->Trace('Symbol', 'keine Umrechnung für Bild „' . $ident . '“ – Karte noch nicht neu gezeichnet'); return; }
         $p = SaugroboterKarte::Place($meta[$ident]['tf'], $b['robot'][0], $b['robot'][1], $b['robot'][2]);

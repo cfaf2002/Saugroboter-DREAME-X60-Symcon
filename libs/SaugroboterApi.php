@@ -145,7 +145,7 @@ trait SaugroboterApi
         $code = intval(curl_getinfo($ch, CURLINFO_HTTP_CODE));
         $errno = curl_errno($ch);
         $err = curl_error($ch);
-        curl_close($ch);
+        unset($ch);   // curl_close() ist seit PHP 8.0 wirkungslos und ab 8.5 veraltet
         if ($res === false) {
             $this->dcLastError = in_array($errno, [35, 51, 58, 60, 77], true)
                 ? 'Zertifikatsprüfung fehlgeschlagen (' . $err . ') – Systemzeit und CA-Zertifikate des Symcon-Systems prüfen. „TLS-Zertifikate prüfen“ nur als letzten Ausweg abschalten: dann sind Token und Passwort-Hash nicht mehr vor Mitlesern geschützt.'

@@ -1,5 +1,12 @@
 # Saugroboter für IP-Symcon
 
+[![Symcon](https://img.shields.io/badge/Symcon-7.0%20bis%209.0-1f6feb)](https://www.symcon.de)
+[![Kachel](https://img.shields.io/badge/Kachel--Visualisierung-ab%207.1-0aa5a5)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/html-sdk/)
+[![PHP](https://img.shields.io/badge/PHP-8.x%20(inkl.%208.5)-777bb4?logo=php&logoColor=white)](https://www.php.net)
+[![Version](https://img.shields.io/badge/Version-1.3%20%C2%B7%20Build%2027-2ea44f)](library.json)
+[![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-yellow)](LICENSE)
+[![Letzter Commit](https://img.shields.io/github/last-commit/cfaf2002/Saugroboter-DREAME-X60-Symcon)](https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon/commits)
+
 Inoffizielles Modul zur Einbindung von Saugrobotern **kompatibel mit Dreame**¹ in IP-Symcon – entwickelt mit dem
 X60 Ultra, passend für die aktuellen Modelle der X-Serie (X40, X50, X60) und verwandte Geräte.
 
@@ -12,7 +19,7 @@ X60 Ultra, passend für die aktuellen Modelle der X-Serie (X40, X50, X60) und ve
 Die X-Modelle bieten keinen lokalen Zugang. Das Modul spricht deshalb wie die Dreamehome-App mit der
 Hersteller-Cloud – es läuft selbst aber vollständig in deiner Symcon-Instanz, ohne zusätzliche Dienste.
 
-**Version 1.3** · IP-Symcon ab 7.0 (Kachel ab 7.1) · Version und Build stehen unten in der Instanzkonfiguration
+**Version 1.3** · IP-Symcon 7.0 bis 9.0 (Kachel ab 7.1) · Version und Build stehen unten in der Instanzkonfiguration
 
 ---
 
@@ -187,6 +194,22 @@ Für **WebFront/IPSView** gibt es unter *Visualisierung* die HTML-Box „Übersi
 
 ---
 
+### Design der Kachel und Symcon 9.0
+
+- **Design** (*Visualisierung → Design*): *Dunkel* (Standard), *Wie Gerät*, *Hell* oder **Wie Symcon-Visualisierung**.
+  Letzteres übernimmt das in der Kachel-Visualisierung gewählte Design: Symcon stellt Schrift- und Akzentfarbe als
+  CSS-Variablen bereit (`--content-color`, `--accent-color`). Helle Schrift → dunkle Kachel, dunkle Schrift → helle
+  Kachel; Knöpfe, Auswahl und Fortschritt nehmen die Akzentfarbe der Visualisierung an. Liefert die Visualisierung diese
+  Angaben nicht (ältere Versionen), bleibt die Kachel dunkel.
+- **Karte:** Räume in kräftigen, weichen Farben mit leichtem Verlauf, klare dunkle Außenkontur, Möbel und Innenkanten im
+  dunkleren Ton des jeweiligen Raums statt in Grau, feine helle Linien zwischen Räumen. Die gefahrene Strecke erscheint
+  als zarter heller Streifen in etwa Roboterbreite mit feiner Linie darauf. Die Karte schwebt mit Schatten über einem
+  dezenten Punktraster; Raumnamen tragen ein passendes Symbol (Bad, Küche, Wohnzimmer, Schlafzimmer, Kinderzimmer,
+  Büro, Flur, Esszimmer, Hauswirtschaft). Gezeichnet wird höher aufgelöst, damit die Karte auch groß scharf bleibt.
+- **Symcon 9.0:** Das Modul läuft unter Symcon 9.0 und PHP 8.5 ohne Veraltet-Warnungen (u. a. keine `curl_close()`/
+  `imagedestroy()`-Aufrufe mehr). Die Kachel nutzt nur das HTML-SDK (`handleMessage`, `requestAction`) und
+  funktioniert in der Web-Visualisierung wie in den neuen *Symcon Visualization*-Apps.
+
 ## Automatik: reinigen, wenn niemand zu Hause ist – oder zur festen Uhrzeit
 
 Zwei Arten, wählbar in der Kachel oder über die Variable **Automatik startet**:
@@ -348,6 +371,17 @@ Alle Befehle geben `true`/`false` zurück; der Grund eines Fehlschlags steht in 
 - **Nur feste Server**: Zugangsdaten gehen nur an die bekannten Regionen der Dreame-Cloud, Dateien nur über HTTPS.
 - **Robust gegen kaputte Daten**: Kartendaten haben Obergrenzen (Größe, Zellen, Strecke); Nachrichten anderer Geräte
   werden verworfen; Vorwahlen aus Kachel oder Skript werden auf gültige Werte geprüft.
+- **Testprotokoll**: nur auf Knopfdruck, endet nach 2 Stunden selbst und schreibt keine Zugangsdaten oder Token –
+  wohl aber Zustände, Uhrzeiten und Roboterpositionen. Rückmeldungen der Kachel werden von Steuerzeichen bereinigt
+  und gekürzt, bevor sie in die Datei gehen.
+- **Kachel**: alle Texte (Raumnamen, Meldungen) werden vor der Anzeige maskiert; die Kommunikation zwischen Kachel und
+  Modul ist laut Symcon mit dem Passwort der Visualisierung abgesichert.
+
+**Geschwindigkeit:** Live-Positionen setzen nur das Roboter-Symbol (ohne Neuzeichnen), die Karte wird höchstens alle
+3 Sekunden neu gezeichnet und nur dann an die Kachel geschickt, wenn sich das Bild wirklich geändert hat. Die Raumlage
+wird laufend im Speicher gehalten und nur bei Änderungen bzw. höchstens jede Minute in die Einstellungen geschrieben.
+Antwortet der Roboter nicht direkt, fragt der Abruf 5 Minuten lang gleich den Cloud-Speicher, statt jedes Mal auf eine
+Zeitüberschreitung zu warten.
 
 ## Datenschutz
 

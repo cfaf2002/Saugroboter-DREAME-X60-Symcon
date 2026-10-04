@@ -1048,6 +1048,10 @@
             {
               "caption": "Hell",
               "value": 2
+            },
+            {
+              "caption": "Wie Symcon-Visualisierung (Design und Akzentfarbe)",
+              "value": 3
             }
           ]
         },
