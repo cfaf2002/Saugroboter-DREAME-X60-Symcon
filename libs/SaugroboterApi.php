@@ -4,7 +4,8 @@
  * Saugroboter – Zugriff auf die Hersteller-Cloud (Dreamehome).
  *
  * Endpunkte, Kopfzeilen und App-Kennung entsprechen dem offengelegten Protokoll
- * (Tasshack/dreame-vacuum, MIT). Befehle an den Roboter laufen als MiOT-Aufrufe
+ * (Tasshack/dreame-vacuum, MIT; Stand der App-Umstellung Ende September 2026: Dart-Client,
+ * „dreame-meta“/„dreame-rlc“, signierte Anfragen). Befehle an den Roboter laufen als MiOT-Aufrufe
  * (get_properties / set_properties / action) über ".../device/sendCommand"; die Cloud
  * reicht sie an das Gerät weiter.
  *
@@ -14,7 +15,11 @@
 trait SaugroboterApi
 {
     private static $DC_SALT  = 'RAylYC%fmSKp7%Tq';
-    private static $DC_AGENT = 'Dreame_Smarthome/2.1.9 (iPhone; iOS 18.4.1; Scale/3.00)';
+    // Seit Ende September 2026 erwartet die Cloud die Kennung der aktuellen App: Dart-Client, App-Version
+    // in „dreame-meta“, verschlüsselte Region in „dreame-rlc“ und signierte Anfragen (sign + timestamp).
+    private static $DC_AGENT = 'Dart/3.9 (dart:io)';
+    private static $DC_APPV  = '102060300';
+    private static $DC_CID   = 'EETjszu*XI5znHsI';
     private static $DC_BASIC = 'Basic ZHJlYW1lX2FwcHYxOkFQXmR2QHpAU1FZVnhOODg=';
     private static $DC_PORT  = 13267;
     // Die Cloud nimmt je get_properties-Aufruf nur eine begrenzte Zahl Kennungen an
@@ -42,11 +47,84 @@ trait SaugroboterApi
         if ($user === '' || $pass === '') { $this->dcLastError = 'Zugangsdaten fehlen.'; return false; }
 
         if (!$password && is_array($t) && !empty($t['refresh'])) {
-            $r = $this->CloudTokenRequest('grant_type=refresh_token&refresh_token=' . rawurlencode($t['refresh']), $t);
+            $r = $this->CloudTokenRequest('grant_type=refresh_token&scope=all&platform=ANDROID&type=account&refresh_token='
+                . rawurlencode($t['refresh']), $t);
             if ($r) return true;
         }
-        return $this->CloudTokenRequest('grant_type=password&username=' . rawurlencode($user)
-            . '&password=' . $this->PasswordHash($pass) . '&type=account', $t);
+        $body = 'grant_type=password&scope=all&platform=ANDROID&type=account&username=' . rawurlencode($user)
+            . '&password=' . $this->PasswordHash($pass);
+        if (is_array($t) && !empty($t['country']) && !empty($t['lang'])) $body .= '&country=' . rawurlencode($t['country']) . '&lang=' . rawurlencode($t['lang']);
+        return $this->CloudTokenRequest($body, $t);
+    }
+
+    // Kopfzeilen wie die aktuelle App
+    private function CloudHeaders($contentType, $old = null)
+    {
+        $t = is_array($old) ? $old : json_decode($this->ReadAttributeString('Token'), true);
+        $vs = $this->ReadAttributeString('LiveVs');
+        if (!preg_match('/^[0-9a-f]{32}$/', $vs)) { $vs = md5(random_bytes(16)); $this->WriteAttributeString('LiveVs', $vs); }
+        $h = [
+            'User-Agent: ' . self::$DC_AGENT,
+            'dreame-meta: cv=a_' . self::$DC_APPV . ';canvasHash=' . substr(md5(trim($this->ReadPropertyString('Email')) . 'c'), 0, 8)
+                . ';webglHash=' . substr(md5(trim($this->ReadPropertyString('Email')) . 'w'), 0, 8) . ';visitorIdHash=' . $vs,
+            'Accept-Encoding: gzip'
+        ];
+        if (is_array($t) && !empty($t['region']) && !empty($t['lang']) && !empty($t['country'])) {
+            $plain = $t['region'] . '|' . $t['lang'] . '|' . $t['country'];
+            $enc = openssl_encrypt($plain, 'aes-128-ecb', self::$DC_CID, OPENSSL_RAW_DATA);   // PKCS#7-Auffüllung
+            if ($enc !== false) $h[] = 'dreame-rlc: ' . base64_encode($enc);
+        }
+        $h[] = 'Tenant-Id: ' . (is_array($t) && !empty($t['tenant']) ? $t['tenant'] : '000000');
+        $h[] = 'Authorization: ' . self::$DC_BASIC;
+        $h[] = 'Content-Type: ' . $contentType;
+        return $h;
+    }
+
+    // Signatur: md5(sortierte Felder + Zeitstempel in ms + App-Schlüssel), wie die App sie mitschickt
+    private function CloudSigned(array $params)
+    {
+        $ms = (int) round(microtime(true) * 1000);
+        $params['sign'] = md5(self::Spliced($params, true) . $ms . self::$DC_CID);
+        $params['timestamp'] = $ms;
+        return $params;
+    }
+
+    private static function Spliced(array $obj, $top)
+    {
+        $parts = [];
+        $keys = array_keys($obj);
+        sort($keys, SORT_STRING);
+        $js = function ($v) { return json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); };
+        foreach ($keys as $k) {
+            $v = $obj[$k];
+            if (is_array($v) && $v !== [] && array_keys($v) !== range(0, count($v) - 1)) {
+                $inner = self::Spliced($v, false);
+                $parts[] = $inner !== '' ? $k . '=[' . $inner . ']' : $k . '=]';
+            } elseif (is_object($v)) {
+                $inner = self::Spliced((array) $v, false);
+                $parts[] = $inner !== '' ? $k . '=[' . $inner . ']' : $k . '=]';
+            } elseif (is_array($v)) {
+                if ($top) $parts[] = $k . '=' . $js(self::SortDeep($v));
+            } elseif (is_bool($v)) {
+                $parts[] = $k . '=' . ($v ? 'true' : 'false');
+            } elseif ($v === null) {
+                $parts[] = $k . '=null';
+            } elseif ($top) {
+                $parts[] = $k . '=' . $v;
+            } else {
+                $parts[] = $k . '=' . $js($v);
+            }
+        }
+        return implode('&', $parts);
+    }
+
+    private static function SortDeep($v)
+    {
+        if (!is_array($v)) return $v;
+        $assoc = $v !== [] && array_keys($v) !== range(0, count($v) - 1);
+        foreach ($v as $k => $x) $v[$k] = self::SortDeep($x);
+        if ($assoc) ksort($v, SORT_STRING);
+        return $v;
     }
 
     // Die Cloud erwartet md5(Passwort + Salz). Gespeichert wird nur dieser Wert ("hash:...").
@@ -57,15 +135,8 @@ trait SaugroboterApi
 
     private function CloudTokenRequest($grant, $old)
     {
-        $headers = [
-            'Accept: */*',
-            'Content-Type: application/x-www-form-urlencoded',
-            'User-Agent: ' . self::$DC_AGENT,
-            'Authorization: ' . self::$DC_BASIC,
-            'Tenant-Id: ' . (is_array($old) && !empty($old['tenant']) ? $old['tenant'] : '000000')
-        ];
-        list($code, $body) = $this->CloudHttp('POST', $this->CloudBase() . '/dreame-auth/oauth/token', $headers,
-            'platform=IOS&scope=all&' . $grant);
+        $headers = $this->CloudHeaders('application/x-www-form-urlencoded', is_array($old) ? $old : []);
+        list($code, $body) = $this->CloudHttp('POST', $this->CloudBase() . '/dreame-auth/oauth/token', $headers, $grant);
         $d = json_decode($body, true);
         if ($code == 200 && is_array($d) && !empty($d['access_token'])) {
             $this->WriteAttributeString('Token', json_encode([
@@ -73,6 +144,9 @@ trait SaugroboterApi
                 'refresh' => isset($d['refresh_token']) ? $d['refresh_token'] : '',
                 'uid'     => isset($d['uid']) ? strval($d['uid']) : '',
                 'tenant'  => isset($d['tenant_id']) ? strval($d['tenant_id']) : '000000',
+                'region'  => isset($d['region']) ? strval($d['region']) : (is_array($old) ? strval($old['region'] ?? '') : ''),
+                'lang'    => isset($d['lang']) ? strval($d['lang']) : (is_array($old) ? strval($old['lang'] ?? '') : ''),
+                'country' => isset($d['country']) ? strval($d['country']) : (is_array($old) ? strval($old['country'] ?? '') : ''),
                 'until'   => time() + (isset($d['expires_in']) ? intval($d['expires_in']) : 3600)
             ]));
             $this->SendDebug('Cloud', 'Anmeldung ok (' . (strpos($grant, 'refresh') === 0 ? 'Refresh' : 'Passwort') . ')', 0);
@@ -97,15 +171,11 @@ trait SaugroboterApi
     protected function CloudCall($path, $payload, $again = true)
     {
         if (!$this->CloudLogin()) return null;
-        $headers = [
-            'Accept: */*',
-            'Content-Type: application/json',
-            'User-Agent: ' . self::$DC_AGENT,
-            'Authorization: ' . self::$DC_BASIC,
-            'Tenant-Id: ' . ($this->CloudToken('tenant') ?: '000000'),
-            'Dreame-Auth: ' . $this->CloudToken('access')
-        ];
-        list($code, $body) = $this->CloudHttp('POST', $this->CloudBase() . '/' . $path, $headers, json_encode($payload));
+        $headers = $this->CloudHeaders('application/json');
+        $headers[] = 'Dreame-Auth: ' . $this->CloudToken('access');
+        // Anfragen mit Feldern werden signiert (wie die App); leere Anfragen gehen unverändert
+        $send = is_array($payload) && $payload !== [] ? $this->CloudSigned($payload) : $payload;
+        list($code, $body) = $this->CloudHttp('POST', $this->CloudBase() . '/' . $path, $headers, json_encode($send, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         if ($code == 401 && $again) {
             $t = json_decode($this->ReadAttributeString('Token'), true);
             if (is_array($t)) { $t['until'] = 0; $this->WriteAttributeString('Token', json_encode($t)); }
@@ -141,6 +211,12 @@ trait SaugroboterApi
         $opt[CURLOPT_NOPROGRESS] = false;
         $opt[CURLOPT_PROGRESSFUNCTION] = function ($ch, $dlTotal, $dl) { return $dl > 20971520 ? 1 : 0; };
         curl_setopt_array($ch, $opt);
+        // Verschlüsselung in der Reihenfolge der App anbieten (TLS 1.3: ChaCha20 zuerst). Einzeln gesetzt:
+        // kennt die curl-Version eine Option nicht, bleibt alles andere wirksam.
+        if (defined('CURLOPT_TLS13_CIPHERS')) @curl_setopt($ch, CURLOPT_TLS13_CIPHERS, 'TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384');
+        @curl_setopt($ch, CURLOPT_SSL_CIPHER_LIST, 'ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:'
+            . 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES128-SHA:'
+            . 'ECDHE-ECDSA-AES256-SHA:ECDHE-RSA-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA:AES256-SHA');
         $res = curl_exec($ch);
         $code = intval(curl_getinfo($ch, CURLINFO_HTTP_CODE));
         $errno = curl_errno($ch);
