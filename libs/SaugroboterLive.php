@@ -100,13 +100,36 @@ trait SaugroboterLive
                 $this->Trace('Verbindung', 'Server trennt direkt nach der Anmeldung (' . $n . '×)');
                 if ($n >= 2) {
                     $this->SetBuffer('LiveEarlyDrops', '0');
-                    $t = json_decode($this->ReadAttributeString('Token'), true);
-                    if (is_array($t)) { $t['until'] = 0; $this->WriteAttributeString('Token', json_encode($t)); }
-                    $ok = $this->Locked(function () { return $this->CloudLogin(); }, true);
-                    $this->LiveCountDrop('Server beendete die Anmeldung – Zugangstoken ' . ($ok ? 'erneuert' : 'konnte nicht erneuert werden'));
-                    $this->SetBuffer('SockRetries', '0');
-                    $this->SetBuffer('SockDownAt', strval(time() - 10));   // gleich neu öffnen
-                    $this->SetTimerInterval('LiveCheck', 3000);
+                    if (time() - intval($this->GetBuffer('LiveRenewAt')) > 1800) {
+                        // Erster Versuch: frisches Token und aktuelle Serveradresse holen (höchstens alle 30 min –
+                        // nicht laufend mit dem Passwort anmelden)
+                        $this->SetBuffer('LiveRenewAt', strval(time()));
+                        $old = json_decode($this->ReadAttributeString('Device'), true);
+                        $t = json_decode($this->ReadAttributeString('Token'), true);
+                        if (is_array($t)) { $t['until'] = 0; $this->WriteAttributeString('Token', json_encode($t)); }
+                        $info = $this->Locked(function () {
+                            $ok = $this->CloudLogin();
+                            $dev = $ok ? $this->CloudDevice(true) : null;
+                            return [$ok, is_array($dev) ? $dev['host'] : ''];
+                        }, true);
+                        $host = is_array($info) ? $info[1] : '';
+                        $moved = $host !== '' && is_array($old) && ($old['host'] ?? '') !== $host;
+                        $this->LiveCountDrop('Server beendete die Anmeldung – Zugangstoken ' . (is_array($info) && $info[0] ? 'erneuert' : 'konnte nicht erneuert werden')
+                            . ($moved ? ', neue Serveradresse ' . $host : ''));
+                        $this->SetBuffer('SockRetries', '0');
+                        $this->SetBuffer('SockDownAt', strval(time() - 10));   // gleich neu öffnen
+                        $this->SetTimerInterval('LiveCheck', 3000);
+                    } else {
+                        // Hilft auch ein frisches Token nicht: den Server nicht im Sekundentakt bedrängen –
+                        // 15 Minuten Pause, Zustand kommt solange über die normale Abfrage
+                        $until = time() + 900;
+                        $this->SetBuffer('LiveHold', strval($until));
+                        $this->SetBuffer('LiveHoldWhy', 'Server trennt direkt nach der Anmeldung');
+                        $this->LiveSocketOpen(false);
+                        $this->SetVal('Live', false);
+                        $this->LiveCountDrop('Server lehnt die Live-Verbindung ab – Pause bis ' . date('H:i', $until));
+                        $this->SetPollInterval();
+                    }
                 }
             }
             $this->SetBuffer('MqttState', '0');
@@ -148,7 +171,8 @@ trait SaugroboterLive
         }
         $hold = intval($this->GetBuffer('LiveHold'));
         if ($hold > time() + 86400) return '⛔ gestoppt – unbekanntes Server-Zertifikat (siehe Letzte Meldung)';
-        if ($hold > time()) return '⏸ pausiert bis ' . date('H:i', $hold) . ' (Anmeldung abgelehnt) – solange normale Abfrage';
+        if ($hold > time()) return '⏸ pausiert bis ' . date('H:i', $hold) . ' (' . ($this->GetBuffer('LiveHoldWhy') !== '' ? $this->GetBuffer('LiveHoldWhy') : 'Anmeldung abgelehnt')
+            . ') – solange normale Abfrage; „Live neu verbinden“ versucht es sofort';
         $pid = $this->LiveParent();
         if (!$this->LiveIsSocket($pid)) return 'wird eingerichtet …';
         if (IPS_GetInstance($pid)['InstanceStatus'] != 102) return '⚠️ Socket nicht verbunden – solange normale Abfrage';
@@ -252,6 +276,7 @@ trait SaugroboterLive
     private function LiveRestartRun()
     {
         $this->SetBuffer('LiveHold', '0');
+        $this->SetBuffer('LiveEarlyDrops', '0');
         $this->SetBuffer('LiveFails', '0');
         if (!$this->LiveWanted()) { echo 'Die Live-Verbindung ist ausgeschaltet.'; return false; }
         $this->LiveReconnect('von Hand');
@@ -532,6 +557,7 @@ trait SaugroboterLive
                 }
                 if ($n >= 3) {
                     $this->SetBuffer('LiveHold', strval(time() + 600));
+                    $this->SetBuffer('LiveHoldWhy', 'Anmeldung abgelehnt');
                     $this->LiveSocketOpen(false);
                     $this->Note('Live-Verbindung abgelehnt – neuer Versuch in 10 Minuten, bis dahin normale Abfrage.');
                 }
