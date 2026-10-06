@@ -2,7 +2,7 @@
 
 [![IP-Symcon ab 8.1](https://img.shields.io/badge/IP--Symcon-ab_8.1-0b6fb3.svg)](https://www.symcon.de)
 [![Optimiert für Symcon 9.0](https://img.shields.io/badge/optimiert_f%C3%BCr-Symcon_9.0-0b6fb3.svg)](https://www.symcon.de/de/service/dokumentation/installation/migrationen/v81-v90-q1-2026/)
-[![Modul-Version 1.4 (Build 34)](https://img.shields.io/badge/Modul--Version-1.4_(Build_34)-informational.svg)](library.json)
+[![Modul-Version 1.4 (Build 35)](https://img.shields.io/badge/Modul--Version-1.4_(Build_35)-informational.svg)](library.json)
 [![Tests](https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon/actions/workflows/tests.yml/badge.svg)](https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon/actions/workflows/tests.yml)
 [![PHP 8.3 und 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net)
 [![SDK: IPSModuleStrict](https://img.shields.io/badge/SDK-IPSModuleStrict-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/module/)
@@ -428,6 +428,7 @@ Zeitüberschreitung zu warten.
 
 | Version | Build | Datum | Beschreibung |
 |---|---|---|---|
+| 1.4 | 35 | 06.10.2026 | Hausstil: Regel für die Modulliste (`vendor` gesetzt, höchstens ein Alias) in `STYLEGUIDE.md` und Strukturprüfung ergänzt |
 | 1.4 | 34 | 06.10.2026 | **Live-Verbindung repariert:** Seit dem Umstieg auf `IPSModuleStrict` (Build 28) erwartet Symcon die Daten zum Client Socket HEX-kodiert; das Modul schickte sie noch UTF-8-kodiert, der Server bekam Datenmüll und trennte sofort („End of file“). Senden und Empfangen jetzt HEX-kodiert |
 | 1.4 | 33 | 06.10.2026 | Neuer Knopf „Live-Anmeldung prüfen“: baut selbst eine Verbindung zum Live-Server auf (mit/ohne Servernamen, mit/ohne Anmelde-Kennzeichen) und zeigt, ob der Server die Anmeldung annimmt; dazu PHP-, OpenSSL- und Krypto-Ausstattung des Systems |
 | 1.4 | 32 | 06.10.2026 | Cloud-Zugriff an die App-Umstellung von Dreame (Ende September 2026) angepasst: Anmeldung als aktuelle App (Dart-Client, Plattform Android, Land/Sprache), Kopfzeilen „dreame-meta“ und „dreame-rlc“, alle Anfragen mit Signatur und Zeitstempel, TLS-Verschlüsselung in der Reihenfolge der App. Behebt „Roboter antwortet nicht direkt“ (80001), wenn die Cloud unsignierte Befehle nicht mehr weiterleitet |
