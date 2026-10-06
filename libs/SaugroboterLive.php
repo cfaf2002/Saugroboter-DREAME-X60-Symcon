@@ -92,6 +92,23 @@ trait SaugroboterLive
             return true;
         }
         if ($Message == IM_CHANGESTATUS && $SenderID == $this->LiveParent()) {
+            // Trennt der Server direkt nach der Anmeldung (ohne Antwort, Symcon: „End of file“), lehnt er meist
+            // das Zugangstoken ab. Beim zweiten Mal in Folge: Token neu holen, dann sofort neu verbinden.
+            if (intval($Data[0]) != 102 && $this->GetBuffer('MqttState') === '1' && time() - intval($this->GetBuffer('LiveConnectAt')) < 15) {
+                $n = intval($this->GetBuffer('LiveEarlyDrops')) + 1;
+                $this->SetBuffer('LiveEarlyDrops', strval($n));
+                $this->Trace('Verbindung', 'Server trennt direkt nach der Anmeldung (' . $n . '×)');
+                if ($n >= 2) {
+                    $this->SetBuffer('LiveEarlyDrops', '0');
+                    $t = json_decode($this->ReadAttributeString('Token'), true);
+                    if (is_array($t)) { $t['until'] = 0; $this->WriteAttributeString('Token', json_encode($t)); }
+                    $ok = $this->Locked(function () { return $this->CloudLogin(); }, true);
+                    $this->LiveCountDrop('Server beendete die Anmeldung – Zugangstoken ' . ($ok ? 'erneuert' : 'konnte nicht erneuert werden'));
+                    $this->SetBuffer('SockRetries', '0');
+                    $this->SetBuffer('SockDownAt', strval(time() - 10));   // gleich neu öffnen
+                    $this->SetTimerInterval('LiveCheck', 3000);
+                }
+            }
             $this->SetBuffer('MqttState', '0');
             $this->SetBuffer('LiveIn', '');
             if (intval($Data[0]) == 102 && $this->LiveWanted()) $this->LiveConnect();
@@ -192,11 +209,14 @@ trait SaugroboterLive
         $this->LiveSocketConfig($pid, ['Host' => $host, 'Port' => intval($port), 'UseSSL' => true,
             'VerifyPeer' => false, 'VerifyHost' => false, 'Open' => true]);
 
-        // Socket getrennt: nicht endlos warten, sondern selbst neu öffnen (wachsende Abstände 60 s … 10 min)
+        // Socket getrennt/fehlerhaft: selbst neu öffnen – erst schnell, dann in wachsenden Abständen
+        // (10 s, 30 s, 1 min, 2 min, danach alle 5 min). Solange wird alle 10 s geprüft.
         if (IPS_GetInstance($pid)['InstanceStatus'] != 102) {
+            $this->SetTimerInterval('LiveCheck', 10000);
             $down = intval($this->GetBuffer('SockDownAt'));
             if ($down == 0) { $this->SetBuffer('SockDownAt', strval(time())); return false; }
-            $wait = min(600, 60 * (1 << min(4, intval($this->GetBuffer('SockRetries')))));
+            $waits = [10, 30, 60, 120, 300];
+            $wait = $waits[min(count($waits) - 1, intval($this->GetBuffer('SockRetries')))];
             if (time() - $down >= $wait) {
                 $this->SetBuffer('SockRetries', strval(intval($this->GetBuffer('SockRetries')) + 1));
                 $this->SetBuffer('SockDownAt', strval(time()));
@@ -490,6 +510,7 @@ trait SaugroboterLive
                     $this->SetBuffer('LiveSince', strval(time()));
                     $this->SetBuffer('LiveDevCnt', '0');
                     $this->SetBuffer('SockRetries', '0');
+                    $this->SetBuffer('LiveEarlyDrops', '0');
                     $sub = '';
                     foreach ($this->LiveTopics() as $t) $sub .= self::MqttStr($t) . "\x01";
                     if ($sub !== '') $this->LiveSend(self::MqttPacket(0x82, pack('n', 1) . $sub));

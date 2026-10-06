@@ -2,7 +2,7 @@
 
 [![IP-Symcon ab 8.1](https://img.shields.io/badge/IP--Symcon-ab_8.1-0b6fb3.svg)](https://www.symcon.de)
 [![Optimiert für Symcon 9.0](https://img.shields.io/badge/optimiert_f%C3%BCr-Symcon_9.0-0b6fb3.svg)](https://www.symcon.de/de/service/dokumentation/installation/migrationen/v81-v90-q1-2026/)
-[![Modul-Version 1.4 (Build 28)](https://img.shields.io/badge/Modul--Version-1.4_(Build_28)-informational.svg)](library.json)
+[![Modul-Version 1.4 (Build 29)](https://img.shields.io/badge/Modul--Version-1.4_(Build_29)-informational.svg)](library.json)
 [![Tests](https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon/actions/workflows/tests.yml/badge.svg)](https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon/actions/workflows/tests.yml)
 [![PHP 8.3 und 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net)
 [![SDK: IPSModuleStrict](https://img.shields.io/badge/SDK-IPSModuleStrict-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/module/)
@@ -339,8 +339,8 @@ Alle Befehle geben `true`/`false` zurück; der Grund eines Fehlschlags steht in 
   Uhrzeit oder Bildnummer kann sie nicht mehr „einfrieren“. Schickt das Gerät live nur den Zustand und keine
   Kartenbilder, holt das Modul während der Reinigung die Kartendatei im kurzen Takt (*Abfrage während Reinigung*,
   spätestens alle 30 s), damit der Roboter in der Kachel trotzdem fährt. Die *Kartendiagnose* zeigt dazu
-  „Letztes Live-Kartenbild“. Die Verbindung heilt sich selbst: nach 150 s ohne Daten, bei getrenntem Socket (nach 60 s, dann in
-  wachsenden Abständen bis 10 min), wenn der Roboter unterwegs ist, aber 40 s lang live nichts kommt (höchstens alle 3 Minuten), und kurz vor Ablauf des Zugangstokens
+  „Letztes Live-Kartenbild“. Die Verbindung heilt sich selbst: nach 150 s ohne Daten, bei getrenntem Socket (nach 10 s, dann in
+  wachsenden Abständen bis 5 min), wenn der Roboter unterwegs ist, aber 40 s lang live nichts kommt (höchstens alle 3 Minuten), und kurz vor Ablauf des Zugangstokens
   baut das Modul sie neu auf. Der Status-Block zeigt, wie oft das heute nötig war und warum; wird die Anmeldung dreimal abgelehnt, pausiert es 10 Minuten.
 - **Testprotokoll** (zur Fehlersuche): In der Instanz unten „Testprotokoll starten (2 h)“ – danach werden Live-Meldungen,
   Kartenbilder, Roboterposition, Läufe von Abruf und Nacharbeit, Verbindungswechsel und das, was die Kachel tatsächlich anzeigt,
@@ -428,6 +428,7 @@ Zeitüberschreitung zu warten.
 
 | Version | Build | Datum | Beschreibung |
 |---|---|---|---|
+| 1.4 | 29 | 06.10.2026 | Karte in der breiten Kachel deutlich größer, neuer Knopf „Karte groß“ (füllt die ganze Kachel); neuer Kartenstil wird nach dem Update sicher gezeichnet; Live-Socket nach einem Fehler schneller neu öffnen (10 s, 30 s, 1, 2, dann alle 5 min); trennt der Server direkt nach der Anmeldung („End of file“), holt das Modul ein frisches Zugangstoken und verbindet sofort neu |
 | 1.4 | 28 | 06.10.2026 | Einheitliches Design nach `STYLEGUIDE.md`: Kachel-Grundlage (Farben, Schrift, Radien, Zustandsfarben) und Einstellung „Farbschema der Kachel“ (Symcon-Design, Dunkel, Hell, wie Gerät; die alte Einstellung „Design“ wird übernommen); Kachel-Datei heißt `tile.html`; Basisklasse `IPSModuleStrict` (ab Symcon 8.1) mit typisierten Befehlen; Darstellungen statt Profile, alte `SAUG.*`-Profile werden aufgeräumt; einheitliche Badges; gemeinsamer Test-Workflow mit Struktur- und Ladetest |
 
 ## Lizenz, Marken und Dank

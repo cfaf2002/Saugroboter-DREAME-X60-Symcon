@@ -357,3 +357,19 @@ body.light .mapbox { background-image: radial-gradient(rgba(22,32,44,.09) 1px, t
 .mapwrap img { filter: drop-shadow(0 10px 22px rgba(0,0,0,.35)) drop-shadow(0 2px 4px rgba(0,0,0,.2)); }
 body.light .mapwrap img { filter: drop-shadow(0 8px 18px rgba(22,32,44,.18)); }
 .lbl .ic.xs { width: 13px; height: 13px; opacity: .9; }
+
+/* Breite Kachel: Karte deutlich größer (steht am Ende, damit sie die Grundgröße überschreibt) */
+@media (min-width: 760px) {
+  .mapcard .mapwrap img { max-height: calc(100vh - 230px); min-height: 340px; }
+}
+/* Ansicht-Umschalter und Zoom-Knopf rechts in einer Zeile */
+.maptop .row { gap: var(--gap); }
+.maptop .mapzoom { color: var(--fg); min-width: 36px; min-height: 36px; }
+/* Karte groß: füllt die ganze Kachel, Raumnamen und Roboter bleiben bedienbar */
+body.mapbig { overflow: hidden; }
+body.mapbig .mapcard { position: fixed; top: 8px; right: 8px; bottom: 8px; left: 8px; z-index: 40;
+  display: flex; flex-direction: column; background: var(--dlg); }
+body.mapbig.hasbg .mapcard { background: var(--dlg); -webkit-backdrop-filter: none; backdrop-filter: none; }
+body.mapbig .mapbox { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; min-height: 0; }
+body.mapbig .mapcard .mapwrap img { max-height: calc(100vh - 110px); max-width: calc(100vw - 48px); min-height: 0; }
+body.mapbig .maphint { display: none; }

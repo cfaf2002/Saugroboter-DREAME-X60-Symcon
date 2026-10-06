@@ -1429,7 +1429,13 @@ class X60Ultra extends IPSModuleStrict
             $stale = $this->ReadAttributeInteger('RenderVersion') != self::RENDER_VERSION;
             if ($this->ReadPropertyBoolean('MapImage') && ($this->MapMeta('Map') === null || $stale) && intval($this->GetBuffer('MetaTry')) < time() - 300) {
                 $this->SetBuffer('MetaTry', strval(time()));
-                if ($this->FetchLiveMap(true) !== null && $this->MapMeta('Map') !== null) $this->WriteAttributeInteger('RenderVersion', self::RENDER_VERSION);
+                // Karte im aktuellen Stil zeichnen – auch wenn die Cloud gerade kein neueres Bild liefert
+                $nb = $this->FetchLiveMap(true);
+                if ($nb === null) $nb = $this->LiveBlock();
+                if ($nb !== null) {
+                    $this->StoreMapImage($nb, $nb['mapId'], 'Map');
+                    $this->WriteAttributeInteger('RenderVersion', self::RENDER_VERSION);
+                }
             }
             if ($done) {
                 $this->SetBuffer('AtStationSince', '0');
