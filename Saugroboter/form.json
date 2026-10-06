@@ -1011,6 +1011,29 @@
           "caption": "Kachel: Instanz direkt als Kachel hinzufügen."
         },
         {
+          "type": "Select",
+          "name": "TileTheme",
+          "caption": "Farbschema der Kachel",
+          "options": [
+            {
+              "caption": "Symcon-Design (Farben der Visualisierung)",
+              "value": 0
+            },
+            {
+              "caption": "Dunkel",
+              "value": 1
+            },
+            {
+              "caption": "Hell",
+              "value": 2
+            },
+            {
+              "caption": "Wie Gerät (hell/dunkel)",
+              "value": 3
+            }
+          ]
+        },
+        {
           "type": "SelectFile",
           "name": "BgUpload",
           "caption": "Hintergrundbild der Kachel",
@@ -1031,29 +1054,6 @@
           "suffix": "px",
           "minimum": 0,
           "maximum": 20
-        },
-        {
-          "type": "Select",
-          "name": "Theme",
-          "caption": "Design",
-          "options": [
-            {
-              "caption": "Dunkel",
-              "value": 0
-            },
-            {
-              "caption": "Wie Gerät (hell/dunkel)",
-              "value": 1
-            },
-            {
-              "caption": "Hell",
-              "value": 2
-            },
-            {
-              "caption": "Wie Symcon-Visualisierung (Design und Akzentfarbe)",
-              "value": 3
-            }
-          ]
         },
         {
           "type": "NumberSpinner",

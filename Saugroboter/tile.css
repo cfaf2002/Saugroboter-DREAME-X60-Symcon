@@ -1,23 +1,23 @@
-/* Saugroboter – Kachel. Dunkles Design als Grundlage, helles über die Klasse body.light (Einstellung „Design“). */
+/* Saugroboter – Kachel. Farben, Schrift und Radien aus der Kachel-Grundlage (STYLEGUIDE.md);
+   dunkle Flächen als Grundlage, helle über die Klasse body.light (Farbschema der Kachel). */
 :root {
-  --fg: #eef1f5; --mute: rgba(238,241,245,.58); --faint: rgba(238,241,245,.36);
-  --card: rgba(255,255,255,.055); --card2: rgba(255,255,255,.09); --line: rgba(255,255,255,.09);
-  --acc: #4c8dff; --acc-soft: rgba(76,141,255,.18); --on-acc: #fff;
-  --ok: #34c77b; --warn: #f0a93b; --bad: #f0615a;
-  --ok-soft: rgba(52,199,123,.16); --warn-soft: rgba(240,169,59,.16); --bad-soft: rgba(240,97,90,.16);
-  --dlg: #20252d; --shadow: 0 12px 40px rgba(0,0,0,.45);
-  --r: 18px;
+  --fg: #eef3f7; --mute: rgba(238,243,247,.65); --faint: rgba(238,243,247,.40);
+  --card: rgba(255,255,255,.055); --card2: rgba(255,255,255,.09); --line: rgba(255,255,255,.10);
+  --acc: var(--brand); --acc-soft: color-mix(in srgb, var(--acc) 18%, transparent); --on-acc: #fff;
+  --ok-soft: rgba(52,179,107,.16); --warn-soft: rgba(226,166,59,.16); --bad-soft: rgba(229,72,77,.16);
+  --dlg: #232d39; --shadow: 0 12px 40px rgba(0,0,0,.45);
+  --r: var(--radius-l);
 }
 body.light {
-    --fg: #16202c; --mute: rgba(22,32,44,.58); --faint: rgba(22,32,44,.38);
-    --card: rgba(255,255,255,.78); --card2: rgba(22,32,44,.06); --line: rgba(22,32,44,.08);
-    --acc: #2f74f0; --acc-soft: rgba(47,116,240,.12);
-    --ok-soft: rgba(52,199,123,.14); --warn-soft: rgba(240,169,59,.16); --bad-soft: rgba(240,97,90,.13);
-    --dlg: #ffffff; --shadow: 0 12px 40px rgba(22,32,44,.18);
+    --fg: #1d2b36; --mute: rgba(29,43,54,.65); --faint: rgba(29,43,54,.40);
+    --card: rgba(255,255,255,.78); --card2: rgba(29,43,54,.06); --line: rgba(29,43,54,.10);
+    --acc-soft: color-mix(in srgb, var(--acc) 12%, transparent);
+    --ok-soft: rgba(52,179,107,.14); --warn-soft: rgba(226,166,59,.16); --bad-soft: rgba(229,72,77,.13);
+    --dlg: #ffffff; --shadow: 0 12px 40px rgba(29,43,54,.18);
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; background: transparent; color: var(--fg);
-  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+  font: 14px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
 /* oben Platz für Titel und Vollbild-Knopf der Kachel-Visualisierung */
 body { padding: 52px 14px 18px; height: 100vh; overflow-y: auto; scrollbar-width: thin; }
 #app { display: flex; flex-direction: column; gap: 12px; max-width: 560px; margin: 0 auto; }
@@ -48,7 +48,7 @@ button { font: inherit; color: inherit; }
 .dot.work { background: var(--acc); animation: pulse 1.8s infinite; }
 .dot.warn { background: var(--warn); }
 .dot.bad, .dot.off { background: var(--bad); }
-@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(76,141,255,.55); } 70% { box-shadow: 0 0 0 8px rgba(76,141,255,0); } 100% { box-shadow: 0 0 0 0 rgba(76,141,255,0); } }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--acc) 55%, transparent); } 70% { box-shadow: 0 0 0 8px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 .live { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; letter-spacing: .08em;
   padding: 2px 7px 2px 6px; border-radius: 999px; color: var(--ok); background: var(--ok-soft); }
 .live i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); animation: blink 2s infinite; }
@@ -73,7 +73,7 @@ button { font: inherit; color: inherit; }
 .prog { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-variant-numeric: tabular-nums; }
 .prog b { font-size: 13px; font-weight: 650; }
 .bar { flex: 1; height: 6px; border-radius: 3px; background: var(--card2); overflow: hidden; }
-.bar i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--acc), #7aa9ff); transition: width .5s; }
+.bar i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--acc), color-mix(in srgb, var(--acc) 60%, #fff)); transition: width .5s; }
 .stats { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; }
 .stat { min-width: 0; }
 .sv { font-size: 18px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
@@ -115,9 +115,9 @@ button { font: inherit; color: inherit; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 16px; border-radius: 14px;
   border: 0; background: var(--card2); cursor: pointer; font-weight: 600; white-space: nowrap; transition: transform .1s, filter .15s; }
 .btn:active, .round:active, .act:active, .chip:active { transform: scale(.97); }
-.btn.main { background: var(--acc); color: var(--on-acc); box-shadow: 0 6px 18px rgba(76,141,255,.35); }
+.btn.main { background: var(--acc); color: var(--on-acc); box-shadow: 0 6px 18px color-mix(in srgb, var(--acc) 35%, transparent); }
 .btn.main:hover { filter: brightness(1.07); }
-.btn.big { flex: 1 1 auto; font-size: 15.5px; padding: 14px 16px; border-radius: 18px; }
+.btn.big { flex: 1 1 auto; font-size: 15.5px; padding: 14px 16px; border-radius: var(--radius-l); }
 .btn.full { width: 100%; margin-top: 12px; }
 .btn.ghost { background: transparent; color: var(--mute); }
 .btn.sm { padding: 7px 12px; font-size: 13px; border-radius: 10px; background: rgba(255,255,255,.14); }
@@ -191,7 +191,7 @@ details[open] .chev { transform: rotate(225deg); margin: 4px 4px 0; }
 .dlg-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 14px; }
 .dlg-title { font-size: 19px; font-weight: 700; }
 .dlg .seg { background: var(--card2); }
-.dlg .seg button.on { background: var(--acc); color: #fff; }
+.dlg .seg button.on { background: var(--acc); color: var(--on-acc); }
 .dlg-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 18px; }
 .dlg-actions .btn.main { padding: 14px; font-size: 15px; }
 @media (min-height: 560px) { .dlg-back { align-items: center; } }
@@ -202,7 +202,7 @@ details[open] .chev { transform: rotate(225deg); margin: 4px 4px 0; }
   border-radius: 14px; font-size: 13.5px; font-weight: 550; box-shadow: 0 8px 24px rgba(0,0,0,.3);
   opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; z-index: 20; }
 #flash.show { opacity: 1; transform: translate(-50%, 0); }
-#flash.ok { background: #1f9d5c; } #flash.err { background: #d4463f; }
+#flash.ok { background: var(--ok); } #flash.err { background: var(--bad); }
 #flash .ic { width: 18px; height: 18px; flex: none; }
 
 /* Roboter und Station über der Karte */
@@ -331,9 +331,9 @@ body.hasbg .card, body.hasbg .head { text-shadow: var(--tshadow, none); }
 
 /* Auswahllisten: Einträge im Stil der Kachel (sonst schwarz auf dunklem Grund) */
 select { color-scheme: dark; }
-select option, select optgroup { background: #262b33; color: #eef1f5; }
+select option, select optgroup { background: #232d39; color: #eef3f7; }
 body.light select { color-scheme: light; }
-body.light select option, body.light select optgroup { background: #ffffff; color: #16202c; }
+body.light select option, body.light select optgroup { background: #ffffff; color: #1d2b36; }
 
 .stale { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--warn); }
 

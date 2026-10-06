@@ -9,7 +9,8 @@
  *   libs/SaugroboterKarte.php    Kartenblöcke dekodieren (inkl. AES) und als PNG zeichnen
  *   libs/SaugroboterTexte.php  Zustände, Fehler mit Kurzhilfe, Raumtypen, Verschleißteile
  *   libs/SaugroboterLive.php   Live-Verbindung (MQTT über den Client Socket) wie in der App
- *   module.html                Kachel für die Kachel-Visualisierung (HTML-SDK)
+ *   libs/SaugroboterDarstellung.php  Variablen-Darstellungen (statt eigener Profile)
+ *   tile.html + tile.css       Kachel für die Kachel-Visualisierung (HTML-SDK)
  *
  * Grundsätze
  *   - Alles, was modellabhängig ist (Verschleißteile, Statistik, Fortschritt), wird am Gerät
@@ -17,19 +18,23 @@
  *   - Jeder Cloud-Zugriff läuft unter einer Instanzsperre; Fehler landen in "Letzte Meldung",
  *     nie als Abbruch des Skripts.
  *   - Variablen werden nur bei echter Änderung geschrieben.
+ *
+ * Copyright (c) 2026 Armin Frohwerk · SPDX-License-Identifier: MIT
  */
 
 require_once __DIR__ . '/../libs/SaugroboterApi.php';
 require_once __DIR__ . '/../libs/SaugroboterKarte.php';
 require_once __DIR__ . '/../libs/SaugroboterTexte.php';
 require_once __DIR__ . '/../libs/SaugroboterLive.php';
+require_once __DIR__ . '/../libs/SaugroboterDarstellung.php';
 
-class X60Ultra extends IPSModule
+class X60Ultra extends IPSModuleStrict
 {
     // true, wenn ApplyChanges geänderte Zugangsdaten/Verbindungseinstellungen erkannt hat
     protected $credChanged = true;
     use SaugroboterApi;
     use SaugroboterLive;
+    use SaugroboterDarstellung;
 
     // Stand der Kartendarstellung: ändert sich die Zeichnung, wird die Karte nach dem Update neu gezeichnet
     const RENDER_VERSION = 7;
@@ -58,16 +63,16 @@ class X60Ultra extends IPSModule
         8 => ['CleanGenius Tiefenreinigung', ['Mode' => 2, 'CleanGenius' => 2]]
     ];
 
-    // Zusatzwerte je nach Modell: Ident => [Name, siid, piid, Typ, Profil, Position]
+    // Zusatzwerte je nach Modell: Ident => [Name, siid, piid, Typ, Darstellung (siehe Presentation()), Position]
     const EXTRAS = [
-        'Charging'   => ['Lädt', 3, 2, 0, '~Switch', 14],
-        'Progress'   => ['Fortschritt', 4, 63, 1, 'SAUG.Percent', 16],
-        'TotalHours' => ['Reinigungszeit gesamt', 12, 2, 2, 'SAUG.Hours', 180],
-        'TotalRuns'  => ['Reinigungen gesamt', 12, 3, 1, '', 181],
-        'TotalArea'  => ['Fläche gesamt', 12, 4, 1, 'SAUG.Area', 182]
+        'Charging'   => ['Lädt', 3, 2, 0, 'charging', 14],
+        'Progress'   => ['Fortschritt', 4, 63, 1, 'percent', 16],
+        'TotalHours' => ['Reinigungszeit gesamt', 12, 2, 2, 'hours', 180],
+        'TotalRuns'  => ['Reinigungen gesamt', 12, 3, 1, 'count', 181],
+        'TotalArea'  => ['Fläche gesamt', 12, 4, 1, 'area', 182]
     ];
 
-    public function Create()
+    public function Create(): void
     {
         parent::Create();
 
@@ -95,7 +100,8 @@ class X60Ultra extends IPSModule
         $this->RegisterPropertyInteger('BgDim', 25);             // Abdunkeln des Hintergrunds in %
         $this->RegisterPropertyInteger('BgBlur', 0);             // Weichzeichnen des Hintergrunds in px
         $this->RegisterPropertyInteger('CardOpacity', 62);       // Deckkraft der Felder über dem Hintergrund in %
-        $this->RegisterPropertyInteger('Theme', 0);              // Design der Kachel: 0 dunkel, 1 wie Gerät, 2 hell, 3 wie Symcon-Visualisierung
+        $this->RegisterPropertyInteger('TileTheme', 0);          // Farbschema der Kachel: 0 Symcon-Design, 1 Dunkel, 2 Hell, 3 wie Gerät
+        $this->RegisterPropertyInteger('Theme', -1);             // bis Version 1.3: 0 dunkel, 1 wie Gerät, 2 hell, 3 Symcon (wird einmalig übernommen)
         $this->RegisterPropertyInteger('CardGlass', 18);         // Milchglas-Stärke hinter den Feldern in px
         // Automatik
         $this->RegisterPropertyInteger('PresenceVariable', 0);
@@ -144,103 +150,79 @@ class X60Ultra extends IPSModule
         $this->RegisterAttributeInteger('RenderVersion', 0);
         $this->RegisterAttributeString('AutoDone', '{}');   // Zeitplan-Einträge, die heute schon gelaufen sind      // Prüfsumme der Zugangsdaten (Neuanmeldung nur bei Änderung)     // gemerktes Zertifikat des Live-Servers      // Startzeit der Fahrt hinter "Letzte Reinigung"
 
-        // ---- Profile ----
-        $this->Profile('SAUG.State', 1, 'Robot', '', '', SaugroboterTexte::States());
+        // ---- Status ----
         $err = [];
         foreach (SaugroboterTexte::Errors() as $c => $e) $err[$c] = $e[0];
-        $this->Profile('SAUG.Error', 1, 'Warning', '', '', $err);
-        $this->Profile('SAUG.Command', 1, 'Execute', '', '', [0 => '–'] + self::CMD);
-        $this->Profile('SAUG.Water', 1, 'Drops', '', '', [-1 => 'unbekannt', 0 => 'OK', 1 => 'fehlt', 2 => 'fast leer', 3 => 'leer']);
-        $this->Profile('SAUG.Dirty', 1, 'Drops', '', '', [-1 => 'unbekannt', 0 => 'OK', 1 => 'voll oder fehlt']);
-        $this->Profile('SAUG.Bag', 1, 'Container', '', '', [-1 => 'unbekannt', 0 => 'OK', 1 => 'fehlt', 2 => 'prüfen']);
-        $this->Profile('SAUG.Mode', 1, 'Robot', '', '', [-1 => 'wie am Gerät', 0 => 'Saugen', 1 => 'Wischen', 2 => 'Saugen und wischen', 3 => 'Erst saugen, dann wischen']);
-        $this->Profile('SAUG.Route', 1, 'Move', '', '', [-1 => 'wie am Gerät', 1 => 'Standard', 2 => 'Intensiv', 3 => 'Tief', 4 => 'Schnell']);
-        $this->Profile('SAUG.Suction', 1, 'Speedo', '', '', [-1 => 'wie am Gerät', 0 => 'Leise', 1 => 'Standard', 2 => 'Stark', 3 => 'Turbo']);
-        $this->Profile('SAUG.Wetness', 1, 'Drops', '', '', [-1 => 'wie am Gerät', 1 => 'Leicht feucht', 2 => 'Feucht', 3 => 'Nass']);
-        $this->Profile('SAUG.Passes', 1, 'Repeat', '', '', [1 => '1×', 2 => '2×', 3 => '3×']);
-        $this->Profile('SAUG.CleanGenius', 1, 'Bulb', '', '', [-1 => 'wie am Gerät', 0 => 'Aus', 1 => 'Routine', 2 => 'Tiefenreinigung']);
-        $this->Profile('SAUG.Percent', 1, 'Intensity', '', ' %', null, 0, 100);
-        $this->Profile('SAUG.Wear', 1, 'Gauge', '', ' %', null, 0, 100);
-        $this->Profile('SAUG.Minutes', 1, 'Clock', '', ' min');
-        $this->Profile('SAUG.Area', 1, 'Distance', '', ' m²');
-        $this->Profile('SAUG.Hours', 2, 'Clock', '', ' h');
-        $this->Profile($this->FloorProfile(), 1, 'Stairs', '', '', [-1 => '–']);
-        $this->Profile($this->RoomProfile(), 1, 'Move', '', '', [0 => 'Raum wählen …']);
-
-        // ---- Status ----
-        $this->RegisterVariableInteger('State', 'Zustand', 'SAUG.State', 10);
-        $this->RegisterVariableInteger('Error', 'Fehler', 'SAUG.Error', 11);
-        $this->RegisterVariableString('ErrorHint', 'Fehler – was tun?', '', 12);
-        $this->RegisterVariableInteger('Battery', 'Akku', '~Battery.100', 13);
-        $this->RegisterVariableString('Room', 'Aktueller Raum', '', 15);
-        $this->RegisterVariableInteger('CleanTime', 'Reinigungsdauer', 'SAUG.Minutes', 17);
-        $this->RegisterVariableInteger('CleanArea', 'Gereinigte Fläche', 'SAUG.Area', 18);
-        $this->RegisterVariableInteger('CleanWater', 'Frischwasser', 'SAUG.Water', 20);
-        $this->RegisterVariableInteger('DirtyWater', 'Schmutzwasser', 'SAUG.Dirty', 21);
-        $this->RegisterVariableInteger('DustBag', 'Staubbeutel', 'SAUG.Bag', 22);
+        $this->RegisterVariableInteger('State', 'Zustand', $this->PresentStates('robot', SaugroboterTexte::States()), 10);
+        $this->RegisterVariableInteger('Error', 'Fehler', $this->PresentStates('triangle-exclamation', $err), 11);
+        $this->RegisterVariableString('ErrorHint', 'Fehler – was tun?', $this->PresentValue('circle-info'), 12);
+        $this->RegisterVariableInteger('Battery', 'Akku', $this->Presentation('battery'), 13);
+        $this->RegisterVariableString('Room', 'Aktueller Raum', $this->PresentValue('location-dot'), 15);
+        $this->RegisterVariableInteger('CleanTime', 'Reinigungsdauer', $this->Presentation('minutes'), 17);
+        $this->RegisterVariableInteger('CleanArea', 'Gereinigte Fläche', $this->Presentation('area'), 18);
+        $this->RegisterVariableInteger('CleanWater', 'Frischwasser', $this->PresentStates('droplet', self::Options()['CleanWater']), 20);
+        $this->RegisterVariableInteger('DirtyWater', 'Schmutzwasser', $this->PresentStates('droplet', self::Options()['DirtyWater']), 21);
+        $this->RegisterVariableInteger('DustBag', 'Staubbeutel', $this->PresentStates('trash-can', self::Options()['DustBag']), 22);
 
         // ---- Steuerung ----
-        $this->RegisterVariableInteger('Command', 'Befehl', 'SAUG.Command', 30);
+        $this->RegisterVariableInteger('Command', 'Befehl', $this->PresentEnumeration('play', self::Options()['Command']), 30);
         $this->EnableAction('Command');
-        $this->RegisterVariableInteger('Floor', 'Etage', $this->FloorProfile(), 31);
+        $this->RegisterVariableInteger('Floor', 'Etage', $this->PresentEnumeration('stairs', [-1 => '–']), 31);
         $this->EnableAction('Floor');
-        $this->RegisterVariableInteger('CleanRoom', 'Raum reinigen', $this->RoomProfile(), 32);
+        $this->RegisterVariableInteger('CleanRoom', 'Raum reinigen', $this->PresentEnumeration('door-open', [0 => 'Raum wählen …']), 32);
         $this->EnableAction('CleanRoom');
-        $this->RegisterVariableString('Queue', 'Vorgemerkt', '', 33);
+        $this->RegisterVariableString('Queue', 'Vorgemerkt', $this->PresentValue('list'), 33);
         $presets = [
-            'Mode' => ['Reinigungsmodus', 'SAUG.Mode', 40], 'Route' => ['Reinigungsroute', 'SAUG.Route', 41],
-            'Suction' => ['Saugkraft', 'SAUG.Suction', 42], 'Wetness' => ['Wischfeuchte', 'SAUG.Wetness', 43],
-            'Passes' => ['Durchgänge', 'SAUG.Passes', 44], 'CleanGenius' => ['CleanGenius', 'SAUG.CleanGenius', 45]
+            'Mode' => ['Reinigungsmodus', 'broom', 40], 'Route' => ['Reinigungsroute', 'route', 41],
+            'Suction' => ['Saugkraft', 'fan', 42], 'Wetness' => ['Wischfeuchte', 'droplet', 43],
+            'Passes' => ['Durchgänge', 'repeat', 44], 'CleanGenius' => ['CleanGenius', 'lightbulb', 45]
         ];
         foreach ($presets as $ident => $p) {
             $new = @$this->GetIDForIdent($ident) === false;
-            $this->RegisterVariableInteger($ident, $p[0], $p[1], $p[2]);
+            $this->RegisterVariableInteger($ident, $p[0], $this->PresentEnumeration($p[1], self::Options()[$ident]), $p[2]);
             $this->EnableAction($ident);
             // neue Vorwahl steht auf "wie am Gerät" (0 wäre z. B. bei der Saugkraft "Leise")
             if ($new) $this->SetVal($ident, $ident == 'Passes' ? 1 : -1);
         }
 
         // ---- Automatik ----
-        $this->RegisterVariableBoolean('AutoAway', 'Reinigen bei Abwesenheit', '~Switch', 50);
+        $this->RegisterVariableBoolean('AutoAway', 'Reinigen bei Abwesenheit', $this->PresentSwitch('person-walking-arrow-right'), 50);
         $this->EnableAction('AutoAway');
-        $this->RegisterVariableString('AutoStatus', 'Automatik', '', 51);
-        $progs = [];
-        foreach (self::PROGRAMS as $id => $pr) $progs[$id] = $pr[0];
-        $this->Profile('SAUG.Program', 1, 'Robot', '', '', $progs);
+        $this->RegisterVariableString('AutoStatus', 'Automatik', $this->PresentValue('robot'), 51);
         $newProg = @$this->GetIDForIdent('AutoProgram') === false;
-        $this->RegisterVariableInteger('AutoProgram', 'Automatik-Programm', 'SAUG.Program', 52);
+        $this->RegisterVariableInteger('AutoProgram', 'Automatik-Programm', $this->PresentEnumeration('list-check', self::Options()['Program']), 52);
         $this->EnableAction('AutoProgram');
-        $this->Profile('SAUG.AutoMode', 1, 'Clock', '', '', [0 => 'bei Abwesenheit', 1 => 'zur Uhrzeit']);
-        $this->RegisterVariableInteger('AutoMode', 'Automatik startet', 'SAUG.AutoMode', 53);
+        $this->RegisterVariableInteger('AutoMode', 'Automatik startet', $this->PresentEnumeration('clock', self::Options()['AutoMode']), 53);
         $newTime = @$this->GetIDForIdent('AutoTime') === false;
-        $this->RegisterVariableString('AutoTime', 'Automatik-Uhrzeit', '', 54);
+        $this->RegisterVariableString('AutoTime', 'Automatik-Uhrzeit', $this->PresentValue('clock'), 54);
         $this->EnableAction('AutoTime');
         if ($newTime) $this->SetVal('AutoTime', '10:00');
         $this->EnableAction('AutoMode');
-        $this->RegisterVariableInteger('CleanProgram', 'Programm', 'SAUG.Program', 39);
+        $this->RegisterVariableInteger('CleanProgram', 'Programm', $this->PresentEnumeration('list-check', self::Options()['Program']), 39);
         $this->EnableAction('CleanProgram');
         // bisher als Instanz-Einstellung gespeichert: einmalig übernehmen
         if ($newProg) $this->SetVal('AutoProgram', $this->ReadPropertyInteger('AutoProgram'));
 
         // ---- Wartung, Historie, Diagnose ----
-        $this->RegisterVariableString('Maintenance', 'Wartung fällig', '', 150);
-        $this->RegisterVariableString('LastRun', 'Letzte Reinigung', '', 190);
-        $this->RegisterVariableString('History', 'Verlauf', '~TextBox', 191);
-        $this->RegisterVariableBoolean('Online', 'Verbunden', '~Switch', 200);
-        $this->RegisterVariableString('Message', 'Letzte Meldung', '', 201);
-        $this->RegisterVariableString('Model', 'Gerät', '', 202);
-        $this->RegisterVariableString('DeviceSettings', 'Einstellungen am Gerät', '', 203);
+        $this->RegisterVariableString('Maintenance', 'Wartung fällig', $this->PresentValue('screwdriver-wrench'), 150);
+        $this->RegisterVariableString('LastRun', 'Letzte Reinigung', $this->PresentValue('clock-rotate-left'), 190);
+        $this->RegisterVariableString('History', 'Verlauf', $this->PresentValue('clock-rotate-left', '', null, [], true), 191);
+        $this->RegisterVariableBoolean('Online', 'Verbunden', $this->Presentation('online'), 200);
+        $this->RegisterVariableString('Message', 'Letzte Meldung', $this->PresentValue('message'), 201);
+        $this->RegisterVariableString('Model', 'Gerät', $this->PresentValue('robot'), 202);
+        $this->RegisterVariableString('DeviceSettings', 'Einstellungen am Gerät', $this->PresentValue('sliders'), 203);
 
         $this->RegisterTimer('Poll', 0, 'SAUG_Poll($_IPS["TARGET"]);');
         $this->RegisterTimer('Auto', 0, 'SAUG_AutoCheck($_IPS["TARGET"]);');
         $this->RegisterTimer('LiveCheck', 0, 'SAUG_LiveCheck($_IPS["TARGET"]);');
         $this->RegisterTimer('LiveWork', 0, 'SAUG_LiveWork($_IPS["TARGET"]);');
 
-        if (method_exists($this, 'SetVisualizationType')) $this->SetVisualizationType(1);
+        $this->SetVisualizationType(1);
     }
 
-    public function Destroy()
+    public function Destroy(): void
     {
+        // Profile je Instanz aus Versionen bis 1.3 mit der Instanz entfernen
         if (!IPS_InstanceExists($this->InstanceID)) {
             foreach ([$this->FloorProfile(), $this->RoomProfile()] as $p) {
                 if (IPS_VariableProfileExists($p)) IPS_DeleteVariableProfile($p);
@@ -249,9 +231,19 @@ class X60Ultra extends IPSModule
         parent::Destroy();
     }
 
-    public function ApplyChanges()
+    public function ApplyChanges(): void
     {
         parent::ApplyChanges();
+
+        // Bis Version 1.3 hieß das Farbschema „Theme“ (0 dunkel, 1 wie Gerät, 2 hell, 3 Symcon): einmalig übernehmen
+        $legacyTheme = $this->ReadPropertyInteger('Theme');
+        if ($legacyTheme >= 0) {
+            IPS_SetProperty($this->InstanceID, 'TileTheme', [0 => 1, 1 => 3, 2 => 2, 3 => 0][$legacyTheme] ?? 0);
+            IPS_SetProperty($this->InstanceID, 'Theme', -1);
+            IPS_ApplyChanges($this->InstanceID);
+            return;
+        }
+        $this->RemoveUnusedProfiles();
 
         // Anmeldung und Gerät nur frisch ermitteln, wenn sich Zugangsdaten/Verbindung geändert haben
         // (Änderungen am Raumplan o. Ä. – auch aus der Kachel – lassen Anmeldung und Live-Verbindung in Ruhe)
@@ -268,13 +260,13 @@ class X60Ultra extends IPSModule
         $this->SyncCapabilities();
         $this->SyncRooms();
         if ($this->ReadPropertyBoolean('DashboardBox')) {
-            $this->RegisterVariableString('Dashboard', 'Übersicht', '~HTMLBox', 1);
+            $this->RegisterVariableString('Dashboard', 'Übersicht', ['PRESENTATION' => VARIABLE_PRESENTATION_WEB_CONTENT, 'HTML_TYPE' => 0], 1);
         } elseif (@$this->GetIDForIdent('Dashboard')) {
             $this->UnregisterVariable('Dashboard');
         }
         $this->WatchPresence();
         if ($this->ReadPropertyBoolean('Live')) {
-            $this->RegisterVariableBoolean('Live', 'Live-Verbindung', '~Switch', 199);
+            $this->RegisterVariableBoolean('Live', 'Live-Verbindung', $this->Presentation('live'), 199);
         } elseif (@$this->GetIDForIdent('Live')) {
             $this->UnregisterVariable('Live');
         }
@@ -325,7 +317,7 @@ class X60Ultra extends IPSModule
         $this->RefreshViews();
     }
 
-    public function MessageSink($TimeStamp, $SenderID, $Message, $Data)
+    public function MessageSink(int $TimeStamp, int $SenderID, int $Message, array $Data): void
     {
         if ($this->LiveMessageSink($SenderID, $Message, $Data)) return;
         if ($Message == IPS_KERNELSTARTED) { $this->WatchPresence(); return; }
@@ -334,7 +326,7 @@ class X60Ultra extends IPSModule
         }
     }
 
-    public function GetConfigurationForm()
+    public function GetConfigurationForm(): string
     {
         $form = json_decode(file_get_contents(__DIR__ . '/form.json'), true);
         $rows = [];
@@ -350,10 +342,9 @@ class X60Ultra extends IPSModule
         $lib = json_decode(@file_get_contents(__DIR__ . '/../library.json'), true);
         if (is_array($lib)) {
             $form['actions'][] = ['type' => 'Label', 'italic' => true, 'caption' => $lib['name'] . ' · Version ' . $lib['version']
-                . ' · Build ' . $lib['build'] . ' · ' . substr(strval($lib['date']), 6, 2) . '.' . substr(strval($lib['date']), 4, 2) . '.'
-                . substr(strval($lib['date']), 0, 4) . ' · © ' . $lib['author']];
+                . ' · Build ' . $lib['build'] . ' · ' . date('d.m.Y', intval($lib['date'])) . ' · © ' . $lib['author']];
         }
-        return json_encode($form);
+        return (string) json_encode($form);
     }
 
     // Tage-Auswahl: eigene, ältere Angaben (z. B. "1357") als zusätzliche Option erhalten
@@ -473,7 +464,7 @@ class X60Ultra extends IPSModule
     // Bedienung
     // =========================================================================
 
-    public function RequestAction($Ident, $Value)
+    public function RequestAction(string $Ident, mixed $Value): void
     {
         switch ($Ident) {
             case 'TileTrace':
@@ -629,17 +620,22 @@ class X60Ultra extends IPSModule
     }
 
     // ---- einfache Befehle ----
-    public function Pause()  { return $this->Send('Pause', 2, 2); }
-    public function Resume() { return $this->Send('Fortsetzen', 2, 1); }
-    public function Stop()   { return $this->Send('Stopp', 4, 2); }
-    public function Dock()   { return $this->Send('Zur Station', 3, 1); }
-    public function Locate() { return $this->Send('Orten', 7, 1); }
-    public function WashMop() { return $this->Send('Mopp waschen', 4, 4, [['piid' => 10, 'value' => '2,1']]); }
-    public function DryMop($On) { return $this->Send($On ? 'Mopp trocknen' : 'Trocknen beenden', 4, 4, [['piid' => 10, 'value' => $On ? '3,1' : '3,0']]); }
-    public function EmptyDustBin() { return $this->Send('Staub absaugen', 15, 1); }
+    public function Pause(): bool  { return (bool) $this->Send('Pause', 2, 2); }
+    public function Resume(): bool { return (bool) $this->Send('Fortsetzen', 2, 1); }
+    public function Stop(): bool   { return (bool) $this->Send('Stopp', 4, 2); }
+    public function Dock(): bool   { return (bool) $this->Send('Zur Station', 3, 1); }
+    public function Locate(): bool { return (bool) $this->Send('Orten', 7, 1); }
+    public function WashMop(): bool { return (bool) $this->Send('Mopp waschen', 4, 4, [['piid' => 10, 'value' => '2,1']]); }
+    public function DryMop(bool $On): bool { return (bool) $this->Send($On ? 'Mopp trocknen' : 'Trocknen beenden', 4, 4, [['piid' => 10, 'value' => $On ? '3,1' : '3,0']]); }
+    public function EmptyDustBin(): bool { return (bool) $this->Send('Staub absaugen', 15, 1); }
     // Hinweis quittieren: das Gerät erwartet den Code des Hinweises (CLEANING_PROPERTIES = "[68]").
     // Die Meldung "Frischwasser fast leer" wird stattdessen über 4/41 bestätigt.
-    public function AcknowledgeWarning()
+    public function AcknowledgeWarning(): bool
+    {
+        return (bool) $this->AcknowledgeWarningRun();
+    }
+
+    private function AcknowledgeWarningRun()
     {
         $code = $this->GetValue('Error');
         return $this->Locked(function () use ($code) {
@@ -671,9 +667,9 @@ class X60Ultra extends IPSModule
     }
 
     // Alles reinigen (auf der gewählten Etage)
-    public function CleanAll()
+    public function CleanAll(): bool
     {
-        return $this->Locked(function () { return $this->StartAll([]); });
+        return (bool) $this->Locked(function () { return $this->StartAll([]); });
     }
 
     // Alles reinigen; $over = Einstellungen nur für diese Fahrt (leer = Vorwahlen)
@@ -692,7 +688,7 @@ class X60Ultra extends IPSModule
      * $Rooms: Raumcodes (Etage*100+Segment), Segment-IDs der gewählten Etage oder Raumnamen,
      * als Liste oder durch Komma getrennt – z. B. "Küche, Flur" oder "5,6" oder [105, 106].
      */
-    public function CleanRooms($Rooms)
+    public function CleanRooms(mixed $Rooms): bool
     {
         return $this->CleanRoomsWith($Rooms, '{}');
     }
@@ -703,7 +699,12 @@ class X60Ultra extends IPSModule
      * – fehlende Werte kommen aus den Vorwahlen, -1 = wie am Gerät.
      * Läuft gerade eine Reinigung, werden die Räume samt Einstellungen für danach vorgemerkt.
      */
-    public function CleanRoomsWith($Rooms, $Settings)
+    public function CleanRoomsWith(mixed $Rooms, string $Settings): bool
+    {
+        return (bool) $this->CleanRoomsWithRun($Rooms, $Settings);
+    }
+
+    private function CleanRoomsWithRun($Rooms, $Settings)
     {
         $over = $this->Json($Settings);
         if (!is_array($over)) $over = [];
@@ -740,14 +741,19 @@ class X60Ultra extends IPSModule
         return isset($ok[$name]) && in_array(intval($v), $ok[$name], true);
     }
 
-    public function CleanSelection()
+    public function CleanSelection(): bool
+    {
+        return (bool) $this->CleanSelectionRun();
+    }
+
+    private function CleanSelectionRun()
     {
         $sel = $this->SelectedRooms();
         if (count($sel) == 0) { $this->Note('Es ist kein Raum ausgewählt.', 'err'); return false; }
         return $this->CleanRooms($sel);
     }
 
-    public function ClearSelection()
+    public function ClearSelection(): bool
     {
         foreach ($this->RoomList() as $r) {
             $id = @$this->GetIDForIdent('Sel' . $r['code']);
@@ -758,7 +764,12 @@ class X60Ultra extends IPSModule
     }
 
     // Auswahl vormerken: läuft gerade ein Auftrag, startet sie danach als eigener Durchgang
-    public function QueueSelection()
+    public function QueueSelection(): bool
+    {
+        return (bool) $this->QueueSelectionRun();
+    }
+
+    private function QueueSelectionRun()
     {
         $sel = $this->SelectedRooms();
         if (count($sel) == 0) { $this->Note('Es ist kein Raum ausgewählt.', 'err'); return false; }
@@ -773,7 +784,12 @@ class X60Ultra extends IPSModule
 
     // Etage wählen. Während eines Auftrags wird nur die Anzeige umgestellt – der Wechsel am
     // Gerät würde die laufende Reinigung abbrechen. Das Gerät folgt beim nächsten Start.
-    public function SelectFloor($MapID)
+    public function SelectFloor(int $MapID): bool
+    {
+        return (bool) $this->SelectFloorRun($MapID);
+    }
+
+    private function SelectFloorRun($MapID)
     {
         $maps = $this->Maps();
         if (!isset($maps[$MapID])) { $this->Note('Unbekannte Etage ' . $MapID . '.', 'err'); return false; }
@@ -787,7 +803,12 @@ class X60Ultra extends IPSModule
         return true;
     }
 
-    public function ResetConsumable($Part)
+    public function ResetConsumable(string $Part): bool
+    {
+        return (bool) $this->ResetConsumableRun($Part);
+    }
+
+    private function ResetConsumableRun($Part)
     {
         foreach (SaugroboterTexte::Consumables() as $ident => $c) {
             if (strcasecmp($ident, $Part) != 0 && strcasecmp('Wear' . $ident, $Part) != 0 && strcasecmp($c[0], $Part) != 0) continue;
@@ -932,7 +953,12 @@ class X60Ultra extends IPSModule
     // Verbindung, Karten, Diagnose (Buttons)
     // =========================================================================
 
-    public function TestConnection()
+    public function TestConnection(): bool
+    {
+        return (bool) $this->TestConnectionRun();
+    }
+
+    private function TestConnectionRun()
     {
         return $this->Locked(function () {
             $this->WriteAttributeString('Device', '');
@@ -979,7 +1005,12 @@ class X60Ultra extends IPSModule
     }
 
     // Karten und Räume aus der Cloud einlesen
-    public function ReadMaps()
+    public function ReadMaps(): bool
+    {
+        return (bool) $this->ReadMapsRun();
+    }
+
+    private function ReadMapsRun()
     {
         return $this->Locked(function () {
             $ml = $this->MapKeys();
@@ -1074,7 +1105,12 @@ class X60Ultra extends IPSModule
     }
 
     // Kartendiagnose: was liefert die Cloud? (ohne Kartenbild, nur Aufbau und Kennzahlen)
-    public function MapDiagnosis()
+    public function MapDiagnosis(): bool
+    {
+        return (bool) $this->MapDiagnosisRun();
+    }
+
+    private function MapDiagnosisRun()
     {
         return $this->Locked(function () {
             echo $this->MapReport();
@@ -1209,7 +1245,12 @@ class X60Ultra extends IPSModule
     }
 
     // Diagnose: listet alles, was der Roboter liefert (siid 1–40, piid 1–70)
-    public function ScanDevice()
+    public function ScanDevice(): bool
+    {
+        return (bool) $this->ScanDeviceRun();
+    }
+
+    private function ScanDeviceRun()
     {
         return $this->Locked(function () {
             $keys = [];
@@ -1234,7 +1275,12 @@ class X60Ultra extends IPSModule
     // =========================================================================
 
     // Button "Status abrufen": mit Rückmeldung, wartet notfalls auf einen laufenden Abruf
-    public function Refresh()
+    public function Refresh(): bool
+    {
+        return (bool) $this->RefreshRun();
+    }
+
+    private function RefreshRun()
     {
         $this->SetBuffer('SlowAt', '0');
         $ok = $this->DoPoll(true);
@@ -1248,7 +1294,12 @@ class X60Ultra extends IPSModule
         return $ok;
     }
 
-    public function Poll()
+    public function Poll(): bool
+    {
+        return (bool) $this->PollRun();
+    }
+
+    private function PollRun()
     {
         return $this->DoPoll(false);
     }
@@ -1758,15 +1809,15 @@ class X60Ultra extends IPSModule
         $caps = $this->Caps();
         $pos = 151;
         foreach (SaugroboterTexte::Consumables() as $ident => $c) {
-            if ($this->HasCap($caps, $c[1], $c[2])) $this->RegisterVariableInteger('Wear' . $ident, $c[0], 'SAUG.Wear', $pos);
+            if ($this->HasCap($caps, $c[1], $c[2])) $this->RegisterVariableInteger('Wear' . $ident, $c[0], $this->Presentation('wear'), $pos);
             elseif (@$this->GetIDForIdent('Wear' . $ident)) $this->UnregisterVariable('Wear' . $ident);
             $pos++;
         }
         foreach (self::EXTRAS as $ident => $x) {
             if ($this->HasCap($caps, $x[1], $x[2])) {
-                if ($x[3] == 0) $this->RegisterVariableBoolean($ident, $x[0], $x[4], $x[5]);
-                elseif ($x[3] == 1) $this->RegisterVariableInteger($ident, $x[0], $x[4], $x[5]);
-                else $this->RegisterVariableFloat($ident, $x[0], $x[4], $x[5]);
+                if ($x[3] == 0) $this->RegisterVariableBoolean($ident, $x[0], $this->Presentation($x[4]), $x[5]);
+                elseif ($x[3] == 1) $this->RegisterVariableInteger($ident, $x[0], $this->Presentation($x[4]), $x[5]);
+                else $this->RegisterVariableFloat($ident, $x[0], $this->Presentation($x[4]), $x[5]);
             } elseif (@$this->GetIDForIdent($ident)) {
                 $this->UnregisterVariable($ident);
             }
@@ -1889,13 +1940,13 @@ class X60Ultra extends IPSModule
         return $out;
     }
 
-    // Etagen-/Raumprofile und Auswahlschalter an die eingelesenen Karten anpassen
+    // Etagen-/Raumauswahl und Auswahlschalter an die eingelesenen Karten anpassen
     private function SyncRooms()
     {
         $maps = $this->Maps();
         $assoc = [];
         foreach ($maps as $id => $m) $assoc[$id] = $m['name'];
-        $this->Profile($this->FloorProfile(), 1, 'Stairs', '', '', count($assoc) ? $assoc : [-1 => '–']);
+        $this->RegisterVariableInteger('Floor', 'Etage', $this->PresentEnumeration('stairs', count($assoc) ? $assoc : [-1 => '–']), 31);
 
         $keep = [];
         $pos = 100;
@@ -1904,7 +1955,7 @@ class X60Ultra extends IPSModule
             $keep[] = $ident;
             $label = 'Auswahl ' . $r['name'] . (count($maps) > 1 ? ' (' . $r['floor'] . ')' : '');
             $exists = @$this->GetIDForIdent($ident);
-            $this->RegisterVariableBoolean($ident, $label, '~Switch', $pos++);
+            $this->RegisterVariableBoolean($ident, $label, $this->PresentSwitch('square-check'), $pos++);
             $this->EnableAction($ident);
             if ($exists && IPS_GetName($exists) != $label && strpos(IPS_GetName($exists), 'Auswahl ') === 0) IPS_SetName($exists, $label);
         }
@@ -1931,7 +1982,7 @@ class X60Ultra extends IPSModule
             if (IPS_GetObject($id)['ObjectIsHidden'] != $other) IPS_SetHidden($id, $other);
             if ($other && GetValueBoolean($id)) SetValueBoolean($id, false);
         }
-        $this->Profile($this->RoomProfile(), 1, 'Move', '', '', $assoc);
+        $this->RegisterVariableInteger('CleanRoom', 'Raum reinigen', $this->PresentEnumeration('door-open', $assoc), 32);
         if (@$this->GetIDForIdent('Floor')) $this->SetVal('Floor', count($this->Maps()) ? $floor : -1);
     }
 
@@ -2155,7 +2206,12 @@ class X60Ultra extends IPSModule
     }
 
     // Timer: jede Minute, solange die Automatik an ist
-    public function AutoCheck()
+    public function AutoCheck(): bool
+    {
+        return (bool) $this->AutoCheckRun();
+    }
+
+    private function AutoCheckRun()
     {
         $why = $this->AutoBlocker();
         $this->SetVal('AutoStatus', $why === '' ? 'startet …' : $why);
@@ -2322,10 +2378,10 @@ class X60Ultra extends IPSModule
     // Visualisierung
     // =========================================================================
 
-    public function GetVisualizationTile()
+    public function GetVisualizationTile(): string
     {
-        $html = file_get_contents(__DIR__ . '/module.html');
-        $html = str_replace('/*STYLE*/', file_get_contents(__DIR__ . '/tile.css'), $html);
+        $html = (string) file_get_contents(__DIR__ . '/tile.html');
+        $html = str_replace('/*STYLE*/', (string) file_get_contents(__DIR__ . '/tile.css'), $html);
         return str_replace('"__INIT__"', json_encode(['view' => $this->ViewModel(), 'map' => $this->MapDataUri(null, true),
             'mapLast' => $this->MapDataUri('MapLast', true), 'bg' => $this->BackgroundUri()], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), $html);
     }
@@ -2367,7 +2423,7 @@ class X60Ultra extends IPSModule
     }
 
     // Button "Hintergrund entfernen"
-    public function RemoveBackground()
+    public function RemoveBackground(): bool
     {
         $mid = @IPS_GetObjectIDByIdent('TileBackground', $this->InstanceID);
         if ($mid) IPS_DeleteMedia($mid, true);
@@ -2389,7 +2445,7 @@ class X60Ultra extends IPSModule
     {
         if (!$this->ReadPropertyBoolean('Active')) return;
         $vm = $this->ViewModel();
-        if (method_exists($this, 'UpdateVisualizationValue')) {
+        {
             $msg = ['view' => $vm];
             $last = $this->GetBuffer('LastStamp');
             if ($last !== $this->GetBuffer('LastSent')) {
@@ -2406,7 +2462,7 @@ class X60Ultra extends IPSModule
                 $msg['map'] = $this->MapDataUri(null, true);
                 $this->SetBuffer('MapSent', $stamp);
             }
-            $this->UpdateVisualizationValue(json_encode($msg));
+            $this->UpdateVisualizationValue((string) json_encode($msg));
             if ($this->TraceOn()) {
                 $mm = $vm['mapMeta'];
                 $this->Trace('an Kachel', 'Zustand „' . ($vm['stateText'] ?? '?') . '“ (' . ($vm['group'] ?? '?') . '), Roboter ' . (isset($mm['robot']) ? implode('/', $mm['robot']) : '–')
@@ -2439,7 +2495,7 @@ class X60Ultra extends IPSModule
         }
         $opt = function ($ident) {
             $o = [];
-            foreach (IPS_GetVariableProfile('SAUG.' . $ident)['Associations'] as $a) $o[] = [$a['Value'], $a['Name']];
+            foreach (self::Options()[$ident] as $value => $name) $o[] = [$value, $name];
             return ['v' => $this->GetValue($ident), 'o' => $o];
         };
         return [
@@ -2493,7 +2549,7 @@ class X60Ultra extends IPSModule
             'bgBlur' => max(0, min(20, $this->ReadPropertyInteger('BgBlur'))),
             'cardOpacity' => max(0, min(100, $this->ReadPropertyInteger('CardOpacity'))),
             'cardGlass' => max(0, min(40, $this->ReadPropertyInteger('CardGlass'))),
-            'theme' => max(0, min(3, $this->ReadPropertyInteger('Theme'))),
+            'theme' => max(0, min(3, $this->ReadPropertyInteger('TileTheme'))),   // 0 Symcon-Design, 1 Dunkel, 2 Hell, 3 wie Gerät
             'trace' => $this->TraceOn(),
             'message' => $this->GetValue('Message'),
             'mapMeta' => $this->MapMetaLive(),
@@ -2654,21 +2710,42 @@ class X60Ultra extends IPSModule
     private function FloorProfile() { return 'SAUG.Floors.' . $this->InstanceID; }
     private function RoomProfile()  { return 'SAUG.Rooms.' . $this->InstanceID; }
 
-    // Profil anlegen/aktualisieren. $assoc = [Wert => Text] oder null
-    private function Profile($name, $type, $icon, $prefix, $suffix, $assoc = null, $min = 0, $max = 0)
+    // Auswahltexte der Variablen mit Aufzählung bzw. Statuscodes: Ident => [Wert => Text]
+    private static function Options(): array
     {
-        if (!IPS_VariableProfileExists($name)) {
-            IPS_CreateVariableProfile($name, $type);
-            IPS_SetVariableProfileIcon($name, $icon);
-            IPS_SetVariableProfileText($name, $prefix, $suffix);
-            if ($type == 2) IPS_SetVariableProfileDigits($name, 1);
-            if ($max > $min) IPS_SetVariableProfileValues($name, $min, $max, 1);
+        $progs = [];
+        foreach (self::PROGRAMS as $id => $pr) $progs[$id] = $pr[0];
+        return [
+            'Command' => [0 => '–'] + self::CMD,
+            'CleanWater' => [-1 => 'unbekannt', 0 => 'OK', 1 => 'fehlt', 2 => 'fast leer', 3 => 'leer'],
+            'DirtyWater' => [-1 => 'unbekannt', 0 => 'OK', 1 => 'voll oder fehlt'],
+            'DustBag' => [-1 => 'unbekannt', 0 => 'OK', 1 => 'fehlt', 2 => 'prüfen'],
+            'Mode' => [-1 => 'wie am Gerät', 0 => 'Saugen', 1 => 'Wischen', 2 => 'Saugen und wischen', 3 => 'Erst saugen, dann wischen'],
+            'Route' => [-1 => 'wie am Gerät', 1 => 'Standard', 2 => 'Intensiv', 3 => 'Tief', 4 => 'Schnell'],
+            'Suction' => [-1 => 'wie am Gerät', 0 => 'Leise', 1 => 'Standard', 2 => 'Stark', 3 => 'Turbo'],
+            'Wetness' => [-1 => 'wie am Gerät', 1 => 'Leicht feucht', 2 => 'Feucht', 3 => 'Nass'],
+            'Passes' => [1 => '1×', 2 => '2×', 3 => '3×'],
+            'CleanGenius' => [-1 => 'wie am Gerät', 0 => 'Aus', 1 => 'Routine', 2 => 'Tiefenreinigung'],
+            'Program' => $progs,
+            'AutoMode' => [0 => 'bei Abwesenheit', 1 => 'zur Uhrzeit']
+        ];
+    }
+
+    // Darstellungen für Zahlen und Ja/Nein-Werte
+    private function Presentation(string $kind): array
+    {
+        switch ($kind) {
+            case 'battery':  return $this->PresentValue('battery-three-quarters', ' %', 0);
+            case 'percent':  return $this->PresentValue('percent', ' %', 0);
+            case 'wear':     return $this->PresentValue('gauge', ' %', 0);
+            case 'minutes':  return $this->PresentValue('clock', ' min', 0);
+            case 'area':     return $this->PresentValue('ruler-combined', ' m²', 0);
+            case 'hours':    return $this->PresentValue('clock', ' h', 1);
+            case 'count':    return $this->PresentValue('hashtag', '', 0);
+            case 'online':   return $this->PresentBool('wifi', 'getrennt', 0xE5484D, 'verbunden', 0x34B36B);
+            case 'live':     return $this->PresentBool('bolt', 'aus', 0x8796A5, 'aktiv', 0x34B36B);
+            case 'charging': return $this->PresentBool('plug', 'nein', 0x8796A5, 'lädt', 0x34B36B);
         }
-        if ($assoc === null) return;
-        $p = IPS_GetVariableProfile($name);
-        foreach ($p['Associations'] as $a) {
-            if (!array_key_exists($a['Value'], $assoc)) IPS_SetVariableProfileAssociation($name, $a['Value'], '', '', -1);
-        }
-        foreach ($assoc as $v => $t) IPS_SetVariableProfileAssociation($name, $v, $t, '', -1);
+        return $this->PresentValue('circle-info');
     }
 }

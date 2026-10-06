@@ -1,11 +1,17 @@
 # Saugroboter für IP-Symcon
 
-[![Symcon](https://img.shields.io/badge/Symcon-7.0%20bis%209.0-1f6feb)](https://www.symcon.de)
-[![Kachel](https://img.shields.io/badge/Kachel--Visualisierung-ab%207.1-0aa5a5)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/html-sdk/)
-[![PHP](https://img.shields.io/badge/PHP-8.x%20(inkl.%208.5)-777bb4?logo=php&logoColor=white)](https://www.php.net)
-[![Version](https://img.shields.io/badge/Version-1.3%20%C2%B7%20Build%2027-2ea44f)](library.json)
-[![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-yellow)](LICENSE)
-[![Letzter Commit](https://img.shields.io/github/last-commit/cfaf2002/Saugroboter-DREAME-X60-Symcon)](https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon/commits)
+[![IP-Symcon ab 8.1](https://img.shields.io/badge/IP--Symcon-ab_8.1-0b6fb3.svg)](https://www.symcon.de)
+[![Optimiert für Symcon 9.0](https://img.shields.io/badge/optimiert_f%C3%BCr-Symcon_9.0-0b6fb3.svg)](https://www.symcon.de/de/service/dokumentation/installation/migrationen/v81-v90-q1-2026/)
+[![Modul-Version 1.4 (Build 28)](https://img.shields.io/badge/Modul--Version-1.4_(Build_28)-informational.svg)](library.json)
+[![Tests](https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon/actions/workflows/tests.yml/badge.svg)](https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon/actions/workflows/tests.yml)
+[![PHP 8.3 und 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net)
+[![SDK: IPSModuleStrict](https://img.shields.io/badge/SDK-IPSModuleStrict-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/module/)
+[![Variablen: Darstellungen](https://img.shields.io/badge/Variablen-Darstellungen-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/darstellungen/)
+[![Kachel-Visualisierung: HTML-SDK](https://img.shields.io/badge/Kachel--Visualisierung-HTML--SDK-orange.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/html-sdk/)
+[![Farbschema: Symcon-Design, Dunkel, Hell](https://img.shields.io/badge/Farbschema-Symcon--Design_%7C_Dunkel_%7C_Hell-blueviolet.svg)](STYLEGUIDE.md)
+![Sprache: Deutsch](https://img.shields.io/badge/Sprache-Deutsch-blueviolet.svg)
+[![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-green.svg)](LICENSE)
+[![Cloud: Dreame (inoffiziell)](https://img.shields.io/badge/Cloud-Dreame_(inoffiziell)-lightgrey.svg)](https://www.dreame.tech)
 
 Inoffizielles Modul zur Einbindung von Saugrobotern **kompatibel mit Dreame**¹ in IP-Symcon – entwickelt mit dem
 X60 Ultra, passend für die aktuellen Modelle der X-Serie (X40, X50, X60) und verwandte Geräte.
@@ -19,7 +25,7 @@ X60 Ultra, passend für die aktuellen Modelle der X-Serie (X40, X50, X60) und ve
 Die X-Modelle bieten keinen lokalen Zugang. Das Modul spricht deshalb wie die Dreamehome-App mit der
 Hersteller-Cloud – es läuft selbst aber vollständig in deiner Symcon-Instanz, ohne zusätzliche Dienste.
 
-**Version 1.3** · IP-Symcon 7.0 bis 9.0 (Kachel ab 7.1) · Version und Build stehen unten in der Instanzkonfiguration
+**Version 1.4** · IP-Symcon ab 8.1, optimiert für 9.0 · Version und Build stehen unten in der Instanzkonfiguration
 
 ---
 
@@ -37,7 +43,9 @@ Hersteller-Cloud – es läuft selbst aber vollständig in deiner Symcon-Instanz
 10. [Sicherheit](#sicherheit)
 11. [Datenschutz](#datenschutz)
 12. [Fehlersuche](#fehlersuche)
-13. [Lizenz, Marken und Dank](#lizenz-marken-und-dank)
+13. [Umstieg von Version 1.3](#umstieg-von-version-13)
+14. [Changelog](#changelog)
+15. [Lizenz, Marken und Dank](#lizenz-marken-und-dank)
 
 ---
 
@@ -138,7 +146,7 @@ gerade Echtzeitdaten ankommen. Wird die Instanz gelöscht, bleibt der Client Soc
 
 | Variable | Typ | Bedeutung |
 |---|---|---|
-| Zustand | Integer | Gerätezustand, Text über das Profil `SAUG.State` – ideal für Ereignisse |
+| Zustand | Integer | Gerätezustand als Zahl, Klartext über die Darstellung – ideal für Ereignisse |
 | Fehler / Fehler – was tun? | Integer / String | Fehlercode im Klartext und Kurzhilfe |
 | Akku, Lädt | Integer / Boolean | Ladestand; *Lädt* nur, wenn das Modell es meldet |
 | Aktueller Raum | String | Raum unter dem Roboter (während einer Fahrt) |
@@ -187,8 +195,9 @@ das Bild scharf, hinter den Feldern wird es weichgezeichnet. *Hintergrund abdunk
 weichzeichnen* (Standard 0 = scharf) passen das Bild an, *Deckkraft der Felder* (Standard 62 %, weniger = durchsichtiger)
 und *Milchglas-Stärke* (Standard 18 px, 0 = klares Glas) die Felder darüber; *Hintergrund entfernen* nimmt es wieder heraus.
 
-**Design:** Unter *Visualisierung → Design* steht standardmäßig *Dunkel* – so sieht die Kachel auf Handy, Tablet und
-PC gleich aus. *Wie Gerät* folgt der Hell-/Dunkel-Einstellung des jeweiligen Geräts, *Hell* erzwingt das helle Design.
+**Farbschema der Kachel** (*Visualisierung → Farbschema der Kachel*, wie in allen meinen Modulen): *Symcon-Design*
+(Standard) übernimmt Schrift- und Akzentfarbe der Visualisierung, *Dunkel* und *Hell* setzen einen festen Hintergrund,
+*Wie Gerät* folgt der Hell-/Dunkel-Einstellung des jeweiligen Geräts.
 
 Für **WebFront/IPSView** gibt es unter *Visualisierung* die HTML-Box „Übersicht“ (nur Anzeige) sowie das Medienobjekt „Karte“.
 
@@ -196,18 +205,19 @@ Für **WebFront/IPSView** gibt es unter *Visualisierung* die HTML-Box „Übersi
 
 ### Design der Kachel und Symcon 9.0
 
-- **Design** (*Visualisierung → Design*): *Dunkel* (Standard), *Wie Gerät*, *Hell* oder **Wie Symcon-Visualisierung**.
-  Letzteres übernimmt das in der Kachel-Visualisierung gewählte Design: Symcon stellt Schrift- und Akzentfarbe als
-  CSS-Variablen bereit (`--content-color`, `--accent-color`). Helle Schrift → dunkle Kachel, dunkle Schrift → helle
-  Kachel; Knöpfe, Auswahl und Fortschritt nehmen die Akzentfarbe der Visualisierung an. Liefert die Visualisierung diese
-  Angaben nicht (ältere Versionen), bleibt die Kachel dunkel.
+- **Farbschema** (*Visualisierung → Farbschema der Kachel*): **Symcon-Design** (Standard), *Dunkel*, *Hell* oder
+  *Wie Gerät*. Symcon-Design übernimmt das in der Kachel-Visualisierung gewählte Design: Symcon stellt Schrift- und
+  Akzentfarbe als CSS-Variablen bereit (`--content-color`, `--accent-color`). Helle Schrift → dunkle Kachel, dunkle
+  Schrift → helle Kachel; Knöpfe, Auswahl und Fortschritt nehmen die Akzentfarbe an. Farben, Schrift und Radien kommen
+  aus der gemeinsamen Kachel-Grundlage (siehe [STYLEGUIDE.md](STYLEGUIDE.md)).
 - **Karte:** Räume in kräftigen, weichen Farben mit leichtem Verlauf, klare dunkle Außenkontur, Möbel und Innenkanten im
   dunkleren Ton des jeweiligen Raums statt in Grau, feine helle Linien zwischen Räumen. Die gefahrene Strecke erscheint
   als zarter heller Streifen in etwa Roboterbreite mit feiner Linie darauf. Die Karte schwebt mit Schatten über einem
   dezenten Punktraster; Raumnamen tragen ein passendes Symbol (Bad, Küche, Wohnzimmer, Schlafzimmer, Kinderzimmer,
   Büro, Flur, Esszimmer, Hauswirtschaft). Gezeichnet wird höher aufgelöst, damit die Karte auch groß scharf bleibt.
-- **Symcon 9.0:** Das Modul läuft unter Symcon 9.0 und PHP 8.5 ohne Veraltet-Warnungen (u. a. keine `curl_close()`/
-  `imagedestroy()`-Aufrufe mehr). Die Kachel nutzt nur das HTML-SDK (`handleMessage`, `requestAction`) und
+- **Symcon 9.0:** Basisklasse `IPSModuleStrict` mit typisierten Befehlen, Variablen mit **Darstellungen** statt eigener
+  Profile (Etagen und Räume als Aufzählung, die sich mit den Karten ändert). Das Modul läuft unter Symcon 9.0 und PHP 8.5
+  ohne Veraltet-Warnungen (u. a. keine `curl_close()`/`imagedestroy()`-Aufrufe mehr). Die Kachel nutzt nur das HTML-SDK (`handleMessage`, `requestAction`) und
   funktioniert in der Web-Visualisierung wie in den neuen *Symcon Visualization*-Apps.
 
 ## Automatik: reinigen, wenn niemand zu Hause ist – oder zur festen Uhrzeit
@@ -405,6 +415,20 @@ Zeitüberschreitung zu warten.
 | Wert fehlt | *Gerät scannen (Diagnose)* und Debug-Fenster der Instanz prüfen. |
 
 ---
+
+## Umstieg von Version 1.3
+
+- Das Modul braucht jetzt **IP-Symcon 8.1** oder neuer.
+- Die bisherigen Profile `SAUG.*` (auch die je Instanz für Etagen und Räume) werden beim Übernehmen der Instanz
+  entfernt, sobald keine Variable sie mehr nutzt. Eigene Skripte, die diese Profile auslesen, auf die Variablen umstellen.
+- Die bisherige Einstellung *Design* wird einmalig in das neue *Farbschema der Kachel* übernommen
+  (Dunkel bleibt Dunkel, Hell bleibt Hell, *Wie Symcon-Visualisierung* wird *Symcon-Design*).
+
+## Changelog
+
+| Version | Build | Datum | Beschreibung |
+|---|---|---|---|
+| 1.4 | 28 | 06.10.2026 | Einheitliches Design nach `STYLEGUIDE.md`: Kachel-Grundlage (Farben, Schrift, Radien, Zustandsfarben) und Einstellung „Farbschema der Kachel“ (Symcon-Design, Dunkel, Hell, wie Gerät; die alte Einstellung „Design“ wird übernommen); Kachel-Datei heißt `tile.html`; Basisklasse `IPSModuleStrict` (ab Symcon 8.1) mit typisierten Befehlen; Darstellungen statt Profile, alte `SAUG.*`-Profile werden aufgeräumt; einheitliche Badges; gemeinsamer Test-Workflow mit Struktur- und Ladetest |
 
 ## Lizenz, Marken und Dank
 

@@ -3,10 +3,10 @@
     "author": "Armin Frohwerk",
     "name": "Saugroboter",
     "url": "https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon",
-    "version": "1.3",
-    "build": 27,
-    "date": 20261004,
     "compatibility": {
-        "version": "7.0"
-    }
+        "version": "8.1"
+    },
+    "version": "1.4",
+    "build": 28,
+    "date": 1791269179
 }

@@ -142,7 +142,12 @@ trait SaugroboterLive
 
     // ---- Wächter (Timer "LiveCheck", alle 30 s) --------------------------------
 
-    public function LiveCheck()
+    public function LiveCheck(): bool
+    {
+        return (bool) $this->LiveCheckRun();
+    }
+
+    private function LiveCheckRun()
     {
         $this->SetTimerInterval('LiveCheck', 30000);
         $this->Trace('Prüfung', 'Live ' . ($this->LiveOk() ? 'ok' : 'nicht bereit') . ', letzte Meldung vor ' . (time() - intval($this->GetBuffer('LiveDevAt'))) . ' s'
@@ -219,7 +224,12 @@ trait SaugroboterLive
     }
 
     // Button "Live-Verbindung neu aufbauen"
-    public function LiveRestart()
+    public function LiveRestart(): bool
+    {
+        return (bool) $this->LiveRestartRun();
+    }
+
+    private function LiveRestartRun()
     {
         $this->SetBuffer('LiveHold', '0');
         $this->SetBuffer('LiveFails', '0');
@@ -276,7 +286,7 @@ trait SaugroboterLive
     }
 
     // Jedes Zertifikat der Kette muss vom nächsten unterschrieben sein
-    public static function ChainValid($chain)
+    private static function ChainValid($chain)
     {
         $chain = array_values($chain);
         for ($i = 0; $i < count($chain) - 1; $i++) {
@@ -301,7 +311,12 @@ trait SaugroboterLive
     }
 
     // Button "Server-Zertifikat neu übernehmen"
-    public function LiveTrustCertificate()
+    public function LiveTrustCertificate(): bool
+    {
+        return (bool) $this->LiveTrustCertificateRun();
+    }
+
+    private function LiveTrustCertificateRun()
     {
         $this->WriteAttributeString('LivePin', '');
         $this->SetBuffer('PinOkAt', '0');
@@ -400,12 +415,12 @@ trait SaugroboterLive
         }
     }
 
-    public static function MqttStr($s)
+    private static function MqttStr($s)
     {
         return pack('n', strlen($s)) . $s;
     }
 
-    public static function MqttPacket($type, $body)
+    private static function MqttPacket($type, $body)
     {
         $len = strlen($body);
         $enc = '';
@@ -419,7 +434,7 @@ trait SaugroboterLive
     }
 
     // Vollständige Pakete aus dem Datenstrom lösen: [[Typ, Flags, Inhalt], ...], Rest bleibt stehen
-    public static function MqttSplit(&$buf)
+    private static function MqttSplit(&$buf)
     {
         $out = [];
         while (strlen($buf) >= 2) {
@@ -439,7 +454,7 @@ trait SaugroboterLive
 
     // ---- MQTT empfangen ------------------------------------------------------------
 
-    public function ReceiveData($JSONString)
+    public function ReceiveData(string $JSONString): string
     {
         $d = json_decode($JSONString, true);
         if (!is_array($d)) return '';
@@ -681,7 +696,7 @@ trait SaugroboterLive
         @file_put_contents($f, $line, FILE_APPEND | LOCK_EX);
     }
 
-    public function TraceStart()
+    public function TraceStart(): void
     {
         $this->WriteAttributeInteger('TraceUntil', time() + 7200);
         @unlink($this->TraceFile());
@@ -692,7 +707,7 @@ trait SaugroboterLive
         echo "Testprotokoll läuft (2 Stunden). Datei: " . $this->TraceFile() . "\nJetzt den Roboter fahren lassen und danach „Testprotokoll anzeigen“ drücken.";
     }
 
-    public function TraceStop()
+    public function TraceStop(): void
     {
         $this->Trace('Ende', 'Testprotokoll beendet');
         $this->WriteAttributeInteger('TraceUntil', 0);
@@ -700,7 +715,7 @@ trait SaugroboterLive
         echo 'Testprotokoll beendet. Die Datei bleibt liegen: ' . $this->TraceFile();
     }
 
-    public function TraceShow()
+    public function TraceShow(): void
     {
         $f = $this->TraceFile();
         $txt = @file_get_contents($f);
@@ -864,7 +879,12 @@ trait SaugroboterLive
     // ---- Nacharbeit (Timer "LiveWork") --------------------------------------------
     // Zeichnen und Dateiabrufe laufen hier, damit der Datenempfang nie blockiert.
 
-    public function LiveWork()
+    public function LiveWork(): void
+    {
+        $this->LiveWorkRun();
+    }
+
+    private function LiveWorkRun()
     {
         $this->SetTimerInterval('LiveWork', 0);
         $this->SetBuffer('WorkDue', '0');
