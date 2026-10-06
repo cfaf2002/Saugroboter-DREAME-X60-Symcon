@@ -420,12 +420,18 @@ trait SaugroboterLive
         // Token erst senden, wenn der Server sein bekanntes Zertifikat vorzeigt
         if (!$this->LivePinOk($dev['host'])) return false;
         $uid = $this->CloudToken('uid');
-        $master = !empty($dev['master']) ? $dev['master'] : $uid;
-        $rand = '';
-        for ($i = 0; $i < 13; $i++) $rand .= 'ABCDEF'[mt_rand(0, 5)];
-        $client = 'p_' . $master . '_' . $rand . '_' . explode(':', $dev['host'])[0];
+        // Kennung wie die aktuelle App (seit Ende September 2026 verlangt der Dreame-Server dieses Format):
+        // "p_" + md5(Gerät + "mqtt" + feste Zufallskennung dieser Installation)
+        $vs = $this->ReadAttributeString('LiveVs');
+        if (!preg_match('/^[0-9a-f]{32}$/', $vs)) {
+            $vs = md5(random_bytes(16));
+            $this->WriteAttributeString('LiveVs', $vs);
+        }
+        $client = 'p_' . md5($dev['did'] . 'mqtt' . $vs);
 
-        $var = self::MqttStr('MQTT') . "\x04" . "\xC2" . pack('n', self::$LV_KEEP);   // 3.1.1, Benutzer+Passwort, Clean Session
+        // 3.1.1, Benutzer+Passwort, Clean Session – plus Bit 3 (0x08): Kennzeichen, das der Dreame-Server
+        // seit Ende September 2026 erwartet; ohne trennt er direkt nach der Anmeldung („End of file“)
+        $var = self::MqttStr('MQTT') . "\x04" . "\xCA" . pack('n', self::$LV_KEEP);
         $pay = self::MqttStr($client) . self::MqttStr($uid) . self::MqttStr($this->CloudToken('access'));
         $this->SetBuffer('LiveIn', '');
         $this->SetBuffer('MqttState', '1');

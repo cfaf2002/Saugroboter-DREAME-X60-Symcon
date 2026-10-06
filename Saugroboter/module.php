@@ -144,6 +144,7 @@ class X60Ultra extends IPSModuleStrict
         $this->RegisterAttributeString('MapMeta', '{}');    // Lage der Räume je Kartenbild (Beschriftung/Antippen)
         $this->RegisterAttributeString('LastLog', '');
         $this->RegisterAttributeString('LivePin', '');
+        $this->RegisterAttributeString('LiveVs', '');         // feste Zufallskennung für die Live-Anmeldung
         $this->RegisterAttributeInteger('TraceUntil', 0);
         $this->RegisterAttributeString('BgType', 'jpeg');
         $this->RegisterAttributeString('CredKey', '');

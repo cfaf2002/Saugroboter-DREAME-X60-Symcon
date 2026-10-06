@@ -2,7 +2,7 @@
 
 [![IP-Symcon ab 8.1](https://img.shields.io/badge/IP--Symcon-ab_8.1-0b6fb3.svg)](https://www.symcon.de)
 [![Optimiert für Symcon 9.0](https://img.shields.io/badge/optimiert_f%C3%BCr-Symcon_9.0-0b6fb3.svg)](https://www.symcon.de/de/service/dokumentation/installation/migrationen/v81-v90-q1-2026/)
-[![Modul-Version 1.4 (Build 30)](https://img.shields.io/badge/Modul--Version-1.4_(Build_30)-informational.svg)](library.json)
+[![Modul-Version 1.4 (Build 31)](https://img.shields.io/badge/Modul--Version-1.4_(Build_31)-informational.svg)](library.json)
 [![Tests](https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon/actions/workflows/tests.yml/badge.svg)](https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon/actions/workflows/tests.yml)
 [![PHP 8.3 und 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net)
 [![SDK: IPSModuleStrict](https://img.shields.io/badge/SDK-IPSModuleStrict-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/module/)
@@ -428,6 +428,7 @@ Zeitüberschreitung zu warten.
 
 | Version | Build | Datum | Beschreibung |
 |---|---|---|---|
+| 1.4 | 31 | 06.10.2026 | Live-Verbindung an die Umstellung des Dreame-Servers (Ende September 2026) angepasst: neue Client-Kennung (`p_` + md5 aus Gerät, „mqtt“ und einer festen Zufallskennung der Installation) und das zusätzliche Anmelde-Kennzeichen, das der Server jetzt erwartet – ohne beides trennte er direkt nach der Anmeldung („End of file“) |
 | 1.4 | 30 | 06.10.2026 | Live-Verbindung: trennt der Server direkt nach der Anmeldung, holt das Modul höchstens alle 30 Minuten ein frisches Zugangstoken und die aktuelle Serveradresse; hilft das nicht, pausiert die Live-Verbindung 15 Minuten statt im Sekundentakt neu zu verbinden (Zustand kommt solange über die normale Abfrage, „Live neu verbinden“ versucht es sofort) |
 | 1.4 | 29 | 06.10.2026 | Karte in der breiten Kachel deutlich größer, neuer Knopf „Karte groß“ (füllt die ganze Kachel); neuer Kartenstil wird nach dem Update sicher gezeichnet; Live-Socket nach einem Fehler schneller neu öffnen (10 s, 30 s, 1, 2, dann alle 5 min); trennt der Server direkt nach der Anmeldung („End of file“), holt das Modul ein frisches Zugangstoken und verbindet sofort neu |
 | 1.4 | 28 | 06.10.2026 | Einheitliches Design nach `STYLEGUIDE.md`: Kachel-Grundlage (Farben, Schrift, Radien, Zustandsfarben) und Einstellung „Farbschema der Kachel“ (Symcon-Design, Dunkel, Hell, wie Gerät; die alte Einstellung „Design“ wird übernommen); Kachel-Datei heißt `tile.html`; Basisklasse `IPSModuleStrict` (ab Symcon 8.1) mit typisierten Befehlen; Darstellungen statt Profile, alte `SAUG.*`-Profile werden aufgeräumt; einheitliche Badges; gemeinsamer Test-Workflow mit Struktur- und Ladetest |
