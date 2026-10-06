@@ -514,9 +514,11 @@ trait SaugroboterLive
     private function LiveSend($bin)
     {
         try {
-            $this->SendDataToParent(json_encode([
+            // IPSModuleStrict: Daten im Datenfluss sind HEX-kodiert (nicht mehr UTF-8 wie bei IPSModule).
+            // Mit UTF-8 kam beim Server nur Datenmüll an – er trennte sofort („End of file“).
+            $this->SendDataToParent((string) json_encode([
                 'DataID' => self::$LV_TX,
-                'Buffer' => mb_convert_encoding($bin, 'UTF-8', 'ISO-8859-1')
+                'Buffer' => bin2hex($bin)
             ]));
             $this->SetBuffer('LiveTx', strval(time()));
             return true;
@@ -569,9 +571,10 @@ trait SaugroboterLive
     {
         $d = json_decode($JSONString, true);
         if (!is_array($d)) return '';
-        if (isset($d['BufferHex'])) $raw = hex2bin($d['BufferHex']);
-        elseif (isset($d['Buffer'])) $raw = mb_convert_encoding($d['Buffer'], 'ISO-8859-1', 'UTF-8');
-        else return '';
+        // IPSModuleStrict liefert den Puffer HEX-kodiert
+        $hex = isset($d['BufferHex']) ? $d['BufferHex'] : (isset($d['Buffer']) ? $d['Buffer'] : null);
+        if (!is_string($hex) || strlen($hex) % 2 != 0 || ($hex !== '' && !ctype_xdigit($hex))) return '';
+        $raw = (string) hex2bin($hex);
 
         // Pakete können über mehrere Aufrufe verteilt ankommen – nacheinander verarbeiten
         $key = 'SAUG_RX_' . $this->InstanceID;
