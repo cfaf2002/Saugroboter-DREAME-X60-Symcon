@@ -440,6 +440,66 @@ trait SaugroboterLive
         return $this->LiveSend(self::MqttPacket(0x10, $var . $pay));
     }
 
+    // Button „Live-Anmeldung prüfen“: baut selbst eine verschlüsselte Verbindung zum Live-Server auf (einmal mit,
+    // einmal ohne Servernamen/SNI), schickt dieselbe Anmeldung wie das Modul und meldet die Antwort des Servers.
+    // Zeigt, ob der Server die Anmeldung an sich annimmt – und ob es am Client Socket von Symcon liegt.
+    public function LiveProbe(): string
+    {
+        $out = $this->Locked(function () {
+            $r = [];
+            $r[] = 'PHP ' . PHP_VERSION . ' · ' . (defined('OPENSSL_VERSION_TEXT') ? OPENSSL_VERSION_TEXT : 'OpenSSL ?')
+                . ' · sodium: ' . (function_exists('sodium_crypto_scalarmult') ? 'ja' : 'nein')
+                . ' · X25519 (OpenSSL): ' . (defined('OPENSSL_KEYTYPE_X25519') ? 'ja' : 'nein');
+            if (!$this->CloudLogin()) return implode("\n", $r) . "\nAnmeldung an der Cloud fehlgeschlagen: " . $this->dcLastError;
+            $dev = $this->CloudDevice();
+            if (!is_array($dev) || empty($dev['host'])) return implode("\n", $r) . "\nKein Gerät bzw. keine Serveradresse.";
+            list($host, $port) = array_pad(explode(':', $dev['host'], 2), 2, '0');
+            if ($this->CloudRegion() == 'kr') $host = str_replace('10100', '10000', $host);
+            $r[] = 'Server: ' . $host . ':' . intval($port);
+            $vs = $this->ReadAttributeString('LiveVs');
+            if (!preg_match('/^[0-9a-f]{32}$/', $vs)) { $vs = md5(random_bytes(16)); $this->WriteAttributeString('LiveVs', $vs); }
+            $client = 'p_' . md5($dev['did'] . 'mqtt' . $vs);
+            $pay = self::MqttStr($client) . self::MqttStr($this->CloudToken('uid')) . self::MqttStr($this->CloudToken('access'));
+            foreach ([["\xCA", 'mit Kennzeichen'], ["\xC2", 'ohne Kennzeichen']] as $flag) {
+                $packet = self::MqttPacket(0x10, self::MqttStr('MQTT') . "\x04" . $flag[0] . pack('n', self::$LV_KEEP) . $pay);
+                foreach ([true, false] as $sni) {
+                    $r[] = '• ' . ($sni ? 'mit' : 'ohne') . ' SNI, ' . $flag[1] . ': ' . $this->LiveProbeOne($host, intval($port), $sni, $packet);
+                }
+            }
+            return implode("\n", $r);
+        });
+        $text = is_string($out) ? $out : 'Instanz beschäftigt – bitte gleich noch einmal.';
+        $this->SendDebug('Live-Prüfung', $text, 0);
+        echo $text;
+        return $text;
+    }
+
+    private function LiveProbeOne($host, $port, $sni, $packet)
+    {
+        $opt = ['verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true, 'SNI_enabled' => $sni];
+        if ($sni) $opt['peer_name'] = $host;
+        $t0 = microtime(true);
+        $fp = @stream_socket_client('ssl://' . $host . ':' . $port, $errno, $errstr, 8, STREAM_CLIENT_CONNECT,
+            stream_context_create(['ssl' => $opt]));
+        if ($fp === false) return 'Verbindung/Verschlüsselung scheitert (' . trim($errstr) . ')';
+        $meta = stream_get_meta_data($fp);
+        $proto = $meta['crypto']['protocol'] ?? '?';
+        $cipher = $meta['crypto']['cipher_name'] ?? '?';
+        stream_set_timeout($fp, 6);
+        fwrite($fp, $packet);
+        $resp = @fread($fp, 16);
+        $info = stream_get_meta_data($fp);
+        fclose($fp);
+        $ms = intval((microtime(true) - $t0) * 1000);
+        $tls = $proto . '/' . $cipher;
+        if ($resp !== false && strlen($resp) >= 4 && ord($resp[0]) == 0x20) {
+            $rc = ord($resp[3]);
+            return ($rc == 0 ? '✅ angenommen (CONNACK 0)' : '❌ abgelehnt (CONNACK ' . $rc . ')') . ' · ' . $tls . ' · ' . $ms . ' ms';
+        }
+        if (!empty($info['timed_out'])) return '⏳ keine Antwort in 6 s · ' . $tls;
+        return '❌ Server trennt sofort (' . ($resp === '' || $resp === false ? 'End of file' : bin2hex(substr($resp, 0, 8))) . ') · ' . $tls . ' · ' . $ms . ' ms';
+    }
+
     private function LiveTopics()
     {
         $dev = $this->CloudDevice();

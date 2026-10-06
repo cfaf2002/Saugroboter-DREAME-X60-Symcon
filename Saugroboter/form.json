@@ -163,6 +163,11 @@
             },
             {
               "type": "Button",
+              "caption": "Live-Anmeldung prüfen",
+              "onClick": "SAUG_LiveProbe($id);"
+            },
+            {
+              "type": "Button",
               "caption": "Zertifikat neu übernehmen",
               "onClick": "SAUG_LiveTrustCertificate($id);",
               "confirm": "Nur nötig, wenn Dreame das Zertifikat des Live-Servers erneuert hat. Wirklich neu übernehmen?"
