@@ -2,7 +2,7 @@
 
 [![IP-Symcon ab 8.1](https://img.shields.io/badge/IP--Symcon-ab_8.1-0b6fb3.svg)](https://www.symcon.de)
 [![Optimiert für Symcon 9.0](https://img.shields.io/badge/optimiert_f%C3%BCr-Symcon_9.0-0b6fb3.svg)](https://www.symcon.de/de/service/dokumentation/installation/migrationen/v81-v90-q1-2026/)
-[![Modul-Version 1.5 (Build 36)](https://img.shields.io/badge/Modul--Version-1.5_(Build_36)-informational.svg)](library.json)
+[![Modul-Version 1.5 (Build 37)](https://img.shields.io/badge/Modul--Version-1.5_(Build_37)-informational.svg)](library.json)
 [![Tests](https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon/actions/workflows/tests.yml/badge.svg)](https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon/actions/workflows/tests.yml)
 [![PHP 8.3 und 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net)
 [![SDK: IPSModuleStrict](https://img.shields.io/badge/SDK-IPSModuleStrict-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/module/)
@@ -436,6 +436,7 @@ Zeitüberschreitung zu warten.
 
 | Version | Build | Datum | Beschreibung |
 |---|---|---|---|
+| 1.5 | 37 | 07.10.2026 | Kachel: Untermenüs blinken nicht mehr – sie werden bei neuen Meldungen des Roboters nur noch neu gezeichnet, wenn sich darin etwas ändert (ohne erneutes Einblenden, Scrollstand bleibt); unveränderte Ansicht wird gar nicht neu aufgebaut |
 | 1.5 | 36 | 07.10.2026 | Kachel: auf breiten Kacheln links die Karte (bleibt beim Blättern stehen), rechts die Bedienung; **eigene Programme** anlegen, ändern und löschen (auch in Zeitplänen, Variablen und Instanz wählbar); **Zeitpläne** als Übersicht mit Bearbeiten, Löschen und *Neuer Zeitplan*; Eingaben im Dialog gehen bei einer Aktualisierung nicht mehr verloren |
 | 1.4 | 35 | 06.10.2026 | Hausstil: Regel für die Modulliste (`vendor` gesetzt, höchstens ein Alias) in `STYLEGUIDE.md` und Strukturprüfung ergänzt |
 | 1.4 | 34 | 06.10.2026 | **Live-Verbindung repariert:** Seit dem Umstieg auf `IPSModuleStrict` (Build 28) erwartet Symcon die Daten zum Client Socket HEX-kodiert; das Modul schickte sie noch UTF-8-kodiert, der Server bekam Datenmüll und trennte sofort („End of file“). Senden und Empfangen jetzt HEX-kodiert |

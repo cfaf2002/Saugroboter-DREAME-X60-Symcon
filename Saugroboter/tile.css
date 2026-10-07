@@ -393,3 +393,5 @@ body.mapbig .maphint { display: none; }
 .dlg .field select.pprog { display: block; width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--card2); color: var(--fg); font: inherit; font-size: 13.5px; }
 .btn.ghost.danger { color: var(--bad); }
 .dlg-actions .btn .ic { margin-right: 6px; }
+/* Untermenü beim Aktualisieren nicht erneut einblenden */
+.dlg-back.still, .dlg-back.still .dlg { animation: none; }

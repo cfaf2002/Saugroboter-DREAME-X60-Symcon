@@ -559,6 +559,22 @@
     traceAt = now; traceLast = t;
     try { requestAction('TileTrace', t); } catch (e) {}
   }
+  // Untermenü in eigenem Bereich: bei Aktualisierungen bleiben Scrollstand und Ruhe erhalten
+  var lastHtml = '', dlgHtml = '', dlgObj = null;
+  function drawDialog(v) {
+    var root = document.getElementById('dlgroot');
+    if (!root) { root = document.createElement('div'); root.id = 'dlgroot'; document.body.appendChild(root); }
+    var dh = dialog ? dialogBlock(v) : '';
+    if (dh === dlgHtml && dialog === dlgObj) return;
+    var same = !!dialog && dialog === dlgObj;
+    var box = root.querySelector('.dlg'), top = box ? box.scrollTop : 0;
+    dlgHtml = dh; dlgObj = dialog;
+    root.innerHTML = dh;
+    var back = root.querySelector('.dlg-back');
+    if (back && same) back.classList.add('still');         // gleicher Dialog: nicht erneut einblenden
+    box = root.querySelector('.dlg');
+    if (box && same) box.scrollTop = top;
+  }
   function render() {
     var v = view, el = document.getElementById('app');
     if (v && v.bgDim !== undefined) document.body.style.setProperty('--dim', v.bgDim / 100);
@@ -570,7 +586,7 @@
     if (v && v.cardOpacity !== undefined) cardOp = v.cardOpacity / 100;
     if (v) applyGlass();
     if (v && v.cardGlass !== undefined) document.body.style.setProperty('--glass', v.cardGlass + 'px');
-    if (!v) { el.innerHTML = '<div class="loading"><span></span>Verbinde …</div>'; return; }
+    if (!v) { lastHtml = ''; el.innerHTML = '<div class="loading"><span></span>Verbinde …</div>'; return; }
     var h = '';
 
     // Kopf
@@ -652,7 +668,11 @@
 
     if (v.message) h += '<div class="msg">' + esc(v.message) + '</div>';
     h += '</div></div>';
-    h += dialogBlock(v);
+    // Untermenü getrennt zeichnen – nur wenn sich darin etwas ändert, ohne erneutes Einblenden
+    drawDialog(v);
+    // Unveränderte Ansicht nicht neu aufbauen (verhindert Flackern bei jeder Meldung des Roboters)
+    if (h === lastHtml) return;
+    lastHtml = h;
     el.innerHTML = h;
     placeLabels();
     var mi = document.getElementById('mapimg');
