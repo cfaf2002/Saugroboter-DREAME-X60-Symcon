@@ -395,3 +395,9 @@ body.mapbig .maphint { display: none; }
 .dlg-actions .btn .ic { margin-right: 6px; }
 /* Untermenü beim Aktualisieren nicht erneut einblenden */
 .dlg-back.still, .dlg-back.still .dlg { animation: none; }
+/* Oben liegen Titel und Vollbild-Knopf der Kachel-Visualisierung und fangen dort die Klicks ab:
+   Untermenüs und die große Karte beginnen deshalb erst darunter */
+.dlg-back { padding-top: 52px; }
+.dlg { max-height: calc(100vh - 64px); }
+body.mapbig .mapcard { top: 52px; }
+body.mapbig .mapcard .mapwrap img { max-height: calc(100vh - 154px); }
