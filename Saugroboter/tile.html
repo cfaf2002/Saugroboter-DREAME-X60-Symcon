@@ -85,6 +85,11 @@
     empty: '<path d="M8 4.5h8M9 4.5v3.5L6.5 11v8.5h11V11L15 8V4.5"/><path d="M12 12.5v4M10 14.5l2 2 2-2"/>',
     check: '<path d="m6 12.5 4 4 8-9"/>',
     bolt: '<path d="M13 3 6 13.5h5L10.5 21 18 10h-5z" fill="currentColor" stroke="none"/>',
+    edit: '<path d="M4 20h4L19 9a2.1 2.1 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+    star: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    trash: '<path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v6M14 11v6"/>',
+    clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
     wrench: '<path d="M14.5 5.5a4 4 0 0 0-5 5L4.5 15.5a1.8 1.8 0 0 0 2.5 2.5l5-5a4 4 0 0 0 5-5l-2.5 2.5-2-2z"/>',
     reset: '<path d="M5 12a7 7 0 1 0 2-4.9"/><path d="M5 4.5V8h3.5"/>',
     auto: '<path d="M12 21s6.5-5.5 6.5-11a6.5 6.5 0 0 0-13 0c0 5.5 6.5 11 6.5 11z"/><circle cx="12" cy="10" r="2.3"/>',
@@ -282,6 +287,10 @@
     });
     return out.length ? out.join(' · ') : 'wie am Gerät';
   }
+  // Programm nach Nummer (eigene Programme haben Nummern ab 100)
+  function progById(v, id) {
+    return v.programs.filter(function (p) { return p.id === id; })[0] || v.programs[0];
+  }
   // Raumplan in einer Zeile ("Mo–Fr: Küche, So: frei" bzw. "jeden Tag gleich")
   function planShort(v) {
     if (!v.plan.length) return 'jeden Tag gleich';
@@ -296,14 +305,38 @@
   function progDialog(v, d) {
     var cur = d.mode === 'autoprog' ? v.autoProgram : v.cleanProgram;
     var h = '<div class="dlg-head"><div><div class="dlg-title">' + (d.mode === 'autoprog' ? 'Programm der Automatik' : 'Programm') + '</div><div class="small mute">' +
-      (d.mode === 'autoprog' ? 'So reinigt die Automatik (im Raumplan je Tag änderbar).' : 'Gilt für den Startknopf – für die ausgewählten Räume oder alles.') + '</div></div>' +
+      (d.mode === 'autoprog' ? 'So reinigt die Automatik (je Zeitplan änderbar).' : 'Gilt für den Startknopf – für die ausgewählten Räume oder alles.') + '</div></div>' +
       '<button class="iconbtn" data-dlg="close" aria-label="Schließen">' + ic('close') + '</button></div><div class="plist">';
-    v.programs.forEach(function (p) {
-      h += '<div class="pitem' + (p.id === cur ? ' on' : '') + '"><button class="pmain" data-pick="' + p.id + '">' + ic(PICON[p.id] || 'tune') +
+    var item = function (p) {
+      return '<div class="pitem' + (p.id === cur ? ' on' : '') + '"><button class="pmain" data-pick="' + p.id + '">' + ic(p.user ? 'star' : (PICON[p.id] || 'tune')) +
         '<span class="grow"><b>' + esc(p.name) + '</b><span class="small mute">' + esc(setSummary(v, p.set)) + '</span></span>' + (p.id === cur ? ic('check') : '') + '</button>' +
-        (p.custom ? '<button class="iconbtn sm" data-open="presets" title="Eigene Einstellungen anpassen">' + ic('tune') + '</button>' : '') + '</div>';
+        (p.custom ? '<button class="iconbtn sm" data-open="presets" title="Vorwahlen anpassen" aria-label="Vorwahlen anpassen">' + ic('tune') + '</button>' : '') +
+        (p.user ? '<button class="iconbtn sm" data-pedit="' + p.id + '" title="Programm bearbeiten" aria-label="Programm bearbeiten">' + ic('edit') + '</button>' : '') + '</div>';
+    };
+    var own = v.programs.filter(function (p) { return p.user; });
+    v.programs.forEach(function (p) { if (!p.user) h += item(p); });
+    h += '</div><div class="psec"><span>Eigene Programme</span><span class="small mute">' + own.length + ' von ' + (v.userProgramMax || 20) + '</span></div><div class="plist">';
+    if (!own.length) h += '<div class="small mute pempty">Noch keine eigenen Programme. Lege eins an, z. B. „Küche nach dem Kochen“ mit Wischen und hoher Feuchte.</div>';
+    own.forEach(function (p) { h += item(p); });
+    h += '</div>';
+    if (own.length < (v.userProgramMax || 20)) h += '<div class="dlg-actions"><button class="btn ghost" data-pnew="1">' + ic('plus') + 'Neues Programm anlegen</button></div>';
+    return h;
+  }
+  // Eigenes Programm anlegen oder ändern
+  function progEditDialog(v, d) {
+    var h = '<div class="dlg-head"><div><div class="dlg-title">' + (d.id ? 'Programm bearbeiten' : 'Neues Programm') + '</div>' +
+      '<div class="small mute">Steht danach beim Reinigen, in der Automatik und in den Zeitplänen zur Auswahl.</div></div>' +
+      '<button class="iconbtn" data-pback="1" aria-label="Zurück">' + ic('close') + '</button></div>' +
+      '<div class="field"><div class="flabel">Name</div><input class="txtin" id="pname" maxlength="40" placeholder="z. B. Küche gründlich" value="' + esc(d.name) + '"></div>';
+    DLG.forEach(function (f) {
+      var k = f[0];
+      if ((k === 'Wetness' && d.vals.Mode === 0) || (k === 'Suction' && d.vals.Mode === 1)) return;
+      h += '<div class="field"><div class="flabel">' + f[1] + '</div>' + segSet(k, v.presets[k], d.vals[k], 'data-dlgset') + '</div>';
     });
-    return h + '</div>';
+    h += '<div class="dlg-actions"><button class="btn main" data-psaveprog="1">' + ic('check') + 'Speichern</button>' +
+      (d.id ? '<button class="btn ghost danger" data-pdelprog="' + d.id + '">' + ic('trash') + 'Programm löschen</button>' : '') +
+      '<button class="btn ghost" data-pback="1">Zurück</button></div>';
+    return h;
   }
 
   // Raumplan als kurze Liste in der Automatik-Karte
@@ -317,29 +350,47 @@
     });
     return h + '</span><span class="chev r"></span></button>';
   }
-  // Raumplan bearbeiten
+  // Zeitpläne: Übersicht aller Einträge, Bearbeiten in einer eigenen Ansicht
+  function planLine(v, row) {
+    var rooms = planRoomNames(v, row);
+    return row.off ? 'frei – keine Automatik' : (rooms.length ? rooms.join(', ') : 'alles') + ' · ' + (row.prog >= 0 ? (v.programNames[row.prog] || 'Standard') : 'Standard-Programm');
+  }
   function planDialog(v, d) {
+    if (d.draft) return planEditor(v, d);
     var h = '<div class="dlg-head"><div><div class="dlg-title">Zeitpläne</div><div class="small mute">' +
-      (v.autoMode === 1 ? 'Jeder Eintrag startet zu seiner Uhrzeit (leer = ' + esc(v.autoTime) + ' Uhr). Mehrere Einträge pro Tag sind möglich.' : 'Bei Abwesenheit zählen Tag, Räume und Programm (Uhrzeit nur bei „Zur Uhrzeit“).') + '</div></div>' +
+      (v.autoMode === 1 ? 'Jeder Eintrag startet zu seiner Uhrzeit. Mehrere Einträge pro Tag sind möglich.' : 'Bei Abwesenheit zählen Tag, Räume und Programm – die Uhrzeit erst bei „Zur Uhrzeit“.') + '</div></div>' +
       '<button class="iconbtn" data-dlg="close" aria-label="Schließen">' + ic('close') + '</button></div>';
-    if (!d.rows.length) h += '<div class="small mute" style="margin-bottom:10px">Noch kein Eintrag – dann gilt täglich die Standard-Uhrzeit mit dem Standard-Programm.</div>';
+    if (!d.rows.length) h += '<div class="small mute pempty">Noch kein Zeitplan – dann gilt täglich ' + esc(v.autoTime) + ' Uhr mit dem Programm der Automatik.</div>';
+    h += '<div class="plist">';
     d.rows.forEach(function (row, i) {
-      h += '<div class="prow"><div class="prow-top"><select data-pday="' + i + '">';
-      Object.keys(DAYS).forEach(function (k) { h += '<option value="' + k + '"' + (parseInt(k, 10) === row.day ? ' selected' : '') + '>' + DAYS[k] + '</option>'; });
-      h += '</select><input class="ptime" type="time" data-ptime="' + i + '" value="' + esc(row.time || '') + '" title="Uhrzeit (leer = Standard)"' + (row.off ? ' disabled' : '') + '>' +
-        '<button class="iconbtn sm" data-pdel="' + i + '" title="Eintrag löschen">' + ic('close') + '</button></div>' +
-        '<select class="pprog" data-pprog="' + i + '"' + (row.off ? ' disabled' : '') + '><option value="-1">Programm: Standard</option>';
-      Object.keys(v.programNames).forEach(function (k) { h += '<option value="' + k + '"' + (parseInt(k, 10) === row.prog ? ' selected' : '') + '>' + esc(v.programNames[k]) + '</option>'; });
-      h += '</select><div class="chips">';
-      v.planRooms.forEach(function (r) {
-        var on = !row.off && row['r' + r.code];
-        h += '<button class="chip' + (on ? ' on' : '') + (row.off ? ' dim' : '') + '" data-proom="' + i + ':' + r.code + '">' + (on ? ic('check', 'xs') : '') + esc(r.name) + '</button>';
-      });
-      h += '<button class="chip' + (row.off ? ' on off' : '') + '" data-poff="' + i + '">frei</button></div>' +
-        '<div class="small mute">' + (row.off ? 'An diesem Tag keine Automatik-Reinigung' : (planRoomNames(v, row).length ? '' : 'Nichts angehakt = alles')) + '</div></div>';
+      var t = row.off ? '' : ' · ' + (row.time || v.autoTime) + (row.time ? '' : ' (Standard)');
+      h += '<div class="pitem' + (row.off ? ' dim' : '') + '"><button class="pmain" data-pedrow="' + i + '">' + ic(row.off ? 'moon' : 'clock') +
+        '<span class="grow"><b>' + esc(DAYS[row.day] || '?') + esc(t) + '</b><span class="small mute">' + esc(planLine(v, row)) + '</span></span>' + ic('edit') + '</button>' +
+        '<button class="iconbtn sm" data-pdel="' + i + '" title="Zeitplan löschen" aria-label="Zeitplan löschen">' + ic('trash') + '</button></div>';
     });
-    h += '<div class="dlg-actions"><button class="btn ghost" data-padd="1">+ Eintrag hinzufügen</button>' +
-      '<button class="btn main" data-psave="1">' + ic('check') + 'Speichern</button></div>';
+    h += '</div><div class="dlg-actions"><button class="btn ghost" data-padd="1">' + ic('plus') + 'Neuer Zeitplan</button></div>';
+    return h;
+  }
+  function planEditor(v, d) {
+    var row = d.draft;
+    var h = '<div class="dlg-head"><div><div class="dlg-title">' + (d.edit === null ? 'Neuer Zeitplan' : 'Zeitplan bearbeiten') + '</div>' +
+      '<div class="small mute">Uhrzeit leer = Standard (' + esc(v.autoTime) + ' Uhr). Keinen Raum angehakt = alles.</div></div>' +
+      '<button class="iconbtn" data-pcancel="1" aria-label="Zurück">' + ic('close') + '</button></div>';
+    h += '<div class="field"><div class="flabel">Tag und Uhrzeit</div><div class="prow-top"><select data-pday="1">';
+    Object.keys(DAYS).forEach(function (k) { h += '<option value="' + k + '"' + (parseInt(k, 10) === row.day ? ' selected' : '') + '>' + DAYS[k] + '</option>'; });
+    h += '</select><input class="ptime" type="time" data-ptime="1" value="' + esc(row.time || '') + '" title="Uhrzeit (leer = Standard)"' + (row.off ? ' disabled' : '') + '></div></div>' +
+      '<div class="field"><div class="flabel">Programm</div><select class="pprog" data-pprog="1"' + (row.off ? ' disabled' : '') + '><option value="-1">Standard (Programm der Automatik)</option>';
+    v.programs.forEach(function (p) { h += '<option value="' + p.id + '"' + (p.id === row.prog ? ' selected' : '') + '>' + esc(p.name) + (p.user ? ' (eigenes)' : '') + '</option>'; });
+    h += '</select></div><div class="field"><div class="flabel">Räume</div><div class="chips">';
+    v.planRooms.forEach(function (r) {
+      var on = !row.off && row['r' + r.code];
+      h += '<button class="chip' + (on ? ' on' : '') + (row.off ? ' dim' : '') + '" data-proom="' + r.code + '">' + (on ? ic('check', 'xs') : '') + esc(r.name) + '</button>';
+    });
+    h += '<button class="chip' + (row.off ? ' on off' : '') + '" data-poff="1">frei</button></div>' +
+      '<div class="small mute">' + (row.off ? 'An diesem Tag keine Automatik-Reinigung' : (planRoomNames(v, row).length ? '' : 'Nichts angehakt = alles')) + '</div></div>' +
+      '<div class="dlg-actions"><button class="btn main" data-psave="1">' + ic('check') + 'Speichern</button>' +
+      (d.edit !== null ? '<button class="btn ghost danger" data-pdel="' + d.edit + '">' + ic('trash') + 'Zeitplan löschen</button>' : '') +
+      '<button class="btn ghost" data-pcancel="1">Zurück</button></div>';
     return h;
   }
   var PICON = { 0: 'tune', 1: 'bolt', 2: 'fan', 3: 'drop', 4: 'layers', 5: 'wash', 6: 'moon', 7: 'spark', 8: 'spark' };
@@ -348,6 +399,7 @@
     if (!dialog) return '';
     var d = dialog, h = '<div class="dlg-back" data-dlg="close"><div class="dlg" role="dialog">';
     if (d.mode === 'plan') return h + planDialog(v, d) + '</div></div>';
+    if (d.mode === 'progedit') return h + progEditDialog(v, d) + '</div></div>';
     if (d.mode === 'hist' || d.mode === 'wear') {
       h += '<div class="dlg-head"><div><div class="dlg-title">' + (d.mode === 'hist' ? 'Verlauf' : 'Verschleiß') + '</div></div>' +
         '<button class="iconbtn" data-dlg="close" aria-label="Schließen">' + ic('close') + '</button></div>';
@@ -442,7 +494,7 @@
     if (!r) return;
     var vals = {};
     DLG.forEach(function (f) { vals[f[0]] = view.presets[f[0]].v; });
-    var cp = view.programs[view.cleanProgram];
+    var cp = progById(view, view.cleanProgram);
     if (cp) DLG.forEach(function (f) { if (cp.set[f[0]] !== undefined) vals[f[0]] = cp.set[f[0]]; });
     dialog = { mode: 'room', code: code, name: r.name, sel: r.sel, vals: vals };
     render();
@@ -531,8 +583,8 @@
       (v.online && v.staleSince ? '<div class="stale">' + ic('alert', 'xs') + 'Roboter meldet sich nicht – Stand von ' + esc(v.staleSince) + ' Uhr</div>' : '') +
       '</div>' + battery(v.battery, v.charging) + '</header>';
 
-    // Zwei Spalten auf breiten Kacheln: links Karte und Bedienung, rechts der Rest
-    h += '<div class="cols"><div class="col">';
+    // Zwei Spalten auf breiten Kacheln: links die Karte, rechts die Bedienung
+    h += '<div class="cols"><div class="col colmap">' + mapBlock(v) + '</div><div class="col">';
 
     // Laufende Reinigung
     if (v.job) {
@@ -548,7 +600,6 @@
         (v.clearable ? '<button class="btn sm' + (isBusy('c14') ? ' pending' : '') + '" data-cmd="14">Quittieren</button>' : '') + '</div>';
     }
 
-    h += mapBlock(v);
     h += controls(v);
     // Station kompakt: Zustand als kleine Anzeigen, Aktionen in einer Zeile
     var sIcon = ['drop', 'dirty', 'bag'], sShort = ['Frischwasser', 'Schmutzwasser', 'Beutel'];
@@ -562,8 +613,6 @@
       '<button class="sact' + (isBusy('c11') ? ' pending' : '') + '" data-cmd="11">' + ic('dry', 'xs') + 'Trocknen</button>' +
       '<button class="sact' + (isBusy('c13') ? ' pending' : '') + '" data-cmd="13">' + ic('empty', 'xs') + 'Absaugen</button></div></div>';
 
-    h += '</div><div class="col">';
-
     // Reinigen: Räume wählen (optional) und Programm – gestartet wird über den großen Knopf
     var any = v.rooms.some(function (r) { return r.sel; });
     h += '<div class="card"><div class="ch"><span>Reinigen</span>' + (any ? '<button class="link" data-cmd="8">Auswahl leeren</button>' : '<span class="small mute">Räume antippen oder alles</span>') + '</div>';
@@ -575,7 +624,7 @@
       });
       h += '</div>';
     }
-    var cp = v.programs[v.cleanProgram] || v.programs[0];
+    var cp = progById(v, v.cleanProgram);
     h += '<button class="setrow" data-open="progsel">' + ic(PICON[cp.id] || 'tune', 'lead') + '<span class="grow"><span class="small mute">Programm</span><br>' +
       esc(cp.name) + ' <span class="mute small">· ' + esc(setSummary(v, cp.set)) + '</span></span><span class="chev r"></span></button>';
     if (any && v.job) h += '<button class="btn main full' + (isBusy('start') ? ' pending' : '') + '" data-start="1">' + ic('play') + 'Danach reinigen</button>';
@@ -590,7 +639,7 @@
     if (v.maintenance && v.maintenance !== '–') h += '<div class="alert warn">' + ic('wrench') + '<div class="grow"><b>Wartung fällig</b><div class="small">' + esc(v.maintenance) + '</div></div></div>';
 
     // Automatik, kompakt: Schalter, wann sie startet, Programm, Raumplan
-    var ap = v.programs[v.autoProgram] || v.programs[0];
+    var ap = progById(v, v.autoProgram);
     var astat = v.autoMode === 0 && !v.hasPresence ? 'Anwesenheitsvariable in der Instanz wählen' : v.autoStatus;
     h += '<div class="card"><div class="row between"><div class="row">' + ic('auto', 'lead') + '<div><div class="ctitle">Automatik</div><div class="small mute">' + esc(astat) + '</div></div></div>' +
       (v.autoMode === 1 || v.hasPresence ? '<button class="switch' + (v.auto ? ' on' : '') + '" data-auto="' + (v.auto ? 0 : 1) + '" aria-label="Automatik"></button>' : '') + '</div>' +
@@ -638,14 +687,51 @@
     var ds = e.target.closest('[data-dlgset]');
     if (ds && dialog) { dialog.vals[ds.dataset.dlgset] = parseInt(ds.dataset.val, 10); render(); return; }
     if (dialog && dialog.mode === 'plan') {
-      var pb = e.target.closest('[data-proom],[data-poff],[data-pdel],[data-padd],[data-psave]');
+      var pb = e.target.closest('[data-proom],[data-poff],[data-pdel],[data-padd],[data-psave],[data-pedrow],[data-pcancel]');
       if (pb) {
-        var rows = dialog.rows;
-        if (pb.dataset.proom) { var pr2 = pb.dataset.proom.split(':'), row = rows[+pr2[0]]; if (!row.off) row['r' + pr2[1]] = !row['r' + pr2[1]]; }
-        else if (pb.dataset.poff) { var ro = rows[+pb.dataset.poff]; ro.off = !ro.off; }
-        else if (pb.dataset.pdel) rows.splice(+pb.dataset.pdel, 1);
-        else if (pb.dataset.padd) rows.push({ day: 8, time: '', prog: -1, off: false });
-        else if (pb.dataset.psave) { var out = rows; dialog = null; act('TilePlan', JSON.stringify(out), 'plan'); flash('Wird gespeichert …', 'wait', 30000); return; }
+        var d0 = dialog, row = d0.draft;
+        if (pb.dataset.proom && row) { if (!row.off) row['r' + pb.dataset.proom] = !row['r' + pb.dataset.proom]; }
+        else if (pb.dataset.poff && row) row.off = !row.off;
+        else if (pb.dataset.pedrow !== undefined) { d0.edit = +pb.dataset.pedrow; d0.draft = JSON.parse(JSON.stringify(d0.rows[d0.edit])); }
+        else if (pb.dataset.padd) { d0.edit = null; d0.draft = { day: 8, time: '', prog: -1, off: false }; }
+        else if (pb.dataset.pcancel) { d0.draft = null; d0.edit = null; }
+        else if (pb.dataset.pdel !== undefined) {
+          var di = +pb.dataset.pdel, dr = d0.rows[di];
+          if (typeof confirm === 'function' && !confirm('Zeitplan „' + (DAYS[dr.day] || '') + (dr.time ? ' ' + dr.time : '') + '“ löschen?')) return;
+          d0.rows.splice(di, 1); d0.draft = null; d0.edit = null;
+          act('TilePlan', JSON.stringify(d0.rows), 'plan'); flash('Wird gelöscht …', 'wait', 30000);
+        }
+        else if (pb.dataset.psave && row) {
+          var ti2 = document.querySelector('[data-ptime]'); if (ti2) row.time = ti2.value || '';
+          if (d0.edit === null) d0.rows.push(row); else d0.rows[d0.edit] = row;
+          d0.draft = null; d0.edit = null;
+          act('TilePlan', JSON.stringify(d0.rows), 'plan'); flash('Wird gespeichert …', 'wait', 30000);
+        }
+        render(); return;
+      }
+    }
+    // Eigene Programme
+    if (dialog && (dialog.mode === 'progsel' || dialog.mode === 'autoprog' || dialog.mode === 'progedit')) {
+      var qb = e.target.closest('[data-pnew],[data-pedit],[data-pback],[data-psaveprog],[data-pdelprog]');
+      if (qb) {
+        var back = dialog.back || dialog.mode;
+        if (qb.dataset.pnew) {
+          var nv = {}; DLG.forEach(function (f) { nv[f[0]] = view.presets[f[0]].v; });
+          dialog = { mode: 'progedit', back: back, id: 0, name: '', vals: nv };
+        } else if (qb.dataset.pedit) {
+          var up = progById(view, parseInt(qb.dataset.pedit, 10));
+          dialog = { mode: 'progedit', back: back, id: up.id, name: up.name, vals: JSON.parse(JSON.stringify(up.set)) };
+        } else if (qb.dataset.pback) dialog = { mode: back };
+        else if (qb.dataset.psaveprog) {
+          var nm = ((document.getElementById('pname') || {}).value || '').trim();
+          if (!nm) { flash('Bitte einen Namen eingeben', 'err'); var pn = document.getElementById('pname'); if (pn) pn.focus(); return; }
+          act('TileProgSave', JSON.stringify({ id: dialog.id, name: nm, set: dialog.vals }), 'progsave');
+          flash('Wird gespeichert …', 'wait', 30000); dialog = { mode: back };
+        } else if (qb.dataset.pdelprog) {
+          if (typeof confirm === 'function' && !confirm('Programm „' + dialog.name + '“ löschen? Zeitpläne damit nutzen danach das Standard-Programm.')) return;
+          act('TileProgDelete', parseInt(qb.dataset.pdelprog, 10), 'progdel');
+          flash('Wird gelöscht …', 'wait', 30000); dialog = { mode: back };
+        }
         render(); return;
       }
     }
@@ -692,7 +778,7 @@
     if (['autoprog', 'progsel', 'autotime', 'hist', 'wear'].indexOf(t.dataset.open) >= 0) { dialog = { mode: t.dataset.open }; render(); return; }
     if (t.dataset.start) { act('TileStart', 1, 'start'); flash('Wird gesendet …', 'wait', 30000); return; }
     if (t.dataset.amode) { act('AutoMode', parseInt(t.dataset.amode, 10)); return; }
-    if (t.dataset.open === 'plan') { dialog = { mode: 'plan', rows: JSON.parse(JSON.stringify(view.plan)) }; render(); return; }
+    if (t.dataset.open === 'plan') { dialog = { mode: 'plan', rows: JSON.parse(JSON.stringify(view.plan)), edit: null, draft: null }; render(); return; }
     if (t.dataset.prog) {
       var pr = view.programs.filter(function (p) { return p.id === parseInt(t.dataset.prog, 10); })[0];
       if (!pr) return;
@@ -709,15 +795,33 @@
       if (typeof confirm !== 'function' || confirm(t.dataset.name + ': Zähler zurücksetzen?')) act('TileReset', t.dataset.reset);
     }
   });
-  // Auswahlfelder im Raumplan-Dialog
+  // Auswahlfelder im Zeitplan- und Programm-Dialog
   document.addEventListener('change', function (e) {
-    if (!dialog || dialog.mode !== 'plan') return;
+    if (!dialog) return;
     var t = e.target;
-    if (t.dataset.pday !== undefined) dialog.rows[+t.dataset.pday].day = parseInt(t.value, 10);
-    else if (t.dataset.pprog !== undefined) dialog.rows[+t.dataset.pprog].prog = parseInt(t.value, 10);
-    else if (t.dataset.ptime !== undefined) { dialog.rows[+t.dataset.ptime].time = t.value || ''; return; }
-    else return;
-    render();
+    if (dialog.mode === 'plan' && dialog.draft) {
+      var row = dialog.draft;
+      if (t.dataset.pday !== undefined) row.day = parseInt(t.value, 10);
+      else if (t.dataset.pprog !== undefined) row.prog = parseInt(t.value, 10);
+      else if (t.dataset.ptime !== undefined) { row.time = t.value || ''; return; }
+      else return;
+      render();
+    }
+  });
+  // Name des Programms beim Tippen merken, damit eine Aktualisierung ihn nicht verwirft
+  document.addEventListener('input', function (e) {
+    if (dialog && dialog.mode === 'progedit' && e.target.id === 'pname') dialog.name = e.target.value;
+    if (dialog && dialog.mode === 'plan' && dialog.draft && e.target.dataset && e.target.dataset.ptime !== undefined) dialog.draft.time = e.target.value || '';
+  });
+  // Während im Dialog getippt wird, nicht neu zeichnen – danach nachholen
+  var renderLater = false;
+  function typing() {
+    var a = document.activeElement;
+    return !!(dialog && a && (a.tagName === 'INPUT' || a.tagName === 'SELECT') && a.closest && a.closest('.dlg'));
+  }
+  document.addEventListener('focusout', function () {
+    if (!renderLater) return;
+    setTimeout(function () { if (renderLater && !typing()) { renderLater = false; render(); } }, 0);
   });
   document.addEventListener('toggle', function (e) {
     if (e.target.dataset && e.target.dataset.k) open[e.target.dataset.k] = e.target.open;
@@ -743,6 +847,7 @@
       if (t) lastToast = t.id;
       else if (lastToast === null) lastToast = '';
     }
+    if (typing()) { renderLater = true; return; }
     render();
   };
 

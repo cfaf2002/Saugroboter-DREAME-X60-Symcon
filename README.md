@@ -2,7 +2,7 @@
 
 [![IP-Symcon ab 8.1](https://img.shields.io/badge/IP--Symcon-ab_8.1-0b6fb3.svg)](https://www.symcon.de)
 [![Optimiert für Symcon 9.0](https://img.shields.io/badge/optimiert_f%C3%BCr-Symcon_9.0-0b6fb3.svg)](https://www.symcon.de/de/service/dokumentation/installation/migrationen/v81-v90-q1-2026/)
-[![Modul-Version 1.4 (Build 35)](https://img.shields.io/badge/Modul--Version-1.4_(Build_35)-informational.svg)](library.json)
+[![Modul-Version 1.5 (Build 36)](https://img.shields.io/badge/Modul--Version-1.5_(Build_36)-informational.svg)](library.json)
 [![Tests](https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon/actions/workflows/tests.yml/badge.svg)](https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon/actions/workflows/tests.yml)
 [![PHP 8.3 und 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net)
 [![SDK: IPSModuleStrict](https://img.shields.io/badge/SDK-IPSModuleStrict-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/module/)
@@ -175,6 +175,7 @@ In der **Kachel-Visualisierung** die Instanz direkt als Kachel hinzufügen. Die 
 
 - Zustand, Raum, Fortschritt und Akku; bei aktiver Live-Verbindung das Zeichen **LIVE**
 - Störungen mit Kurzhilfe (Hinweise lassen sich quittieren)
+- auf breiten Kacheln (Tablet, PC, Vollbild) **links die Karte, rechts die Bedienung**; die Karte bleibt beim Blättern stehen
 - die Karte mit Raumnamen, Strecke, Station und dem Roboter, der in Echtzeit über die Karte gleitet.
   **Raum antippen** öffnet die Nachfrage *Wie soll gereinigt werden?* mit *Jetzt reinigen* (während einer Fahrt:
   *Nach der laufenden Fahrt*) und *Nur auswählen*. Die Einstellungen gelten nur für diese Fahrt.
@@ -255,8 +256,15 @@ Gereinigt wird alles oder die unter *Räume* eingetragenen Räume („Küche, Fl
 
 Nicht genannte Werte bleiben wie am Gerät eingestellt. Die Vorwahlen selbst werden dabei nicht verändert.
 
-Auch der **Raumplan** lässt sich in der Kachel ansehen und bearbeiten (Karte *Automatik → Zeitpläne*):
-je Zeile Tag, Programm und Räume antippen, *frei* für Tage ohne Automatik, *Speichern*. Er ist derselbe wie in der Instanz.
+**Eigene Programme:** Im Untermenü *Programm* (Karte *Reinigen* oder *Automatik*) unter *Eigene Programme* mit
+*Neues Programm anlegen* einen Namen und Modus, Saugkraft, Wischfeuchte, Durchgänge, Route und CleanGenius festlegen –
+z. B. „Küche nach dem Kochen“. Über das Stift-Symbol ändern oder löschen. Eigene Programme stehen danach beim Reinigen,
+in der Automatik, in den Zeitplänen (Kachel und Instanz) und in den Variablen *Programm* / *Automatik-Programm* zur Auswahl
+(bis zu 20). Wird eins gelöscht, nutzen Zeitpläne damit wieder das Standard-Programm.
+
+Die **Zeitpläne** lassen sich in der Kachel ansehen und bearbeiten (Karte *Automatik → Zeitpläne*): eine Übersicht aller
+Einträge (Tag, Uhrzeit, Räume, Programm); antippen zum Ändern, Papierkorb zum Löschen, *Neuer Zeitplan* zum Anlegen.
+Im Eintrag Tag, Uhrzeit, Programm und Räume wählen, *frei* für Tage ohne Automatik. Es sind dieselben wie in der Instanz.
 
 Das **Programm der Automatik** wählst du direkt in der Kachel (Karte *Automatik → Programm*)
 oder über die Variable **Automatik-Programm**. Dieselben Programme wählst du in der Kachel auch fürs manuelle Reinigen (Karte *Reinigen → Programm*).
@@ -428,6 +436,7 @@ Zeitüberschreitung zu warten.
 
 | Version | Build | Datum | Beschreibung |
 |---|---|---|---|
+| 1.5 | 36 | 07.10.2026 | Kachel: auf breiten Kacheln links die Karte (bleibt beim Blättern stehen), rechts die Bedienung; **eigene Programme** anlegen, ändern und löschen (auch in Zeitplänen, Variablen und Instanz wählbar); **Zeitpläne** als Übersicht mit Bearbeiten, Löschen und *Neuer Zeitplan*; Eingaben im Dialog gehen bei einer Aktualisierung nicht mehr verloren |
 | 1.4 | 35 | 06.10.2026 | Hausstil: Regel für die Modulliste (`vendor` gesetzt, höchstens ein Alias) in `STYLEGUIDE.md` und Strukturprüfung ergänzt |
 | 1.4 | 34 | 06.10.2026 | **Live-Verbindung repariert:** Seit dem Umstieg auf `IPSModuleStrict` (Build 28) erwartet Symcon die Daten zum Client Socket HEX-kodiert; das Modul schickte sie noch UTF-8-kodiert, der Server bekam Datenmüll und trennte sofort („End of file“). Senden und Empfangen jetzt HEX-kodiert |
 | 1.4 | 33 | 06.10.2026 | Neuer Knopf „Live-Anmeldung prüfen“: baut selbst eine Verbindung zum Live-Server auf (mit/ohne Servernamen, mit/ohne Anmelde-Kennzeichen) und zeigt, ob der Server die Anmeldung annimmt; dazu PHP-, OpenSSL- und Krypto-Ausstattung des Systems |

@@ -373,3 +373,23 @@ body.mapbig.hasbg .mapcard { background: var(--dlg); -webkit-backdrop-filter: no
 body.mapbig .mapbox { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; min-height: 0; }
 body.mapbig .mapcard .mapwrap img { max-height: calc(100vh - 110px); max-width: calc(100vw - 48px); min-height: 0; }
 body.mapbig .maphint { display: none; }
+
+/* Breite Kachel: links nur die Karte (bleibt beim Blättern stehen), rechts die Bedienung */
+@media (min-width: 760px) {
+  .colmap { position: sticky; top: 8px; }
+  .colmap .mapcard .mapwrap img { max-height: calc(100vh - 150px); min-height: 360px; }
+}
+/* Programme und Zeitpläne: Abschnitte, Hinweise, Eingaben */
+.psec { display: flex; justify-content: space-between; align-items: baseline; margin: 16px 2px 8px; font-weight: 650; }
+.pempty { padding: 6px 2px 10px; }
+.pitem.dim .pmain b, .pitem.dim .pmain .ic { opacity: .6; }
+.pitem .pmain > .ic:last-child { color: var(--mute); width: 16px; height: 16px; }
+.txtin { width: 100%; box-sizing: border-box; min-height: 40px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--card2); color: var(--fg); font: inherit; font-size: 14.5px; }
+.txtin:focus { outline: 2px solid var(--acc); outline-offset: 1px; }
+.dlg .field select, .dlg .field .ptime { min-height: 40px; }
+.dlg .field .prow-top select { flex: 1 1 auto; min-width: 0; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--card2); color: var(--fg); font: inherit; font-size: 13.5px; }
+.dlg .field .ptime { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--card2); color: var(--fg); font: inherit; }
+.dlg .field select.pprog { display: block; width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--card2); color: var(--fg); font: inherit; font-size: 13.5px; }
+.btn.ghost.danger { color: var(--bad); }
+.dlg-actions .btn .ic { margin-right: 6px; }

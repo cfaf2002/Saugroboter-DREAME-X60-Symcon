@@ -63,6 +63,10 @@ class X60Ultra extends IPSModuleStrict
         8 => ['CleanGenius Tiefenreinigung', ['Mode' => 2, 'CleanGenius' => 2]]
     ];
 
+    // Eigene Programme (in der Kachel angelegt) bekommen Nummern ab 100
+    const USER_PROGRAM_BASE = 100;
+    const USER_PROGRAM_MAX = 20;
+
     // Zusatzwerte je nach Modell: Ident => [Name, siid, piid, Typ, Darstellung (siehe Presentation()), Position]
     const EXTRAS = [
         'Charging'   => ['Lädt', 3, 2, 0, 'charging', 14],
@@ -116,6 +120,7 @@ class X60Ultra extends IPSModuleStrict
         $this->RegisterPropertyBoolean('AutoReturn', true);
         $this->RegisterPropertyInteger('AutoProgram', 0);        // Reinigungsprogramm der Automatik (siehe PROGRAMS)
         $this->RegisterPropertyString('AutoPlan', '[]');         // [{day, rooms}] – Räume je Wochentag
+        $this->RegisterPropertyString('UserPrograms', '[]');     // eigene Programme: [{id, name, set: {Mode, Suction, …}}]
         // Benachrichtigungen
         $this->RegisterPropertyInteger('NotifyTarget', 0);
         $this->RegisterPropertyBoolean('NotifyDone', true);
@@ -246,6 +251,15 @@ class X60Ultra extends IPSModuleStrict
         }
         $this->RemoveUnusedProfiles();
 
+        // Auswahl der Programm-Variablen enthält auch die eigenen Programme
+        $this->RegisterVariableInteger('CleanProgram', 'Programm', $this->PresentEnumeration('list-check', $this->ProgramNames()), 39);
+        $this->RegisterVariableInteger('AutoProgram', 'Automatik-Programm', $this->PresentEnumeration('list-check', $this->ProgramNames()), 52);
+        $this->EnableAction('CleanProgram');
+        $this->EnableAction('AutoProgram');
+        foreach (['CleanProgram', 'AutoProgram'] as $pv) {
+            if (!$this->HasProgram(intval($this->GetValue($pv)))) $this->SetVal($pv, 0);
+        }
+
         // Anmeldung und Gerät nur frisch ermitteln, wenn sich Zugangsdaten/Verbindung geändert haben
         // (Änderungen am Raumplan o. Ä. – auch aus der Kachel – lassen Anmeldung und Live-Verbindung in Ruhe)
         $cred = md5(implode('|', [$this->ReadPropertyString('Email'), $this->ReadPropertyString('Password'), $this->ReadPropertyString('Region'),
@@ -339,6 +353,7 @@ class X60Ultra extends IPSModuleStrict
         $this->FormRoomPlan($form['elements']);
         $this->FormStatus($form['elements']);
         $this->FormCustomDays($form['elements']);
+        $this->FormUserPrograms($form['elements']);
         // Versionszeile ganz unten
         $lib = json_decode(@file_get_contents(__DIR__ . '/../library.json'), true);
         if (is_array($lib)) {
@@ -358,6 +373,21 @@ class X60Ultra extends IPSModuleStrict
             if ($cur === '' || in_array($cur, array_column($e['options'], 'value'), true)) continue;
             $names = [1 => 'Mo', 2 => 'Di', 3 => 'Mi', 4 => 'Do', 5 => 'Fr', 6 => 'Sa', 7 => 'So'];
             $e['options'][] = ['caption' => implode(', ', array_map(function ($d) use ($names) { return $names[intval($d)]; }, str_split($cur))), 'value' => $cur];
+        }
+        unset($e);
+    }
+
+    // Zeitpläne: eigene Programme (aus der Kachel) zusätzlich in der Programm-Auswahl
+    private function FormUserPrograms(&$elements)
+    {
+        foreach ($elements as &$e) {
+            if (isset($e['items'])) $this->FormUserPrograms($e['items']);
+            if (!isset($e['name']) || $e['name'] !== 'AutoPlan' || !isset($e['columns'])) continue;
+            foreach ($e['columns'] as &$c) {
+                if (($c['name'] ?? '') !== 'prog' || !isset($c['edit']['options'])) continue;
+                foreach ($this->UserPrograms() as $u) $c['edit']['options'][] = ['caption' => $u['name'] . ' (eigenes)', 'value' => $u['id']];
+            }
+            unset($c);
         }
         unset($e);
     }
@@ -501,7 +531,7 @@ class X60Ultra extends IPSModuleStrict
                 $this->RefreshViews();
                 return;
             case 'CleanProgram':
-                if (!isset(self::PROGRAMS[intval($Value)])) return;
+                if (!$this->HasProgram(intval($Value))) return;
                 $this->SetVal('CleanProgram', intval($Value));
                 $this->RefreshViews();
                 return;
@@ -516,9 +546,9 @@ class X60Ultra extends IPSModuleStrict
                 $this->RefreshViews();
                 return;
             case 'AutoProgram':
-                if (!isset(self::PROGRAMS[intval($Value)])) return;
+                if (!$this->HasProgram(intval($Value))) return;
                 $this->SetVal('AutoProgram', intval($Value));
-                $this->Note('Automatik-Programm: ' . self::PROGRAMS[intval($Value)][0], 'ok');
+                $this->Note('Automatik-Programm: ' . $this->ProgramName(intval($Value)), 'ok');
                 $this->RefreshViews();
                 return;
             case 'TilePlan':
@@ -533,14 +563,23 @@ class X60Ultra extends IPSModuleStrict
                     $prog = intval($r['prog'] ?? -1);
                     $tm = isset($r['time']) && preg_match('/^(\d{1,2}):(\d{2})$/', trim(strval($r['time'])), $mm) && intval($mm[1]) < 24 && intval($mm[2]) < 60
                         ? sprintf('%02d:%02d', intval($mm[1]), intval($mm[2])) : '';
-                    $row = ['day' => $day, 'time' => $tm, 'prog' => ($prog >= 0 && isset(self::PROGRAMS[$prog])) ? $prog : -1, 'off' => !empty($r['off'])];
+                    $row = ['day' => $day, 'time' => $tm, 'prog' => ($prog >= 0 && $this->HasProgram($prog)) ? $prog : -1, 'off' => !empty($r['off'])];
                     foreach ($r as $k => $v) if (preg_match('/^r\d{1,5}$/', $k)) $row[$k] = (bool)$v;
                     $clean[] = $row;
                     if (count($clean) >= 20) break;
                 }
                 IPS_SetProperty($this->InstanceID, 'AutoPlan', json_encode($clean));
                 IPS_ApplyChanges($this->InstanceID);
-                $this->Note('Raumplan gespeichert.', 'ok');
+                $this->Note('Zeitpläne gespeichert.', 'ok');
+                $this->RefreshViews();
+                return;
+            case 'TileProgSave':
+                // Kachel: eigenes Programm anlegen oder ändern ({id, name, set})
+                $this->SaveUserProgram($this->Json($Value));
+                $this->RefreshViews();
+                return;
+            case 'TileProgDelete':
+                $this->DeleteUserProgram(intval($Value));
                 $this->RefreshViews();
                 return;
             case 'TileProgram':
@@ -2133,7 +2172,7 @@ class X60Ultra extends IPSModuleStrict
             if ($codes === '-') return null;          // "frei" an diesem Tag schlägt alles
             $t = isset($r['time']) && preg_match('/^(\d{1,2}):(\d{2})$/', trim(strval($r['time'])), $m) ? mktime(intval($m[1]), intval($m[2]), 0) : $std;
             $p = intval($r['prog'] ?? -1);
-            if ($p < 0 || !isset(self::PROGRAMS[$p])) $p = intval($this->GetValue('AutoProgram'));
+            if ($p < 0 || !$this->HasProgram($p)) $p = intval($this->GetValue('AutoProgram'));
             $key = md5($i . '|' . $d . '|' . date('H:i', $t));
             $out[] = ['key' => $key, 'ts' => $t, 'time' => date('H:i', $t), 'rooms' => $codes, 'prog' => $p, 'done' => ($done[$key] ?? '') === date('Ymd')];
         }
@@ -2247,7 +2286,7 @@ class X60Ultra extends IPSModuleStrict
                 $done[$entry['key']] = date('Ymd');
                 $this->WriteAttributeString('AutoDone', json_encode($done));
             }
-            $what = (!count($rooms) ? 'alles' : $this->RoomNames($rooms)) . ($prog > 0 ? ', ' . self::PROGRAMS[$prog][0] : '');
+            $what = (!count($rooms) ? 'alles' : $this->RoomNames($rooms)) . ($prog > 0 ? ', ' . $this->ProgramName($prog) : '');
             $this->SetVal('AutoStatus', 'gestartet ' . date('H:i') . ' (' . $what . ')');
             if ($this->ReadPropertyBoolean('NotifyAuto')) $this->Push('Automatik', ($entry !== null ? 'Zeitplan ' . $entry['time'] : 'Niemand zu Hause') . ' – Reinigung gestartet: ' . $what . '.');
         } else {
@@ -2290,7 +2329,7 @@ class X60Ultra extends IPSModuleStrict
         $rooms = $this->AutoRoomsToday();
         if ($rooms === '-') return 'Heute frei';
         $p = $this->AutoProgramToday();
-        return 'Heute: ' . (count($rooms) ? $this->RoomNames($rooms) : 'alles') . ' · ' . self::PROGRAMS[$p][0];
+        return 'Heute: ' . (count($rooms) ? $this->RoomNames($rooms) : 'alles') . ' · ' . $this->ProgramName($p);
     }
 
     // Passende Zeile des Raumplans für heute (genaueste gewinnt) oder null
@@ -2312,8 +2351,8 @@ class X60Ultra extends IPSModuleStrict
     {
         $row = $this->PlanRowToday();
         $p = $row !== null && isset($row['prog']) ? intval($row['prog']) : -1;
-        if ($p < 0 || !isset(self::PROGRAMS[$p])) $p = intval($this->GetValue('AutoProgram'));
-        return isset(self::PROGRAMS[$p]) ? $p : 0;
+        if ($p < 0 || !$this->HasProgram($p)) $p = intval($this->GetValue('AutoProgram'));
+        return $this->HasProgram($p) ? $p : 0;
     }
 
     // Aktuelle Vorwahlen als Einstellungen ("Eigene Einstellungen")
@@ -2327,8 +2366,106 @@ class X60Ultra extends IPSModuleStrict
     // Einstellungen eines Programms (vollständig, damit keine Vorwahl hineinrutscht); null = Vorwahlen
     private function ProgramSettings($p)
     {
-        if (!isset(self::PROGRAMS[$p]) || self::PROGRAMS[$p][1] === null) return null;
-        return self::PROGRAMS[$p][1] + ['Mode' => -1, 'Suction' => -1, 'Wetness' => -1, 'Passes' => 1, 'Route' => -1, 'CleanGenius' => -1];
+        $all = $this->Programs();
+        if (!isset($all[$p]) || $all[$p][1] === null) return null;
+        return $all[$p][1] + ['Mode' => -1, 'Suction' => -1, 'Wetness' => -1, 'Passes' => 1, 'Route' => -1, 'CleanGenius' => -1];
+    }
+
+    // Alle Programme: feste (0–8) und eigene (ab 100) – Nummer => [Name, Einstellungen]
+    private function Programs(): array
+    {
+        $all = self::PROGRAMS;
+        foreach ($this->UserPrograms() as $u) $all[$u['id']] = [$u['name'], $u['set']];
+        return $all;
+    }
+
+    private function HasProgram(int $p): bool
+    {
+        return isset($this->Programs()[$p]);
+    }
+
+    private function ProgramName(int $p): string
+    {
+        return $this->Programs()[$p][0] ?? self::PROGRAMS[0][0];
+    }
+
+    private function ProgramNames(): array
+    {
+        return array_map(function ($p) { return $p[0]; }, $this->Programs());
+    }
+
+    // Eigene Programme aus der Eigenschaft, geprüft
+    private function UserPrograms(): array
+    {
+        $rows = json_decode($this->ReadPropertyString('UserPrograms'), true);
+        $out = [];
+        if (is_array($rows)) foreach ($rows as $r) {
+            $u = $this->CleanUserProgram($r);
+            if ($u !== null && !isset($out[$u['id']])) $out[$u['id']] = $u;
+        }
+        return array_values($out);
+    }
+
+    // Ein eigenes Programm prüfen: Nummer ab 100, Name 1–40 Zeichen, nur bekannte Einstellungen mit gültigen Werten
+    private function CleanUserProgram($r): ?array
+    {
+        if (!is_array($r)) return null;
+        $id = intval($r['id'] ?? 0);
+        $name = trim(preg_replace('/[\x00-\x1F\x7F]+/u', ' ', strval($r['name'] ?? '')));
+        if ($id < self::USER_PROGRAM_BASE || $name === '') return null;
+        if (mb_strlen($name) > 40) $name = mb_substr($name, 0, 40);
+        $set = [];
+        $opt = self::Options();
+        foreach (['Mode', 'Suction', 'Wetness', 'Passes', 'Route', 'CleanGenius'] as $k) {
+            $v = intval(($r['set'] ?? [])[$k] ?? ($k === 'Passes' ? 1 : -1));
+            $set[$k] = isset($opt[$k][$v]) ? $v : ($k === 'Passes' ? 1 : -1);
+        }
+        return ['id' => $id, 'name' => $name, 'set' => $set];
+    }
+
+    private function SaveUserPrograms(array $list): void
+    {
+        IPS_SetProperty($this->InstanceID, 'UserPrograms', (string) json_encode(array_values($list), JSON_UNESCAPED_UNICODE));
+        IPS_ApplyChanges($this->InstanceID);
+    }
+
+    private function SaveUserProgram($d): void
+    {
+        if (!is_array($d)) return;
+        $list = [];
+        foreach ($this->UserPrograms() as $u) $list[$u['id']] = $u;
+        $id = intval($d['id'] ?? 0);
+        if (!isset($list[$id])) {
+            if (count($list) >= self::USER_PROGRAM_MAX) { $this->Note('Höchstens ' . self::USER_PROGRAM_MAX . ' eigene Programme.', 'err'); return; }
+            $id = $list ? max(array_keys($list)) + 1 : self::USER_PROGRAM_BASE;
+        }
+        $u = $this->CleanUserProgram(['id' => $id, 'name' => $d['name'] ?? '', 'set' => is_array($d['set'] ?? null) ? $d['set'] : []]);
+        if ($u === null) { $this->Note('Bitte einen Namen für das Programm eingeben.', 'err'); return; }
+        foreach (self::PROGRAMS as $fixed) {
+            if (mb_strtolower($fixed[0]) === mb_strtolower($u['name'])) { $this->Note('Diesen Namen hat schon ein festes Programm.', 'err'); return; }
+        }
+        $list[$id] = $u;
+        $this->SaveUserPrograms($list);
+        $this->Note('Programm „' . $u['name'] . '“ gespeichert.', 'ok');
+    }
+
+    // Eigenes Programm löschen; Variablen und Zeitpläne, die es nutzen, fallen auf den Standard zurück
+    private function DeleteUserProgram(int $id): void
+    {
+        $list = [];
+        foreach ($this->UserPrograms() as $u) $list[$u['id']] = $u;
+        if (!isset($list[$id])) return;
+        $name = $list[$id]['name'];
+        unset($list[$id]);
+        $plan = json_decode($this->ReadPropertyString('AutoPlan'), true);
+        if (is_array($plan)) {
+            foreach ($plan as &$row) if (is_array($row) && intval($row['prog'] ?? -1) === $id) $row['prog'] = -1;
+            unset($row);
+            IPS_SetProperty($this->InstanceID, 'AutoPlan', (string) json_encode($plan));
+        }
+        foreach (['CleanProgram', 'AutoProgram'] as $pv) if (intval($this->GetValue($pv)) === $id) $this->SetVal($pv, 0);
+        $this->SaveUserPrograms($list);
+        $this->Note('Programm „' . $name . '“ gelöscht.', 'ok');
     }
 
     private function AutoRoomsToday()
@@ -2545,9 +2682,11 @@ class X60Ultra extends IPSModuleStrict
             'cleanProgram' => intval($this->GetValue('CleanProgram')),
             'programs' => array_map(function ($id) {
                 $s = $this->ProgramSettings($id);
-                return ['id' => $id, 'name' => self::PROGRAMS[$id][0], 'set' => $s === null ? $this->PresetValues() : $s, 'custom' => $s === null];
-            }, array_keys(self::PROGRAMS)),
-            'programNames' => array_map(function ($p) { return $p[0]; }, self::PROGRAMS),
+                return ['id' => $id, 'name' => $this->ProgramName($id), 'set' => $s === null ? $this->PresetValues() : $s,
+                    'custom' => $s === null, 'user' => $id >= self::USER_PROGRAM_BASE];
+            }, array_keys($this->Programs())),
+            'programNames' => (object) $this->ProgramNames(),
+            'userProgramMax' => self::USER_PROGRAM_MAX,
             'autoProgram' => intval($this->GetValue('AutoProgram')),
             'plan' => $this->PlanView(),
             'planRooms' => array_map(function ($r) { return ['code' => $r['code'], 'name' => $r['name'] . (count($this->Maps()) > 1 ? ' (' . $r['floor'] . ')' : '')]; }, $this->RoomList()),
