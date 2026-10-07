@@ -6,6 +6,7 @@
     Das Modul schickt ein Datenpaket {view, map}; gezeichnet wird hier, das Aussehen steht in tile.css.
     Bedienung läuft über requestAction(Ident, Wert) zurück an das Modul.
     Sicherheit: alle Texte laufen durch esc(), bevor sie in die Ansicht kommen.
+    Animationen ruhen, solange die Kachel nicht sichtbar ist; Bedienelemente sind mindestens 36 px hoch.
     Gestaltung nach STYLEGUIDE.md (Kachel-Grundlage, Farbschema über applyTheme).
 -->
 <style>
@@ -185,7 +186,7 @@
     if (!src) return h + '<div class="empty">' + ic('list') + '<div>Noch keine Karte</div><div class="small mute">In der Instanz „Karten &amp; Räume einlesen“.</div></div></div>';
     var sel = {};
     v.rooms.forEach(function (r) { sel[r.code] = r.sel; });
-    h += '<div class="mapbox"><div class="mapwrap' + (last ? '' : ' pick') + '"><img id="mapimg" src="' + src + '" alt="Karte">';
+    h += '<div class="mapbox"><div class="mapwrap' + (last ? '' : ' pick') + '"><img id="mapimg" src="' + esc(src) + '" alt="Karte">';
     if (meta && meta.rooms) {
       Object.keys(meta.rooms).forEach(function (seg) {
         var code = meta.mapId * 100 + parseInt(seg, 10), name = v.roomNames[code];
@@ -406,8 +407,8 @@
       if (d.mode === 'hist') v.history.forEach(function (l) { h += '<div class="hist">' + esc(l) + '</div>'; });
       else v.wear.forEach(function (w) {
         var lw = w.v <= v.wearWarn;
-        h += '<div class="wear' + (lw ? ' low' : '') + '"><span>' + esc(w.name) + '</span><div class="bar"><i style="width:' + w.v + '%"></i></div>' +
-          '<em>' + w.v + ' %</em><button class="iconbtn sm" data-reset="' + w.id + '" data-name="' + esc(w.name) + '" title="Zähler zurücksetzen">' + ic('reset') + '</button></div>';
+        h += '<div class="wear' + (lw ? ' low' : '') + '"><span>' + esc(w.name) + '</span><div class="bar"><i style="width:' + (+w.v || 0) + '%"></i></div>' +
+          '<em>' + (+w.v || 0) + ' %</em><button class="iconbtn sm" data-reset="' + esc(w.id) + '" data-name="' + esc(w.name) + '" title="Zähler zurücksetzen">' + ic('reset') + '</button></div>';
       });
       return h + '</div></div>';
     }
@@ -420,7 +421,7 @@
     }
     if (d.mode === 'autoprog' || d.mode === 'progsel') return h + progDialog(v, d) + '</div></div>';
     var sub = d.mode === 'presets' ? 'Gilt für „Alles reinigen“ und als Vorschlag beim Reinigen von Räumen.'
-      : d.mode === 'prog' ? (d.target ? 'Für ' + d.target : 'Für die ganze Etage') + ' – Einstellungen lassen sich hier noch anpassen.' : 'Wie soll gereinigt werden?';
+      : d.mode === 'prog' ? (d.target ? 'Für ' + esc(d.target) : 'Für die ganze Etage') + ' – Einstellungen lassen sich hier noch anpassen.' : 'Wie soll gereinigt werden?';
     h += '<div class="dlg-head"><div><div class="dlg-title">' + esc(d.name) + '</div><div class="small mute">' + sub + '</div></div>' +
       '<button class="iconbtn" data-dlg="close" aria-label="Schließen">' + ic('close') + '</button></div>';
     DLG.forEach(function (f) {
@@ -605,9 +606,9 @@
     // Laufende Reinigung
     if (v.job) {
       h += '<div class="card jobcard">';
-      if (v.progress !== null) h += '<div class="prog"><div class="bar"><i style="width:' + v.progress + '%"></i></div><b>' + v.progress + ' %</b></div>';
-      h += '<div class="stats">' + stat('Raum', v.room && v.room !== '–' ? esc(v.room) : '–') + stat('Fläche', v.area + '<small> m²</small>') +
-        stat('Dauer', v.time + '<small> min</small>') + '</div></div>';
+      if (v.progress !== null) { var pg = Math.max(0, Math.min(100, +v.progress || 0)); h += '<div class="prog"><div class="bar"><i style="width:' + pg + '%"></i></div><b>' + pg + ' %</b></div>'; }
+      h += '<div class="stats">' + stat('Raum', v.room && v.room !== '–' ? esc(v.room) : '–') + stat('Fläche', esc(v.area) + '<small> m²</small>') +
+        stat('Dauer', esc(v.time) + '<small> min</small>') + '</div></div>';
     }
 
     if (v.error) {
@@ -870,6 +871,14 @@
     if (typing()) { renderLater = true; return; }
     render();
   };
+
+  // Animationen ruhen, solange die Kachel nicht zu sehen ist (anderer Tab, aus dem Bild gescrollt)
+  var hiddenTab = false, offScreen = false;
+  function updatePause() { document.documentElement.classList.toggle('paused', hiddenTab || offScreen); }
+  document.addEventListener('visibilitychange', function () { hiddenTab = document.hidden; updatePause(); });
+  if (window.IntersectionObserver) {
+    new IntersectionObserver(function (en) { offScreen = !en[0].isIntersecting; updatePause(); }).observe(document.body);
+  }
 
   window.handleMessage("__INIT__");
 })();

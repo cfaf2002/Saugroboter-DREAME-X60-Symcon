@@ -10,7 +10,7 @@
  * reicht sie an das Gerät weiter.
  *
  * Erwartet in der nutzenden Klasse: Properties Email, Password, Region, DeviceFilter,
- * VerifyTLS sowie die Attribute Token und Device (JSON).
+ * VerifyTLS sowie die Attribute Token und Device (JSON), AuthFails und AuthHold (Integer).
  */
 trait SaugroboterApi
 {
@@ -25,7 +25,12 @@ trait SaugroboterApi
     // Die Cloud nimmt je get_properties-Aufruf nur eine begrenzte Zahl Kennungen an
     private static $DC_BATCH = 15;
 
+    // Nach abgelehnter Anmeldung: 15 min warten, dann 30, 60 … höchstens 6 Stunden (schützt vor Kontosperre)
+    private static $DC_AUTH_WAIT = 900;
+    private static $DC_AUTH_MAX  = 21600;
+
     private $dcLastError = '';
+    private $dcAuthCode = 0;          // HTTP-Code der letzten Anmeldung (0 = Netzwerkfehler)
     // true, wenn die letzten Werte aus dem Cloud-Speicher statt direkt vom Roboter kamen
     protected $dcFromCache = false;
     protected $dcSkipDirect = false;
@@ -39,22 +44,84 @@ trait SaugroboterApi
      */
     protected function CloudLogin($password = false)
     {
-        $t = json_decode($this->ReadAttributeString('Token'), true);
-        if (!$password && is_array($t) && !empty($t['access']) && intval($t['until']) > time() + 120) return true;
+        if (!$password && $this->CloudTokenValid()) return true;
 
         $user = trim($this->ReadPropertyString('Email'));
         $pass = $this->ReadPropertyString('Password');
         if ($user === '' || $pass === '') { $this->dcLastError = 'Zugangsdaten fehlen.'; return false; }
 
-        if (!$password && is_array($t) && !empty($t['refresh'])) {
-            $r = $this->CloudTokenRequest('grant_type=refresh_token&scope=all&platform=ANDROID&type=account&refresh_token='
-                . rawurlencode($t['refresh']), $t);
-            if ($r) return true;
+        // Nach abgelehnter Anmeldung nicht im Takt der Abfrage weiter probieren – das kann das Konto sperren.
+        // „Verbindung testen“ ($password) und geänderte Zugangsdaten versuchen es sofort.
+        $hold = $this->ReadAttributeInteger('AuthHold');
+        if (!$password && $hold > time()) {
+            $this->dcLastError = 'Anmeldung abgelehnt – nächster Versuch um ' . date('H:i', $hold) . ' (Zugangsdaten prüfen, dann „Verbindung testen“).';
+            return false;
         }
-        $body = 'grant_type=password&scope=all&platform=ANDROID&type=account&username=' . rawurlencode($user)
-            . '&password=' . $this->PasswordHash($pass);
-        if (is_array($t) && !empty($t['country']) && !empty($t['lang'])) $body .= '&country=' . rawurlencode($t['country']) . '&lang=' . rawurlencode($t['lang']);
-        return $this->CloudTokenRequest($body, $t);
+
+        // Nur ein Ablauf erneuert das Token; wer wartet, nimmt danach das frische Token des anderen
+        $key = 'SAUG_TOKEN_' . $this->InstanceID;
+        if (!IPS_SemaphoreEnter($key, 30000)) { $this->dcLastError = 'Anmeldung läuft bereits – bitte gleich noch einmal.'; return false; }
+        try {
+            if (!$password && $this->CloudTokenValid()) return true;
+            $t = json_decode($this->ReadAttributeString('Token'), true);
+            if (!$password && is_array($t) && !empty($t['refresh'])) {
+                $r = $this->CloudTokenRequest('grant_type=refresh_token&scope=all&platform=ANDROID&type=account&refresh_token='
+                    . rawurlencode($t['refresh']), $t);
+                if ($r) return true;
+                // Netz- oder Serverfehler: kein Grund, es gleich mit dem Passwort zu versuchen
+                if (!self::AuthRejected($this->dcAuthCode)) return false;
+            }
+            $body = 'grant_type=password&scope=all&platform=ANDROID&type=account&username=' . rawurlencode($user)
+                . '&password=' . $this->PasswordHash($pass);
+            if (is_array($t) && !empty($t['country']) && !empty($t['lang'])) $body .= '&country=' . rawurlencode($t['country']) . '&lang=' . rawurlencode($t['lang']);
+            $ok = $this->CloudTokenRequest($body, $t);
+            if ($ok) {
+                $this->WriteAttributeInteger('AuthFails', 0);
+                $this->WriteAttributeInteger('AuthHold', 0);
+                if ($this->GetStatus() == 203) $this->SetStatus(102);
+            } elseif (self::AuthRejected($this->dcAuthCode)) {
+                // Zugangsdaten abgelehnt: Wartezeit verdoppeln. Netz- und Serverfehler (Code 0, 5xx, 429) zählen nicht.
+                $n = $this->ReadAttributeInteger('AuthFails') + 1;
+                $wait = (int) min(self::$DC_AUTH_MAX, self::$DC_AUTH_WAIT * 2 ** min(10, $n - 1));
+                $this->WriteAttributeInteger('AuthFails', $n);
+                $this->WriteAttributeInteger('AuthHold', time() + $wait);
+                $this->dcLastError .= ' – nächster Versuch um ' . date('H:i', time() + $wait) . '.';
+                $this->SendDebug('Cloud', 'Anmeldung ' . $n . '× abgelehnt, Pause ' . intval($wait / 60) . ' min', 0);
+                if ($this->GetStatus() == 102) $this->SetStatus(203);
+            }
+            return $ok;
+        } finally {
+            IPS_SemaphoreLeave($key);
+        }
+    }
+
+    // Token vorhanden und noch mindestens 2 Minuten gültig
+    private function CloudTokenValid()
+    {
+        $t = json_decode($this->ReadAttributeString('Token'), true);
+        return is_array($t) && !empty($t['access']) && intval($t['until'] ?? 0) > time() + 120;
+    }
+
+    // 400/401/403 vom Token-Endpunkt = Zugangsdaten oder Refresh-Token abgelehnt; alles andere ist eine Störung
+    private static function AuthRejected($code)
+    {
+        return in_array(intval($code), [400, 401, 403], true);
+    }
+
+    // Token als abgelaufen markieren – unter derselben Sperre wie die Erneuerung, damit ein gerade
+    // geholtes Token nicht mit dem alten überschrieben wird. $access: nur, wenn noch dieses Token gilt.
+    protected function CloudTokenExpire($access = null)
+    {
+        $key = 'SAUG_TOKEN_' . $this->InstanceID;
+        if (!IPS_SemaphoreEnter($key, 30000)) return;
+        try {
+            $t = json_decode($this->ReadAttributeString('Token'), true);
+            if (!is_array($t) || ($access !== null && ($t['access'] ?? '') !== $access)) return;
+            $t['until'] = 0;
+            $this->WriteAttributeString('Token', json_encode($t));
+        } finally {
+            IPS_SemaphoreLeave($key);
+        }
     }
 
     // Kopfzeilen wie die aktuelle App
@@ -137,6 +204,7 @@ trait SaugroboterApi
     {
         $headers = $this->CloudHeaders('application/x-www-form-urlencoded', is_array($old) ? $old : []);
         list($code, $body) = $this->CloudHttp('POST', $this->CloudBase() . '/dreame-auth/oauth/token', $headers, $grant);
+        $this->dcAuthCode = intval($code);
         $d = json_decode($body, true);
         if ($code == 200 && is_array($d) && !empty($d['access_token'])) {
             $this->WriteAttributeString('Token', json_encode([
@@ -152,8 +220,10 @@ trait SaugroboterApi
             $this->SendDebug('Cloud', 'Anmeldung ok (' . (strpos($grant, 'refresh') === 0 ? 'Refresh' : 'Passwort') . ')', 0);
             return true;
         }
-        if ($code > 0) {
+        if (self::AuthRejected($code)) {
             $this->dcLastError = 'Anmeldung abgelehnt: ' . (is_array($d) && isset($d['error_description']) ? $d['error_description'] : ('HTTP ' . $code));
+        } elseif ($code > 0) {
+            $this->dcLastError = 'Anmeldung gerade nicht möglich: Cloud antwortet mit HTTP ' . $code;
         }
         $this->SendDebug('Cloud', $this->dcLastError, 0);
         return false;
@@ -172,13 +242,13 @@ trait SaugroboterApi
     {
         if (!$this->CloudLogin()) return null;
         $headers = $this->CloudHeaders('application/json');
-        $headers[] = 'Dreame-Auth: ' . $this->CloudToken('access');
+        $access = $this->CloudToken('access');
+        $headers[] = 'Dreame-Auth: ' . $access;
         // Anfragen mit Feldern werden signiert (wie die App); leere Anfragen gehen unverändert
         $send = is_array($payload) && $payload !== [] ? $this->CloudSigned($payload) : $payload;
         list($code, $body) = $this->CloudHttp('POST', $this->CloudBase() . '/' . $path, $headers, json_encode($send, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         if ($code == 401 && $again) {
-            $t = json_decode($this->ReadAttributeString('Token'), true);
-            if (is_array($t)) { $t['until'] = 0; $this->WriteAttributeString('Token', json_encode($t)); }
+            $this->CloudTokenExpire($access);
             $this->SendDebug('Cloud', '401 – Token erneuern', 0);
             return $this->CloudCall($path, $payload, false);
         }

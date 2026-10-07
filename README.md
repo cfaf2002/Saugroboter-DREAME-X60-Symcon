@@ -2,7 +2,7 @@
 
 [![IP-Symcon ab 8.1](https://img.shields.io/badge/IP--Symcon-ab_8.1-0b6fb3.svg)](https://www.symcon.de)
 [![Optimiert für Symcon 9.0](https://img.shields.io/badge/optimiert_f%C3%BCr-Symcon_9.0-0b6fb3.svg)](https://www.symcon.de/de/service/dokumentation/installation/migrationen/v81-v90-q1-2026/)
-[![Modul-Version 1.5 (Build 38)](https://img.shields.io/badge/Modul--Version-1.5_(Build_38)-informational.svg)](library.json)
+[![Modul-Version 1.6 (Build 39)](https://img.shields.io/badge/Modul--Version-1.6_(Build_39)-informational.svg)](library.json)
 [![Tests](https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon/actions/workflows/tests.yml/badge.svg)](https://github.com/cfaf2002/Saugroboter-DREAME-X60-Symcon/actions/workflows/tests.yml)
 [![PHP 8.3 und 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net)
 [![SDK: IPSModuleStrict](https://img.shields.io/badge/SDK-IPSModuleStrict-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/module/)
@@ -25,7 +25,7 @@ X60 Ultra, passend für die aktuellen Modelle der X-Serie (X40, X50, X60) und ve
 Die X-Modelle bieten keinen lokalen Zugang. Das Modul spricht deshalb wie die Dreamehome-App mit der
 Hersteller-Cloud – es läuft selbst aber vollständig in deiner Symcon-Instanz, ohne zusätzliche Dienste.
 
-**Version 1.4** · IP-Symcon ab 8.1, optimiert für 9.0 · Version und Build stehen unten in der Instanzkonfiguration
+**Version 1.6** · IP-Symcon ab 8.1, optimiert für 9.0 · Version und Build stehen unten in der Instanzkonfiguration
 
 ---
 
@@ -67,6 +67,7 @@ Hersteller-Cloud – es läuft selbst aber vollständig in deiner Symcon-Instanz
 - **Etagen**: mehrere Karten, Wechsel am Gerät (während einer Fahrt nur in der Anzeige – der Wechsel würde sonst die Reinigung abbrechen)
 - **Räume**: einzeln per Auswahlliste, mehrere per Schalter oder direkt per Name im Skript („Küche, Flur“)
 - **Vormerken**: Räume während einer laufenden Fahrt auswählen – sie werden danach als eigener Durchgang gereinigt
+  (jeder Raum mit seinen eigenen Einstellungen; scheitert der Start, bleiben sie vorgemerkt)
 - **Vorwahlen** vor dem Start: Modus, Saugkraft, Wischfeuchte, Route, Durchgänge, CleanGenius
 - Zähler eines Verschleißteils zurücksetzen
 
@@ -273,7 +274,8 @@ oder über die Variable **Automatik-Programm**. Dieselben Programme wählst du i
 *Mo–Fr 10:00 Küche · Schnell saugen* und *Sa 14:30 alles · Gründlich saugen*; auch mehrere Einträge am selben Tag.
 Bei *Zur Uhrzeit* startet jeder Eintrag einmal zu seiner Uhrzeit (leer = Standard-Uhrzeit), verpasste Starts werden bis zu
 3 Stunden nachgeholt; ein Eintrag *frei* sperrt den ganzen Tag. Ohne Einträge gilt täglich die Standard-Uhrzeit mit dem
-Standard-Programm. Bei *Bei Abwesenheit* zählen Tag, Räume und Programm, die Uhrzeit nicht. Bearbeiten in der Instanz
+Standard-Programm. Ein Eintrag läuft höchstens einmal am Tag – auch wenn seine Uhrzeit danach noch geändert wird.
+Bei *Bei Abwesenheit* zählen Tag, Räume und Programm, die Uhrzeit nicht. Bearbeiten in der Instanz
 (Liste *Zeitpläne*, Spalte *Uhrzeit*) oder in der Kachel (*Automatik → Zeitpläne*).
 
 **Raumplan:** Im Raumplan hat jeder Raum eine eigene Spalte zum Anhaken (sobald die Räume eingelesen sind), dazu
@@ -285,6 +287,10 @@ das vor *täglich*. Gibt der Plan für heute nichts vor, gilt *Räume*. Die Räu
 | Mo–Fr | Schnell saugen |  | ✓ |  |  |
 | Samstag | Gründlich saugen |  |  |  |  |
 | Sonntag | Standard |  |  |  | ✓ |
+
+Antwortet der Roboter beim Start nicht direkt (er schläft an der Station), stellt die Cloud den Befehl meist trotzdem zu.
+Die Automatik zählt den Start dann vorläufig als erfolgt und startet nicht ein zweites Mal; fährt der Roboter binnen
+10 Minuten nicht los, nimmt sie das zurück und versucht es 30 Minuten nach dem ersten Versuch erneut.
 
 Kommt jemand heim, fährt der Roboter auf Wunsch zurück zur Station. Die Variable **Automatik** zeigt jederzeit,
 worauf die Automatik gerade wartet; die Kachel zeigt zusätzlich, was heute geplant ist („Heute: Küche · Schnell saugen“).
@@ -330,6 +336,11 @@ SAUG_LiveTrustCertificate($id);              // erneuertes Server-Zertifikat üb
 ```
 
 Alle Befehle geben `true`/`false` zurück; der Grund eines Fehlschlags steht in **Letzte Meldung**.
+`CleanRooms`, `CleanRoomsWith` und `CleanSelection` starten während einer laufenden Reinigung nicht hinein, sondern
+merken die Räume für danach vor.
+
+Nur intern (Ziele der Zeitgeber, müssen deshalb öffentlich sein – nicht für eigene Skripte gedacht):
+`SAUG_AutoCheck`, `SAUG_LiveCheck`, `SAUG_LiveWork`.
 
 ---
 
@@ -337,7 +348,10 @@ Alle Befehle geben `true`/`false` zurück; der Grund eines Fehlschlags steht in 
 
 - **Anmeldung**: Das Passwort wird beim Speichern in den Hash umgewandelt, den die Cloud erwartet – im Klartext
   steht es danach nirgends mehr. Angemeldet wird einmal damit, danach mit dem Refresh-Token der Cloud. Lehnt die Cloud ein Token ab,
-  meldet sich das Modul sofort neu an.
+  meldet sich das Modul sofort neu an. Lehnt die Cloud die Zugangsdaten ab, wartet das Modul 15 Minuten, dann 30, 60 …
+  bis höchstens 6 Stunden, bevor es erneut probiert (Status der Instanz: *Anmeldung abgelehnt*) – das schützt das Konto
+  vor einer Sperre. *Verbindung testen* oder geänderte Zugangsdaten versuchen es sofort. Netz- und Serverstörungen
+  zählen nicht als Ablehnung und löschen kein Token. Das Token erneuert immer nur ein Ablauf auf einmal.
 - **Live-Verbindung**: MQTT über TLS zum Server, an dem der Roboter hängt – angemeldet mit Konto-ID und Zugangstoken,
   abonniert wird nur das eigene Gerät. Das Protokoll (Anmelden, Abonnieren, Empfangen, Keepalive) ist im Modul selbst
   umgesetzt, es braucht keine Zusatzbibliothek und keinen eigenen MQTT-Server. Kartenbilder kommen als Voll- oder
@@ -380,6 +394,12 @@ Alle Befehle geben `true`/`false` zurück; der Grund eines Fehlschlags steht in 
   Zertifikatskette des Servers und schickt die Anmeldung mit dem Token nur, wenn der Server später eine dazu
   passende, korrekt unterschriebene Kette vorzeigt. Passt sie nicht, stoppt die Live-Verbindung mit einer Meldung
   (und Push bei Störungen). Hat Dreame das Zertifikat erneuert, übernimmst du es mit *Server-Zertifikat neu übernehmen*.
+  **Grenze:** Der Client Socket von Symcon gibt das Zertifikat seiner eigenen Verbindung nicht preis, und „Überprüfe
+  Peer/Host“ lässt sich ohne öffentliches Zertifikat nicht einschalten (die Live-Verbindung käme dann nie zustande).
+  Die Bindung prüft deshalb eine eigene Verbindung zum selben Server kurz vor der Anmeldung. Sie erkennt, wenn der
+  Server dauerhaft umgeleitet wird, aber nicht einen Angreifer im lokalen Netz, der gezielt nur die Verbindung des
+  Sockets abfängt. Wer das ausschließen will, schaltet die *Live-Verbindung* ab – dann läuft alles über die normale,
+  vollständig geprüfte Abfrage.
 - **Passwort**: gespeichert wird nur der Hash, den die Cloud zur Anmeldung erwartet. Das schützt das Klartext-Passwort
   (wichtig, falls du es auch woanders nutzt) – der Hash selbst reicht aber zur Anmeldung bei Dreame. Einstellungen und
   Backups von Symcon deshalb wie Zugangsdaten behandeln. Am sichersten: ein eigenes, nur hier genutztes Passwort.
@@ -413,7 +433,7 @@ Zeitüberschreitung zu warten.
 
 | Problem | Lösung |
 |---|---|
-| „Anmeldung abgelehnt“ | E-Mail/Passwort der Dreamehome-App und Region prüfen. Bei Anmeldung per Google/Apple in der App ein Passwort vergeben. |
+| „Anmeldung abgelehnt“ | E-Mail/Passwort der Dreamehome-App und Region prüfen. Bei Anmeldung per Google/Apple in der App ein Passwort vergeben. Danach *Verbindung testen* – sonst wartet das Modul bis zum nächsten geplanten Versuch (bis zu 6 Stunden). |
 | „Zertifikatsprüfung fehlgeschlagen“ | Systemzeit und CA-Zertifikate des Symcon-Systems prüfen (Update). *TLS-Zertifikate prüfen* nur als letzten Ausweg abschalten. |
 | „Roboter antwortet nicht“ | Roboter im WLAN? In der App erreichbar? Die Cloud leitet Befehle nur an verbundene Geräte weiter. |
 | Keine Karte | Karte in der App gespeichert? *Karten & Räume einlesen* erneut ausführen. |
@@ -436,6 +456,7 @@ Zeitüberschreitung zu warten.
 
 | Version | Build | Datum | Beschreibung |
 |---|---|---|---|
+| 1.6 | 39 | 07.10.2026 | **Automatik startet nicht mehr doppelt**, wenn die Cloud „Roboter antwortet nicht direkt“ meldet, der Befehl aber ankommt (Start gilt vorläufig, wird ohne Losfahren nach 10 Minuten zurückgenommen); Zeitplan-Eintrag läuft nach Ändern der Uhrzeit nicht am selben Tag erneut; **Vormerkung**: Räume gehen bei fehlgeschlagenem Start nicht mehr verloren, jeder Raum behält seine eigenen Einstellungen, `CleanRooms` startet nicht mehr in eine laufende Reinigung hinein; **Anmeldung**: nach abgelehnten Zugangsdaten Pause mit wachsender Wartezeit (15 min bis 6 h, neuer Status *Anmeldung abgelehnt*), Netz-/Serverfehler zählen nicht als Ablehnung, Token-Erneuerung gegen gleichzeitige Abläufe gesperrt; **Kachel**: Raumname im Programm-Dialog maskiert, Bedienelemente mindestens 36 px, Animationen ruhen bei unsichtbarer Kachel, feste Weißtöne durch Tokens ersetzt, nach Fehlern wird der echte Stand zurückgeschickt; Grenze der Zertifikatsbindung im README beschrieben |
 | 1.5 | 38 | 07.10.2026 | Kachel: Untermenüs und die große Karte beginnen unter dem Titelstreifen der Visualisierung – das Schließen-Kreuz und der Karten-Knopf lassen sich wieder direkt anklicken |
 | 1.5 | 37 | 07.10.2026 | Kachel: Untermenüs blinken nicht mehr – sie werden bei neuen Meldungen des Roboters nur noch neu gezeichnet, wenn sich darin etwas ändert (ohne erneutes Einblenden, Scrollstand bleibt); unveränderte Ansicht wird gar nicht neu aufgebaut |
 | 1.5 | 36 | 07.10.2026 | Kachel: auf breiten Kacheln links die Karte (bleibt beim Blättern stehen), rechts die Bedienung; **eigene Programme** anlegen, ändern und löschen (auch in Zeitplänen, Variablen und Instanz wählbar); **Zeitpläne** als Übersicht mit Bearbeiten, Löschen und *Neuer Zeitplan*; Eingaben im Dialog gehen bei einer Aktualisierung nicht mehr verloren |

@@ -154,7 +154,9 @@ class X60Ultra extends IPSModuleStrict
         $this->RegisterAttributeString('BgType', 'jpeg');
         $this->RegisterAttributeString('CredKey', '');
         $this->RegisterAttributeInteger('RenderVersion', 0);
-        $this->RegisterAttributeString('AutoDone', '{}');   // Zeitplan-Einträge, die heute schon gelaufen sind      // Prüfsumme der Zugangsdaten (Neuanmeldung nur bei Änderung)     // gemerktes Zertifikat des Live-Servers      // Startzeit der Fahrt hinter "Letzte Reinigung"
+        $this->RegisterAttributeString('AutoDone', '{}');   // Zeitplan-Einträge, die heute schon gelaufen sind
+        $this->RegisterAttributeInteger('AuthFails', 0);    // abgelehnte Anmeldungen in Folge
+        $this->RegisterAttributeInteger('AuthHold', 0);     // nächster Anmeldeversuch frühestens (Unix-Zeit)
 
         // ---- Status ----
         $err = [];
@@ -270,6 +272,9 @@ class X60Ultra extends IPSModuleStrict
             $this->WriteAttributeString('Token', '');
             $this->WriteAttributeString('Device', '');
             $this->WriteAttributeString('CredKey', $cred);
+            // neue Zugangsdaten: Wartezeit nach abgelehnter Anmeldung aufheben
+            $this->WriteAttributeInteger('AuthFails', 0);
+            $this->WriteAttributeInteger('AuthHold', 0);
         }
 
         $this->SyncCapabilities();
@@ -325,7 +330,8 @@ class X60Ultra extends IPSModuleStrict
             $this->LiveApply();
             return;
         }
-        $this->SetStatus(102);
+        // Wartet die Anmeldung nach abgelehnten Zugangsdaten, bleibt das in der Statusanzeige sichtbar
+        $this->SetStatus($this->ReadAttributeInteger('AuthHold') > time() ? 203 : 102);
         $this->LiveApply();
         $this->SetPollInterval();
         $this->UpdateAutoTimer();
@@ -505,14 +511,17 @@ class X60Ultra extends IPSModuleStrict
             case 'Command':
                 $this->RunCommand(intval($Value));
                 return;
+            // Die Kachel zeigt Befehle vorab als „läuft“ an: auch im Fehlerfall den echten Stand zurückschicken
             case 'Floor':
                 $this->SelectFloor(intval($Value));
+                $this->RefreshViews();
                 return;
             case 'CleanRoom':
                 if (intval($Value) > 0) $this->CleanRooms(strval(intval($Value)));
+                $this->RefreshViews();
                 return;
             case 'Mode': case 'Route': case 'Suction': case 'Wetness': case 'Passes': case 'CleanGenius':
-                if (!$this->ValidPreset($Ident, $Value)) return;
+                if (!$this->ValidPreset($Ident, $Value)) { $this->RefreshViews(); return; }
                 $this->SetVal($Ident, intval($Value));
                 $this->RefreshViews();
                 return;
@@ -531,7 +540,7 @@ class X60Ultra extends IPSModuleStrict
                 $this->RefreshViews();
                 return;
             case 'CleanProgram':
-                if (!$this->HasProgram(intval($Value))) return;
+                if (!$this->HasProgram(intval($Value))) { $this->RefreshViews(); return; }
                 $this->SetVal('CleanProgram', intval($Value));
                 $this->RefreshViews();
                 return;
@@ -546,7 +555,7 @@ class X60Ultra extends IPSModuleStrict
                 $this->RefreshViews();
                 return;
             case 'AutoProgram':
-                if (!$this->HasProgram(intval($Value))) return;
+                if (!$this->HasProgram(intval($Value))) { $this->RefreshViews(); return; }
                 $this->SetVal('AutoProgram', intval($Value));
                 $this->Note('Automatik-Programm: ' . $this->ProgramName(intval($Value)), 'ok');
                 $this->RefreshViews();
@@ -554,7 +563,7 @@ class X60Ultra extends IPSModuleStrict
             case 'TilePlan':
                 // Kachel: Raumplan speichern (gleiche Form wie in der Instanz)
                 $rows = $this->Json($Value);
-                if (!is_array($rows)) return;
+                if (!is_array($rows)) { $this->RefreshViews(); return; }
                 $clean = [];
                 foreach ($rows as $r) {
                     if (!is_array($r)) continue;
@@ -598,11 +607,12 @@ class X60Ultra extends IPSModuleStrict
                 return;
             case 'TileReset':
                 $this->ResetConsumable(strval($Value));
+                $this->RefreshViews();
                 return;
             case 'TileClean':
                 // Kachel: Raum per Antippen mit Einstellungen aus der Nachfrage reinigen
                 $d = $this->Json($Value);
-                if (!is_array($d) || empty($d['code'])) return;
+                if (!is_array($d) || empty($d['code'])) { $this->RefreshViews(); return; }
                 $code = intval($d['code']);
                 unset($d['code']);
                 $this->CleanRoomsWith([$code], json_encode($d));
@@ -620,12 +630,14 @@ class X60Ultra extends IPSModuleStrict
                 // Kachel: Raum in der Auswahl umschalten (Wert = Raumcode)
                 $id = @$this->GetIDForIdent('Sel' . intval($Value));
                 if ($id) $this->RequestAction('Sel' . intval($Value), !GetValueBoolean($id));
+                else $this->RefreshViews();
                 return;
         }
         if (strpos($Ident, 'Sel') === 0) {
             $code = intval(substr($Ident, 3));
             if ((bool)$Value && intdiv($code, 100) != $this->ActiveFloor()) {
                 $this->Note('Der Raum liegt auf einer anderen Etage – erst die Etage wechseln.', 'err');
+                $this->RefreshViews();
                 return;
             }
             $this->SetVal($Ident, (bool)$Value);
@@ -752,10 +764,11 @@ class X60Ultra extends IPSModuleStrict
         if (count($codes) == 0) { $this->Note('Keine passenden Räume gefunden.', 'err'); return false; }
         $floors = array_unique(array_map(function ($c) { return intdiv($c, 100); }, $codes));
         if (count($floors) > 1) { $this->Note('Ein Durchgang kann nur Räume einer Etage reinigen.', 'err'); return false; }
-        if ($this->ReadAttributeInteger('Job') == 1 && count($over)) {
+        // Läuft ein Auftrag, nicht hineinstarten (das bräche ihn ab), sondern für danach vormerken
+        if ($this->ReadAttributeInteger('Job') == 1) {
             $q = $this->ReadQueue();
             foreach ($codes as $c) if (!in_array($c, $q, true)) $q[] = $c;
-            $this->WriteAttributeString('QueueSettings', json_encode($over));
+            $this->WriteQueueSettings($codes, $over);
             $this->WriteQueue($q);
             $this->Note('Vorgemerkt: ' . $this->RoomNames($q), 'ok');
             $this->RefreshViews();
@@ -816,6 +829,7 @@ class X60Ultra extends IPSModuleStrict
         if ($this->ReadAttributeInteger('Job') == 0) return $this->CleanSelection();
         $q = $this->ReadQueue();
         foreach ($sel as $c) if (!in_array($c, $q, true)) $q[] = $c;
+        $this->WriteQueueSettings($sel, []);
         $this->WriteQueue($q);
         $this->ClearSelection();
         $this->Note('Vorgemerkt: ' . $this->RoomNames($q), 'ok');
@@ -1443,6 +1457,7 @@ class X60Ultra extends IPSModuleStrict
             $job = $this->ReadAttributeInteger('Job');
             if (in_array($group, ['working', 'paused'], true) && $job == 0) {
                 $this->WriteAttributeInteger('Job', 1);
+                $this->SetBuffer('JobStartAt', strval(time()));
                 $job = 1;
             }
             if ($job == 1) {
@@ -2043,20 +2058,51 @@ class X60Ultra extends IPSModuleStrict
     {
         $this->WriteAttributeString('Queue', json_encode(array_values($q)));
         $this->SetVal('Queue', count($q) ? $this->RoomNames($q) : '–');
+        // Einstellungen nur für Räume behalten, die noch vorgemerkt sind
+        $set = $this->ReadQueueSettings();
+        $keep = array_intersect_key($set, array_flip(array_map('strval', $q)));
+        if (count($keep) != count($set)) $this->WriteAttributeString('QueueSettings', json_encode((object) $keep));
     }
 
-    // Nach Auftragsende: vorgemerkte Räume der ersten Etage starten (läuft unter Sperre)
+    // Einstellungen je vorgemerktem Raum: {"105": {...}, "106": {...}}. Bis Version 1.5 galt ein gemeinsamer
+    // Satz für alle Räume – der wird beim Lesen auf jeden vorgemerkten Raum verteilt.
+    private function ReadQueueSettings()
+    {
+        $s = json_decode($this->ReadAttributeString('QueueSettings'), true);
+        if (!is_array($s) || !count($s)) return [];
+        $perRoom = count(array_filter(array_keys($s), function ($k) { return !preg_match('/^\d+$/', strval($k)); })) == 0;
+        if ($perRoom) return array_filter($s, 'is_array');
+        $out = [];
+        foreach ($this->ReadQueue() as $c) $out[strval($c)] = $s;
+        return $out;
+    }
+
+    private function WriteQueueSettings($codes, $over)
+    {
+        $set = $this->ReadQueueSettings();
+        foreach ($codes as $c) $set[strval(intval($c))] = is_array($over) ? $over : [];
+        $this->WriteAttributeString('QueueSettings', json_encode((object) $set));
+    }
+
+    // Nach Auftragsende: vorgemerkte Räume der ersten Etage mit gleichen Einstellungen starten (läuft unter Sperre).
+    // Die Vormerkung wird erst nach dem Start gekürzt – scheitert er, bleiben die Räume vorgemerkt.
     private function StartQueue()
     {
         $q = $this->ReadQueue();
         if (count($q) == 0) return;
+        $set = $this->ReadQueueSettings();
         $floor = intdiv($q[0], 100);
-        $now = array_values(array_filter($q, function ($c) use ($floor) { return intdiv($c, 100) == $floor; }));
-        $rest = array_values(array_diff($q, $now));
-        $over = $this->Json($this->ReadAttributeString('QueueSettings'));
-        $this->WriteAttributeString('QueueSettings', '{}');
-        $this->WriteQueue($rest);
-        $this->StartRooms($floor, $now, is_array($over) ? $over : []);
+        $first = $set[strval($q[0])] ?? [];
+        $now = array_values(array_filter($q, function ($c) use ($floor, $set, $first) {
+            return intdiv($c, 100) == $floor && ($set[strval($c)] ?? []) == $first;
+        }));
+        $ok = $this->StartRooms($floor, $now, $first);
+        // „Antwortet nicht direkt“: der Befehl kommt meist trotzdem an – dann nicht ein zweites Mal starten
+        if ($ok || strpos($this->dcLastError, 'antwortet nicht direkt') !== false) {
+            $this->WriteQueue(array_values(array_diff($this->ReadQueue(), $now)));
+        } else {
+            $this->Note('Vorgemerkte Räume bleiben vorgemerkt – Start fehlgeschlagen: ' . ($this->dcLastError !== '' ? $this->dcLastError : 'unbekannter Fehler'), 'err');
+        }
     }
 
     // =========================================================================
@@ -2173,8 +2219,12 @@ class X60Ultra extends IPSModuleStrict
             $t = isset($r['time']) && preg_match('/^(\d{1,2}):(\d{2})$/', trim(strval($r['time'])), $m) ? mktime(intval($m[1]), intval($m[2]), 0) : $std;
             $p = intval($r['prog'] ?? -1);
             if ($p < 0 || !$this->HasProgram($p)) $p = intval($this->GetValue('AutoProgram'));
-            $key = md5($i . '|' . $d . '|' . date('H:i', $t));
-            $out[] = ['key' => $key, 'ts' => $t, 'time' => date('H:i', $t), 'rooms' => $codes, 'prog' => $p, 'done' => ($done[$key] ?? '') === date('Ymd')];
+            // Schlüssel ohne Uhrzeit: wird die Uhrzeit nach dem Lauf geändert, startet der Eintrag heute nicht erneut
+            // (der alte Schlüssel mit Uhrzeit aus Version 1.5 zählt am Tag des Updates noch mit)
+            $key = md5($i . '|' . $d);
+            $old = md5($i . '|' . $d . '|' . date('H:i', $t));
+            $isDone = ($done[$key] ?? '') === date('Ymd') || ($done[$old] ?? '') === date('Ymd');
+            $out[] = ['key' => $key, 'ts' => $t, 'time' => date('H:i', $t), 'rooms' => $codes, 'prog' => $p, 'done' => $isDone];
         }
         usort($out, function ($a, $b) { return $a['ts'] - $b['ts']; });
         return $out;
@@ -2259,6 +2309,7 @@ class X60Ultra extends IPSModuleStrict
 
     private function AutoCheckRun()
     {
+        $this->AutoUnclearCheck();
         $why = $this->AutoBlocker();
         $this->SetVal('AutoStatus', $why === '' ? 'startet …' : $why);
         if ($why !== '') return false;
@@ -2277,24 +2328,59 @@ class X60Ultra extends IPSModuleStrict
         $over = $this->ProgramSettings($prog);
         if (!count($rooms)) $ok = $over === null ? $this->CleanAll() : $this->Locked(function () use ($over) { return $this->StartAll($over); });
         else $ok = $this->CleanRoomsWith($rooms, json_encode($over === null ? [] : $over));
-        if ($ok) {
+        // „Roboter antwortet nicht direkt“: Die Cloud stellt den Befehl meist trotzdem zu. Den Start deshalb
+        // vorläufig als erfolgt führen (kein zweiter Start durch den Zeitplan, Rückkehr bei Anwesenheit greift);
+        // fährt der Roboter nicht binnen 10 Minuten los, nimmt AutoUnclearCheck() das zurück.
+        $unclear = !$ok && strpos($this->dcLastError, 'antwortet nicht direkt') !== false;
+        if ($unclear) {
+            $this->SetBuffer('AutoUnclear', json_encode(['at' => time(), 'key' => $entry !== null ? $entry['key'] : '',
+                'last' => $this->ReadAttributeInteger('LastAuto')]));
+        }
+        if ($ok || $unclear) {
             $this->WriteAttributeInteger('LastAuto', time());
             $this->WriteAttributeInteger('JobByAuto', 1);
             if ($entry !== null) {
                 $done = json_decode($this->ReadAttributeString('AutoDone'), true);
                 if (!is_array($done)) $done = [];
                 $done[$entry['key']] = date('Ymd');
-                $this->WriteAttributeString('AutoDone', json_encode($done));
+                // nur heutige Einträge behalten
+                $done = array_filter($done, function ($d) { return $d === date('Ymd'); });
+                $this->WriteAttributeString('AutoDone', json_encode((object) $done));
             }
             $what = (!count($rooms) ? 'alles' : $this->RoomNames($rooms)) . ($prog > 0 ? ', ' . $this->ProgramName($prog) : '');
-            $this->SetVal('AutoStatus', 'gestartet ' . date('H:i') . ' (' . $what . ')');
-            if ($this->ReadPropertyBoolean('NotifyAuto')) $this->Push('Automatik', ($entry !== null ? 'Zeitplan ' . $entry['time'] : 'Niemand zu Hause') . ' – Reinigung gestartet: ' . $what . '.');
+            $this->SetVal('AutoStatus', ($unclear ? 'Start gesendet ' : 'gestartet ') . date('H:i') . ' (' . $what . ')' . ($unclear ? ' – Roboter wacht auf …' : ''));
+            if ($this->ReadPropertyBoolean('NotifyAuto') && !$unclear) $this->Push('Automatik', ($entry !== null ? 'Zeitplan ' . $entry['time'] : 'Niemand zu Hause') . ' – Reinigung gestartet: ' . $what . '.');
         } else {
             $this->SetBuffer('AutoRetry', strval(time() + 1800));
             $this->SetVal('AutoStatus', 'Start fehlgeschlagen, neuer Versuch ' . date('H:i', time() + 1800));
         }
         $this->RefreshViews();
         return $ok;
+    }
+
+    // Vorläufig gezählter Start (Roboter antwortete nicht direkt): fährt er los, gilt er; sonst nach 10 Minuten zurücknehmen
+    private function AutoUnclearCheck()
+    {
+        $u = json_decode($this->GetBuffer('AutoUnclear'), true);
+        if (!is_array($u)) return;
+        $group = SaugroboterTexte::StateGroup(intval($this->GetValue('State')));
+        if ($this->ReadAttributeInteger('Job') == 1 || intval($this->GetBuffer('JobStartAt')) >= intval($u['at'])
+            || in_array($group, ['working', 'paused', 'moving'], true)) {
+            $this->SetBuffer('AutoUnclear', '');
+            if ($this->ReadPropertyBoolean('NotifyAuto')) $this->Push('Automatik', 'Reinigung gestartet (Roboter hat verzögert reagiert).');
+            return;
+        }
+        if (time() - intval($u['at']) < 600) return;
+        $this->SetBuffer('AutoUnclear', '');
+        $this->WriteAttributeInteger('LastAuto', intval($u['last']));
+        $this->WriteAttributeInteger('JobByAuto', 0);
+        if (($u['key'] ?? '') !== '') {
+            $done = json_decode($this->ReadAttributeString('AutoDone'), true);
+            if (is_array($done)) { unset($done[$u['key']]); $this->WriteAttributeString('AutoDone', json_encode((object) $done)); }
+        }
+        // wie bei einem fehlgeschlagenen Start: neuer Versuch 30 Minuten nach dem ersten
+        $this->SetBuffer('AutoRetry', strval(intval($u['at']) + 1800));
+        $this->Note('Automatik: Der Roboter hat auf den Start nicht reagiert – neuer Versuch ' . date('H:i', intval($u['at']) + 1800) . '.');
     }
 
     /**
@@ -2483,6 +2569,7 @@ class X60Ultra extends IPSModuleStrict
     private function AutoBlocker()
     {
         if (!$this->GetValue('AutoAway')) return 'aus';
+        if ($this->GetBuffer('AutoUnclear') !== '' && $this->ReadAttributeInteger('Job') == 0) return 'Start gesendet – wartet auf den Roboter';
         // "zur Uhrzeit": einmal am Tag zur festen Zeit, egal ob jemand zu Hause ist
         if ($this->AutoByPlan()) return $this->AutoTimeBlocker();
         {

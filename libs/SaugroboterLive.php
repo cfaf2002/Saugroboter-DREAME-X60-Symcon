@@ -105,8 +105,7 @@ trait SaugroboterLive
                         // nicht laufend mit dem Passwort anmelden)
                         $this->SetBuffer('LiveRenewAt', strval(time()));
                         $old = json_decode($this->ReadAttributeString('Device'), true);
-                        $t = json_decode($this->ReadAttributeString('Token'), true);
-                        if (is_array($t)) { $t['until'] = 0; $this->WriteAttributeString('Token', json_encode($t)); }
+                        $this->CloudTokenExpire();
                         $info = $this->Locked(function () {
                             $ok = $this->CloudLogin();
                             $dev = $ok ? $this->CloudDevice(true) : null;
@@ -228,7 +227,11 @@ trait SaugroboterLive
         list($host, $port) = explode(':', $dev['host'], 2);
         if ($this->CloudRegion() == 'kr') $host = str_replace('10100', '10000', $host);
         // Der Live-Server hat kein öffentlich prüfbares Zertifikat (die App prüft es deshalb gar nicht).
-        // Der Socket verschlüsselt nur; geschützt wird das Token durch die Zertifikatsbindung in LiveConnect().
+        // VerifyPeer/VerifyHost am Socket einzuschalten, würde die Live-Verbindung deshalb immer scheitern lassen.
+        // Der Socket verschlüsselt nur. Die Zertifikatsbindung in LiveConnect() prüft vor dem Senden des Tokens
+        // eine eigene Verbindung zum selben Server – nicht die des Sockets selbst (dessen Zertifikat lässt sich
+        // aus PHP nicht auslesen). Sie erkennt eine dauerhafte Umleitung, aber keinen Angreifer, der nur die
+        // Verbindung des Sockets abfängt. Diese Grenze steht im README unter „Sicherheit“.
         $this->SetBuffer('LiveHost', $host . ':' . intval($port));
         $this->LiveSocketConfig($pid, ['Host' => $host, 'Port' => intval($port), 'UseSSL' => true,
             'VerifyPeer' => false, 'VerifyHost' => false, 'Open' => true]);
@@ -258,8 +261,7 @@ trait SaugroboterLive
             // Zugangstoken läuft bald ab: erneuern und in Ruhe neu anmelden, bevor der Server trennt
             $t = json_decode($this->ReadAttributeString('Token'), true);
             if (is_array($t) && intval($t['until'] ?? 0) > 0 && intval($t['until']) - time() < 300) {
-                $t['until'] = 0;
-                $this->WriteAttributeString('Token', json_encode($t));
+                $this->CloudTokenExpire($t['access'] ?? '');
                 if ($this->CloudLogin()) { $this->LiveReconnect('Zugangstoken erneuert'); return false; }
             }
             if (time() - intval($this->GetBuffer('LiveTx')) >= 25) $this->LiveSend("\xC0\x00");   // PINGREQ
@@ -287,7 +289,9 @@ trait SaugroboterLive
     // ---- Zertifikatsbindung ---------------------------------------------------------
     // Beim ersten Kontakt wird die Zertifikatskette des Live-Servers gemerkt (oberstes Zertifikat).
     // Vor jeder Anmeldung muss der Server eine Kette vorzeigen, die zu diesem Zertifikat passt –
-    // sonst geht das Token nicht raus. Schützt vor Mitlesern, auch ohne öffentliche Zertifizierungsstelle.
+    // sonst geht das Token nicht raus. Geprüft wird über eine eigene Verbindung (der Client Socket
+    // gibt sein Zertifikat nicht preis): erkennt eine Umleitung des Servers, ist aber kein vollwertiger
+    // Ersatz für eine Prüfung im Socket selbst.
 
     private function LivePinOk($bindDomain)
     {
@@ -620,10 +624,7 @@ trait SaugroboterLive
                 $this->SetBuffer('MqttState', '0');
                 $this->SendDebug('Live', 'Anmeldung abgelehnt (Code ' . $rc . ')', 0);
                 // 4/5 = Zugang abgelehnt: beim nächsten Versuch frisches Token holen
-                if ($rc == 4 || $rc == 5) {
-                    $t = json_decode($this->ReadAttributeString('Token'), true);
-                    if (is_array($t)) { $t['until'] = 0; $this->WriteAttributeString('Token', json_encode($t)); }
-                }
+                if ($rc == 4 || $rc == 5) $this->CloudTokenExpire();
                 if ($n >= 3) {
                     $this->SetBuffer('LiveHold', strval(time() + 600));
                     $this->SetBuffer('LiveHoldWhy', 'Anmeldung abgelehnt');
@@ -699,6 +700,7 @@ trait SaugroboterLive
             // Fahrt beginnt: sofort als Auftrag führen (nicht erst beim nächsten Abruf)
             if (in_array(SaugroboterTexte::StateGroup($state), ['working', 'paused'], true) && $this->ReadAttributeInteger('Job') == 0) {
                 $this->WriteAttributeInteger('Job', 1);
+                $this->SetBuffer('JobStartAt', strval(time()));
                 $this->Trace('Live', 'Fahrt erkannt – Auftrag läuft');
             }
         }
